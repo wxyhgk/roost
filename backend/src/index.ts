@@ -8,9 +8,10 @@ import { createCliIconStore } from "./cli-configs";
 import { createBackendServer } from "./server";
 import { HOST, PORT, dataDir, workspaceRoot } from "./workspace";
 import { loadAuthentication } from './auth-config';
+import type { AuthOptions } from './auth';
 
-export async function startBackend() {
-  const auth = await loadAuthentication(dataDir);
+export async function startBackend(options: { auth?: AuthOptions } = {}) {
+  const auth = options.auth ?? await loadAuthentication(dataDir);
   const runtime = await openTerminalDaemon({ dataDir, defaultCwd: homedir(), shell: process.env.SHELL || "/bin/zsh" });
   let store;
   try { store = createWorkspaceStore({ dataDir }); } catch (error) { runtime.dispose(); throw error; }

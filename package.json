@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "start": "concurrently --kill-others -n backend,frontend -c cyan,green \"npm run start --prefix backend\" \"npm run dev --prefix frontend\"",
-    "start:tunnel": "ROOST_ALLOWED_ORIGINS=${TUNNEL_ORIGIN:?设置为你的隧道入口，例如 http://example:15173} ROOST_AUTH_INSECURE_HTTP=1 VITE_HMR_CLIENT_PORT=${TUNNEL_PORT:-15173} npm start",
+    "start:tunnel": "ROOST_ALLOWED_ORIGINS=${TUNNEL_ORIGIN:?\u8bbe\u7f6e\u4e3a\u4f60\u7684\u96a7\u9053\u5165\u53e3\uff0c\u4f8b\u5982 http://example:15173} ROOST_AUTH_INSECURE_HTTP=1 VITE_HMR_CLIENT_PORT=${TUNNEL_PORT:-15173} npm start",
     "verify": "npm run typecheck --workspaces --if-present && npm test --workspaces --if-present && npm run build --workspace frontend && node scripts/check-boundaries.mjs",
     "dev": "concurrently -n backend,frontend -c cyan,green \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
     "dev:backend": "npm run dev --prefix backend",
@@ -20,10 +20,18 @@
     "core:rollback": "node scripts/rollback-core.mjs",
     "workbench:build": "npm run build --workspace @roost/stable-workbench",
     "workbench:install": "npm run workbench:build && node scripts/install-workbench.mjs",
-    "workbench:start": "node scripts/start-workbench.mjs"
+    "workbench:start": "node scripts/start-workbench.mjs",
+    "desktop:prepare": "node desktop/scripts/prepare.mjs",
+    "desktop:build": "node desktop/scripts/run.mjs build",
+    "desktop:dev": "node desktop/scripts/run.mjs dev",
+    "desktop:targets": "node desktop/scripts/targets.mjs",
+    "desktop:test": "node --test desktop/tests/*.test.mjs"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "@tauri-apps/cli": "^2.11.4",
+    "concurrently": "^9.2.1",
+    "es-module-lexer": "^3.0.2",
+    "esbuild": "^0.28.2"
   },
   "workspaces": [
     "packages/*",
@@ -31,7 +39,7 @@
     "frontend",
     "stable-workbench"
   ],
-  "version": "0.0.3",
+  "version": "0.0.4",
   "engines": {
     "node": ">=22.13.0"
   }

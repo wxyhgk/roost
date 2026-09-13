@@ -3,6 +3,7 @@ import { fetchAuthSession, login, type AuthSession } from "../shared/api/auth";
 import { onSessionExpired } from "../shared/api/request";
 import { ApiError } from "../shared/api/errors";
 import { t } from "@roost/i18n";
+import { desktopRuntime } from '../shared/runtime';
 
 /**
  * 登录关卡。
@@ -102,13 +103,18 @@ function LoginOverlay({ phase, expired, onSignedIn, onRetry }: {
   const unconfigured = phase.kind === "ready" && !phase.session.configured;
 
   return (
-    <dialog ref={dialog} aria-modal="true" aria-label={t.misc.auth.title}
+    <dialog ref={dialog} aria-modal="true" aria-label={desktopRuntime ? t.misc.auth.desktopTitle : t.misc.auth.title}
       onCancel={event => event.preventDefault()} onKeyDown={event => event.stopPropagation()}
       className="fixed inset-0 z-[200] m-0 grid h-dvh max-h-none w-screen max-w-none place-items-center border-0 bg-bg/95 p-4 text-text backdrop:bg-transparent">
       <div className="flex w-[min(360px,92vw)] flex-col gap-3 rounded-xl border border-border bg-bg-panel p-5 shadow-modal">
-        <div className="text-base font-semibold text-text">{t.misc.auth.title}</div>
+        <div className="text-base font-semibold text-text">{desktopRuntime ? t.misc.auth.desktopTitle : t.misc.auth.title}</div>
 
-        {phase.kind === "checking" && <div className="text-caption text-text-dim">{t.misc.auth.checking}</div>}
+        {phase.kind === "checking" && <div className="text-caption text-text-dim">{desktopRuntime ? t.misc.auth.desktopConnecting : t.misc.auth.checking}</div>}
+
+        {desktopRuntime && phase.kind === 'ready' && <>
+          <p className="text-caption text-text-dim">{t.misc.auth.desktopUnavailable}</p>
+          <button type="button" onClick={onRetry} className="rounded-md bg-bg-active px-3 py-2 text-body text-text">{t.misc.conversations.retry}</button>
+        </>}
 
         {phase.kind === "error" && (
           <>
@@ -120,14 +126,14 @@ function LoginOverlay({ phase, expired, onSignedIn, onRetry }: {
         )}
 
         {/* configured=false 是部署问题，不是密码错——给密码框只会让人白试。 */}
-        {unconfigured && (
+        {!desktopRuntime && unconfigured && (
           <div role="alert" className="flex flex-col gap-1">
             <div className="text-body text-danger">{t.misc.auth.unconfigured}</div>
             <div className="text-caption text-text-dim">{t.misc.auth.unconfiguredHint}</div>
           </div>
         )}
 
-        {phase.kind === "ready" && phase.session.configured && (
+        {!desktopRuntime && phase.kind === "ready" && phase.session.configured && (
           <>
             {expired && (
               <div role="status" className="flex flex-col gap-0.5">

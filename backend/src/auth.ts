@@ -2,7 +2,9 @@ import { randomBytes, scrypt, scryptSync, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type WebSocket from "ws";
 
-export type AuthOptions = { password: string; secureCookie?: boolean; ttlMs?: number; savePassword?: (password: string) => Promise<void> };
+export type AuthOptions =
+  | { password: string; secureCookie?: boolean; ttlMs?: number; savePassword?: (password: string) => Promise<void>; desktopSession?: never }
+  | { desktopSession: string; secureCookie: false; password?: never; ttlMs?: never; savePassword?: never };
 export type AuthenticationDecision =
   | { allowed: true; token: string | null }
   | { allowed: false; status: 401 | 503; code: "authentication_required" | "auth_unconfigured"; message: string };
@@ -11,7 +13,7 @@ const MAX_BODY = 16 * 1024;
 const MAX_SESSIONS = 1000;
 const RATE_WINDOW = 15 * 60 * 1000;
 const MAX_ADDRESSES = 1000;
-type AuthSession = { expiresAt: number; timer: ReturnType<typeof setTimeout>; sockets: Set<WebSocket> };
+type AuthSession = { expiresAt: number; timer?: ReturnType<typeof setTimeout>; sockets: Set<WebSocket> };
 type AttemptWindow = { startedAt: number; count: number };
 
 function json(res: ServerResponse, status: number, body: unknown) {
@@ -69,16 +71,21 @@ function loginBody(req: IncomingMessage): Promise<Record<string, unknown>> {
 export function createAuthentication(options?: false | AuthOptions) {
   const disabled = options === false;
   const configured = options !== undefined;
+  const desktop = !!options && typeof options.desktopSession === 'string';
   const secureCookie = options ? options.secureCookie ?? true : !disabled;
   const ttlMs = options ? options.ttlMs ?? 12 * 60 * 60 * 1000 : 12 * 60 * 60 * 1000;
-  if (options && (typeof options.password !== "string" || Array.from(options.password).length < 6 || Buffer.byteLength(options.password) > 4096)) throw new Error("authentication password must contain at least 6 characters and at most 4096 UTF-8 bytes");
+  if (options && !desktop && (typeof options.password !== "string" || Array.from(options.password).length < 6 || Buffer.byteLength(options.password) > 4096)) throw new Error("authentication password must contain at least 6 characters and at most 4096 UTF-8 bytes");
+  if (desktop && (!/^[A-Za-z0-9_-]{43}$/.test(options!.desktopSession!) || options!.secureCookie !== false || options!.password !== undefined)) throw new Error('invalid desktop session configuration');
   if (options && options.secureCookie !== undefined && typeof options.secureCookie !== "boolean") throw new Error("secureCookie must be a boolean");
   if (!Number.isSafeInteger(ttlMs) || ttlMs < 1 || ttlMs > 2_147_483_647) throw new Error("authentication ttlMs must be between 1 and 2147483647");
   const salt = randomBytes(32);
-  let passwordHash: Buffer | null = options ? scryptSync(options.password, salt, 64) : null;
+  let passwordHash: Buffer | null = options && !desktop ? scryptSync(options.password!, salt, 64) : null;
   let passwordRevision = 0;
   let changingPassword = false;
   const sessions = new Map<string, AuthSession>();
+  // Created in memory by the native launcher, never accepted from HTTP. Its
+  // lifetime is the HTTP process; a restart always generates a different token.
+  if (desktop) sessions.set(options!.desktopSession!, { expiresAt: Infinity, sockets: new Set() });
   const sockets = new Set<WebSocket>();
   const bound = new WeakSet<WebSocket>();
   const attempts = new Map<string, AttemptWindow>();
@@ -111,7 +118,7 @@ export function createAuthentication(options?: false | AuthOptions) {
   function state(req: IncomingMessage) {
     const decision = authorize(req);
     return { configured: configured && !disposed, authenticated: decision.allowed,
-      expiresAt: decision.allowed && decision.token ? sessions.get(decision.token)!.expiresAt : null, secureCookie,
+      expiresAt: !desktop && decision.allowed && decision.token ? sessions.get(decision.token)!.expiresAt : null, secureCookie,
       canChangePassword: decision.allowed && !!options && typeof options.savePassword === "function" };
   }
   function cookie(token: string, expiresAt: number | null) {
@@ -171,6 +178,7 @@ export function createAuthentication(options?: false | AuthOptions) {
     if (req.method !== method) { res.setHeader("allow", method); fail(res, 405, "method_not_allowed", "method not allowed"); return true; }
     if (path === "/api/auth/session") { json(res, 200, state(req)); return true; }
     if (!configured || disposed) { fail(res, 503, "auth_unconfigured", "authentication is unavailable"); return true; }
+    if (desktop) { req.resume(); fail(res, 403, 'desktop_session_managed', 'The desktop application manages this local session'); return true; }
     if (path === "/api/auth/password") { await changePassword(req, res); return true; }
     if (path === "/api/auth/logout") {
       const token = cookieToken(req); if (token) revoke(token);

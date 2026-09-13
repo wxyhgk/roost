@@ -32,6 +32,25 @@ async function fixture(options?: false | AuthOptions) {
 }
 function responseCookie(response: Response): string { return response.headers.get("set-cookie")!.split(";")[0]!; }
 
+test('desktop sessions need the native token, have no password flow, and are invalidated with the HTTP process', async t => {
+  const token = 'a'.repeat(43), cookie = `${AUTH_COOKIE_NAME}=${token}`;
+  const f = await fixture({ desktopSession: token, secureCookie: false }); t.after(f.close);
+  assert.equal((await fetch(f.base + '/api/workspace')).status, 401);
+  assert.equal((await fetch(f.base + '/api/workspace', { headers: { cookie } })).status, 200);
+  const state = await (await fetch(f.base + '/api/auth/session', { headers: { cookie } })).json();
+  assert.equal(state.authenticated, true); assert.equal(state.canChangePassword, false); assert.equal(state.expiresAt, null);
+  for (const route of ['login', 'logout', 'password']) {
+    const response = await fetch(f.base + '/api/auth/' + route, { method: 'POST', headers: { cookie }, body: '{}' });
+    assert.equal(response.status, 403); assert.equal((await response.json()).error.code, 'desktop_session_managed');
+  }
+  const invalid = fakeSocket(); assert.equal(f.auth.bindSocket(request(), invalid.ws), false);
+  const valid = fakeSocket(); assert.equal(f.auth.bindSocket(request(cookie), valid.ws), true);
+  f.auth.dispose(); assert.equal(f.auth.isAuthorized(request(cookie)), false); assert.equal(valid.socket.terminated, 1);
+  const replacement = createAuthentication({ desktopSession: 'b'.repeat(43), secureCookie: false }); t.after(replacement.dispose);
+  assert.equal(replacement.isAuthorized(request(cookie)), false);
+  assert.throws(() => createAuthentication({ desktopSession: 'short', secureCookie: false }), /desktop session/);
+});
+
 test("missing authentication configuration fails closed while exposing only public auth state", async t => {
   const f = await fixture(); t.after(f.close);
   const state = await fetch(`${f.base}/api/auth/session`);

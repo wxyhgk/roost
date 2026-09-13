@@ -64,6 +64,9 @@ export const misc = {
   auth: {
     title: "Sign in",
     hint: "The password for this machine is in ~/.roost/auth-password (created on first start).",
+    desktopTitle: "Local workspace",
+    desktopConnecting: "Connecting…",
+    desktopUnavailable: "The local connection is unavailable. Retry or reopen Roost. Running terminals are preserved.",
     password: "Password",
     submit: "Sign in",
     submitting: "Signing in…",

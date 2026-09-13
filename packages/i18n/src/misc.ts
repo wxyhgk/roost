@@ -64,6 +64,9 @@ export const misc = {
   auth: {
     title: "登录",
     hint: "这台机器上的密码保存在 ~/.roost/auth-password（首次启动自动生成）。",
+    desktopTitle: "本机工作区",
+    desktopConnecting: "正在连接…",
+    desktopUnavailable: "本机连接暂时不可用。请重试，或重新打开 Roost。正在运行的终端会保留。",
     password: "密码",
     submit: "登录",
     submitting: "正在登录…",

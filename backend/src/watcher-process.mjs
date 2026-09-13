@@ -1,5 +1,8 @@
-import { tsImport } from 'tsx/esm/api';
-const ready = tsImport('./watcher.ts', import.meta.url).then(({ createFileWatcher }) => createFileWatcher());
+import { existsSync } from 'node:fs';
+const source = existsSync(new URL('./watcher.js', import.meta.url))
+  ? import('./watcher.js')
+  : import('tsx/esm/api').then(({ tsImport }) => tsImport('./watcher.ts', import.meta.url));
+const ready = source.then(({ createFileWatcher }) => createFileWatcher());
 const subscriptions = new Map();
 const send = message => { if (process.connected) process.send(message, () => {}); };
 process.on('message', message => {

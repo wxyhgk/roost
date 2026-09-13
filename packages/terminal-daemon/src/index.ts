@@ -33,7 +33,9 @@ export async function openTerminalDaemon(options:{dataDir:string;shell?:string;d
       const ready=await probe();if(ready)return ready;
       await unlink(socketPath).catch(error=>{if(error.code!=='ENOENT')throw error});
       const log=await open(`${dataDir}/terminal-daemon.log`,'a',0o600);
-      const child=spawn(process.execPath,[fileURLToPath(new URL('./launch.mjs',import.meta.url)),'--import','tsx',fileURLToPath(new URL('./main.ts',import.meta.url)),socketPath,dataDir,options.shell??process.env.SHELL??'/bin/zsh',options.defaultCwd??homedir()],{detached:true,stdio:['ignore',log.fd,log.fd],cwd:fileURLToPath(new URL('..',import.meta.url)),env:process.env});
+      // Packaged desktop releases contain JS and run without a TypeScript loader.
+      const compiled = import.meta.url.endsWith('.js');
+      const child=spawn(process.execPath,[fileURLToPath(new URL('./launch.mjs',import.meta.url)),...(compiled?[]:['--import','tsx']),fileURLToPath(new URL(compiled?'./main.js':'./main.ts',import.meta.url)),socketPath,dataDir,options.shell??process.env.SHELL??'/bin/zsh',options.defaultCwd??homedir()],{detached:true,stdio:['ignore',log.fd,log.fd],cwd:fileURLToPath(new URL('..',import.meta.url)),env:process.env});
       let spawnError:Error|undefined;child.on('error',error=>{spawnError=error});child.unref();await log.close();
       for(let wait=0;wait<100;wait++){
         if(spawnError)throw spawnError;

@@ -6,6 +6,7 @@ import { CliSettings } from './CliSettings';
 import { PasswordSettings } from './PasswordSettings';
 import { t } from '@roost/i18n';
 import { setLocale, useLocale, type Locale } from '../shared/locale';
+import { desktopRuntime } from '../shared/runtime';
 
 type SectionId = 'appearance' | 'terminal' | 'cli' | 'security';
 const SECTION_IDS = ['appearance', 'terminal', 'cli', 'security'] as const;
@@ -14,7 +15,7 @@ const SECTION_ICONS = { appearance: SwatchIcon, terminal: CommandLineIcon, cli: 
 export function SettingsDialog({ onClose, onResetLayout }: { onClose(): void; onResetLayout(): void }) {
   const locale = useLocale();
   // 每次渲染重取：切换语言后分类名要跟着变，不能缓存在模块顶层。
-  const sections = SECTION_IDS.map(id => ({ id, name: t.settings.dialog.sections[id], Icon: SECTION_ICONS[id] }));
+  const sections = SECTION_IDS.filter(id => !desktopRuntime || id !== 'security').map(id => ({ id, name: t.settings.dialog.sections[id], Icon: SECTION_ICONS[id] }));
   const dialog = useRef<HTMLDialogElement>(null);
   const cliDirty = useRef(false);
   const cliBusy = useRef(false);

@@ -1,5 +1,8 @@
-import { tsImport } from 'tsx/esm/api';
-const ready = tsImport('./index.ts', import.meta.url).then(({ createServerMonitor }) => createServerMonitor());
+import { existsSync } from 'node:fs';
+const source = existsSync(new URL('./index.js', import.meta.url))
+  ? import('./index.js')
+  : import('tsx/esm/api').then(({ tsImport }) => tsImport('./index.ts', import.meta.url));
+const ready = source.then(({ createServerMonitor }) => createServerMonitor());
 const reply = message => { if (process.connected) process.send(message, () => {}); };
 // Register before loading TypeScript so early configuration cannot be lost.
 process.on('message', message => {
