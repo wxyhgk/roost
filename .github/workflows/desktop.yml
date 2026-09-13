@@ -79,3 +79,29 @@ jobs:
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
+
+  release:
+    name: Publish desktop preview
+    needs: build
+    if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Download both verified platform artifacts
+        run: gh run download "$GITHUB_RUN_ID" --pattern 'Roost-*' --dir desktop/artifacts/downloads
+      - name: Verify release version, commit and checksums
+        run: node desktop/scripts/release.mjs desktop/artifacts/downloads desktop/artifacts/release
+      - name: Publish versioned installers
+        run: |
+          gh release create "$GITHUB_REF_NAME" desktop/artifacts/release/* \
+            --verify-tag --title "Roost $GITHUB_REF_NAME" --prerelease \
+            --notes-file desktop/artifacts/release-notes.md

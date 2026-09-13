@@ -141,7 +141,10 @@ PATH 启动，验证原生 PTY / sharp、静态文件、无密码本机会话和
 `.github/workflows/desktop.yml` 在 main 推送、PR、`v*` 标签以及手动运行时触发，
 使用 `macos-15` ARM64 和 `windows-2022` x64 各自安装依赖、构建、执行运行包测试。
 应用版本从根 `package.json` 读取，Node 从 `runtime-lock.json` 读取；版本标签必须
-等于 `v` 加应用版本。不会自动创建 Release 或发布标签。
+等于 `v` 加应用版本。推送 `v*` 标签（或对版本标签手动运行工作流）时，等两端
+构建、测试及上传成功后，自动创建预览版 Release，附双平台安装包、SHA-256 和
+各平台构建信息。发布前再次验证产物版本、目标、提交号和校验值；不会覆盖已有
+Release。普通分支推送和在分支上手动运行只生成 Actions Artifacts，不创建 Release。
 
 成功后在 Actions 运行页面下载保留 14 天的产物：Mac `.zip`（内含 `.app`）、Windows NSIS
 `.exe`，附 SHA-256 和版本 / commit / buildId 信息。Mac 先用 ditto 压缩，保留
