@@ -44,11 +44,9 @@ AI 能力**不由 Roost 提供**，来自你在终端里跑的 CLI。Roost 做�
 | Node | 结果 |
 | --- | --- |
 | 20.20.2 | 跑不了，`No such built-in module: node:sqlite` |
-| 22.13.0 / 22.23.2 | **全绿**，后端 289/289 |
-| 24.21.0 | 后端 `watcher-boundaries.test.ts` 失败 |
-| 26.8.2 | 同上 |
-
-那个失败是 `TypeError: Cannot redefine property: constants`——Node 24 起 `mock.module` 不再允许重定义 `node:fs` 的 `constants` 这个不可配置导出。**是测试写法的问题，不是运行时的问题**：同一份代码在 24 和 26 上跑得好好的，只有这一个用例的 mock 方式过时了。新版本才是有问题的那一头，旧版本反而更干净。
+| 22.13.0 / 22.23.2 | 全绿 |
+| 24.21.0 | 全绿 |
+| 26.8.2 | 全绿 |
 
 首次在项目根目录安装所有依赖（npm workspaces，共用一个锁文件）：
 

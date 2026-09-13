@@ -48,13 +48,27 @@ class MemoryFs {
   get live() { return [...this.handles].filter(([, handles]) => handles.some(handle => !handle.closed)).map(([path]) => path).sort(); }
 }
 let memory: MemoryFs;
+/*
+  展开时**必须把 `default` 摘掉**。
+
+  `import * as fs` 拿到的命名空间里带着 CJS 的 `default`（就是 node:fs 的
+  module.exports 本身）。连它一起塞进 namedExports，Node 24 起构造 mock 命名空间时会
+  炸在不可重定义的属性上——而报错写的是 `Cannot redefine property: constants`，
+  指向一个完全无辜的导出。实测：`{...fs}` 失败，`{...fs, constants: fs.constants}`
+  照样失败，去掉 default 就好了。这个错在 Node 22 上不出现。
+
+  仍然整体展开而不是只列用到的那几个：watcher 只要 watch/statSync/realpathSync，但它
+  import 的 ./fs 要 constants，将来再加别的也不该让这个测试莫名其妙地挂掉。
+*/
+const { default: _fsDefault, ...fsExports } = fs;
+const { default: _promisesDefault, ...promisesExports } = promises;
 mock.module('node:fs', { namedExports: {
-  ...fs,
+  ...fsExports,
   watch: (path: string) => memory.watch(path),
   statSync: (path: string) => ({ isDirectory: () => memory.entries.has(path) }),
   realpathSync: (path: string) => memory.canonical(path),
 } });
-mock.module('node:fs/promises', { namedExports: { ...promises, opendir: (path: string) => memory.opendir(path) } });
+mock.module('node:fs/promises', { namedExports: { ...promisesExports, opendir: (path: string) => memory.opendir(path) } });
 const { createFileWatcher } = await import('../src/watcher.ts');
 const settle = async () => { for (let i = 0; i < 3; i++) await new Promise(resolve => setImmediate(resolve)); };
 const notifications = () => new Promise(resolve => setTimeout(resolve, 10));
