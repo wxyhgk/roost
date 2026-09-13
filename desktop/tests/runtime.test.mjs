@@ -17,12 +17,14 @@ assertBuildable(target);
 const source = bundle ? join(bundle, windows ? 'runtime' : 'Contents/Resources/runtime') : fileURLToPath(new URL('../src-tauri/resources/runtime/', import.meta.url));
 const binary = bundle ? join(bundle, windows ? 'roost-node.exe' : 'Contents/MacOS/roost-node') : fileURLToPath(new URL('../src-tauri/binaries/' + target.sidecar, import.meta.url));
 const cleanEnv = windows ? {
-  HOME: homedir(), USERPROFILE: homedir(), SystemRoot: process.env.SystemRoot, WINDIR: process.env.WINDIR,
-  LOCALAPPDATA: process.env.LOCALAPPDATA, APPDATA: process.env.APPDATA, TEMP: tmpdir(), TMP: tmpdir(),
-  ProgramFiles: process.env.ProgramFiles, 'ProgramFiles(x86)': process.env['ProgramFiles(x86)'],
-  ProgramData: process.env.ProgramData, ComSpec: process.env.ComSpec, PATHEXT: process.env.PATHEXT,
+  // Preserve OS/PowerShell variables (module discovery, user profile, system drive).
+  // Only remove developer tools from PATH; a desktop app inherits the Windows environment.
+  ...process.env,
   PATH: join(process.env.SystemRoot, 'System32') + ';' + join(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0'),
 } : { HOME: homedir(), PATH: '/usr/bin:/bin', SHELL: '/bin/sh', LANG: 'en_US.UTF-8' };
+delete cleanEnv.NODE_OPTIONS;
+delete cleanEnv.NODE_PATH;
+if (windows) for (const key of Object.keys(cleanEnv)) if (key !== 'PATH' && key.toUpperCase() === 'PATH') delete cleanEnv[key];
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function waitFor(read, timeout = 10000) {
   const until = Date.now() + timeout;
