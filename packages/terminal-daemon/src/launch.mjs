@@ -3,6 +3,7 @@
 import { spawn } from 'node:child_process';
 const owner = spawn(process.execPath, process.argv.slice(2), {
   detached: true,
+  windowsHide: true,
   stdio: 'inherit',
   env: process.env,
 });

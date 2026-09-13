@@ -1,6 +1,9 @@
 import { spawn } from 'node:child_process';
 import { mkdir, open, readFile, realpath, stat, unlink } from 'node:fs/promises';
 import { homedir } from 'node:os';
+import { join } from 'node:path';
+import { defaultShell } from '@roost/terminal-runtime';
+import { protectWindowsDirectory } from './windows-security.ts';
 import { fileURLToPath } from 'node:url';
 import { connectTerminalDaemon } from './client.ts';
 export { connectTerminalDaemon } from './client.ts';
@@ -10,10 +13,11 @@ export { daemonSocketPath } from './socket.ts';
 /** Start once, or attach to the existing owner. Disposal only disconnects the gateway. */
 export async function openTerminalDaemon(options:{dataDir:string;shell?:string;defaultCwd?:string}) {
   await mkdir(options.dataDir,{recursive:true});
-  const dataDir=await realpath(options.dataDir),socketPath=daemonSocketPath(dataDir),lockPath=socketPath+'.lock';
+  if (process.platform === 'win32') await protectWindowsDirectory(options.dataDir);
+  const dataDir=await realpath(options.dataDir),socketPath=daemonSocketPath(dataDir),lockPath=process.platform === 'win32' ? join(dataDir, 'terminal-daemon.lock') : socketPath+'.lock';
   async function probe() {
     try{return await connectTerminalDaemon(socketPath)}catch(error){
-      if(!['ENOENT','ECONNREFUSED'].includes((error as NodeJS.ErrnoException).code??''))throw error;
+      if(!['ENOENT','ECONNREFUSED', ...(process.platform === 'win32' ? ['EPROTO', 'EBUSY'] : [])].includes((error as NodeJS.ErrnoException).code??''))throw error;
       return null;
     }
   }
@@ -31,11 +35,11 @@ export async function openTerminalDaemon(options:{dataDir:string;shell?:string;d
       await lock.writeFile(String(process.pid));
       // Another starter may have completed between the first probe and lock acquisition.
       const ready=await probe();if(ready)return ready;
-      await unlink(socketPath).catch(error=>{if(error.code!=='ENOENT')throw error});
+      if (process.platform !== 'win32') await unlink(socketPath).catch(error=>{if(error.code!=='ENOENT')throw error});
       const log=await open(`${dataDir}/terminal-daemon.log`,'a',0o600);
       // Packaged desktop releases contain JS and run without a TypeScript loader.
       const compiled = import.meta.url.endsWith('.js');
-      const child=spawn(process.execPath,[fileURLToPath(new URL('./launch.mjs',import.meta.url)),...(compiled?[]:['--import','tsx']),fileURLToPath(new URL(compiled?'./main.js':'./main.ts',import.meta.url)),socketPath,dataDir,options.shell??process.env.SHELL??'/bin/zsh',options.defaultCwd??homedir()],{detached:true,stdio:['ignore',log.fd,log.fd],cwd:fileURLToPath(new URL('..',import.meta.url)),env:process.env});
+      const child=spawn(process.execPath,[fileURLToPath(new URL('./launch.mjs',import.meta.url)),...(compiled?[]:['--import','tsx']),fileURLToPath(new URL(compiled?'./main.js':'./main.ts',import.meta.url)),socketPath,dataDir,options.shell??defaultShell(),options.defaultCwd??homedir()],{detached:true,windowsHide:true,stdio:['ignore',log.fd,log.fd],cwd:fileURLToPath(new URL('..',import.meta.url)),env:process.env});
       let spawnError:Error|undefined;child.on('error',error=>{spawnError=error});child.unref();await log.close();
       for(let wait=0;wait<100;wait++){
         if(spawnError)throw spawnError;

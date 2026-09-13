@@ -7,6 +7,8 @@ use std::{
 
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(target_os = "windows")]
+mod windows;
 
 // Desktop host operations. Web/daemon protocol and business logic stay outside this boundary.
 pub trait Host {
@@ -23,7 +25,14 @@ pub fn current() -> Result<Box<dyn Host>> {
     {
         return Ok(Box::new(macos::MacOs));
     }
-    #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+    #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
+    {
+        return Ok(Box::new(windows::Windows));
+    }
+    #[cfg(not(any(
+        all(target_os = "macos", target_arch = "aarch64"),
+        all(target_os = "windows", target_arch = "x86_64")
+    )))]
     {
         Err("Desktop host is planned but not enabled; see desktop/README.md".into())
     }

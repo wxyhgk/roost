@@ -1,3 +1,5 @@
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 mod backend;
 mod platform;
 mod runtime;
@@ -28,7 +30,11 @@ fn main() {
                 .min_inner_size(800., 540.)
                 .on_navigation(move |url| {
                     let expected = navigation_origin.lock().unwrap();
-                    if url.scheme() == "tauri" {
+                    if url.scheme() == "tauri"
+                        || (expected.is_none()
+                            && url.scheme() == "http"
+                            && url.host_str() == Some("tauri.localhost"))
+                    {
                         return true;
                     }
                     if expected.as_deref() == Some(url.origin().ascii_serialization().as_str()) {

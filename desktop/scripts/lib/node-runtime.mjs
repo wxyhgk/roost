@@ -23,11 +23,12 @@ export async function prepareNode({ lock, target, cache, tauri }) {
     }
   }
   if (hash(await readFile(archive)) !== runtime.sha256) throw Error('Cached Node archive checksum mismatch');
-  if (target.archiveExtension !== 'tar.gz') throw Error('ZIP runtime extraction is pending Windows enablement.');
   const extracted = join(targetCache, 'extracted');
   await mkdir(extracted, { recursive: true });
-  const prefix = runtime.archive.replace(/\.tar\.gz$/, '');
-  execFileSync('tar', ['-xzf', archive, '--strip-components=1', '-C', extracted,
+  const prefix = runtime.archive.replace(/\.(tar\.gz|zip)$/, '');
+  // Windows 10+ ships bsdtar, which reads ZIP and preserves the same selected-file layout.
+  const tar = target.platform === 'win32' ? join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe') : 'tar';
+  execFileSync(tar, ['-xf', archive, '--strip-components=1', '-C', extracted,
     `${prefix}/${target.nodePath}`, `${prefix}/LICENSE`]);
   const node = join(extracted, target.nodePath);
   const actual = execFileSync(node, ['--version'], { encoding: 'utf8' }).trim();

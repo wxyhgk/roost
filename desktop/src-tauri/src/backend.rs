@@ -1,7 +1,6 @@
 use crate::{platform, runtime, Result};
 use serde::Deserialize;
 use std::{
-    fs,
     io::{BufRead, BufReader, Read, Write},
     path::PathBuf,
     process::{Child, Stdio},
@@ -53,7 +52,7 @@ pub fn start(app: &tauri::AppHandle, origin: Arc<Mutex<Option<String>>>) -> Resu
     if !data.is_absolute() {
         return Err("Desktop data directory must be absolute".into());
     }
-    fs::create_dir_all(&data)?;
+    host.create_private_directory(&data)?;
     let runtime = runtime::install(app, host.as_ref())?;
     let log = host.open_log(&data.join("desktop.log"))?;
     let manifest = runtime::manifest()?;

@@ -8,9 +8,8 @@ export const targets = Object.freeze({
     executables: ['node_modules/node-pty/prebuilds/darwin-arm64/spawn-helper'],
   },
   'x86_64-pc-windows-msvc': {
-    platform: 'win32', arch: 'x64', status: 'planned', config: 'windows',
+    platform: 'win32', arch: 'x64', status: 'preview', config: 'windows',
     archivePlatform: 'win', archiveExtension: 'zip', nodePath: 'node.exe', executables: [],
-    reason: 'Windows still needs native launcher, named-pipe permissions, shell/CLI launch and PTY lifecycle validation.',
   },
   'x86_64-unknown-linux-gnu': {
     platform: 'linux', arch: 'x64', status: 'planned', config: 'linux',

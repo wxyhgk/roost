@@ -2,6 +2,9 @@ import type { AgentReplay } from "@roost/terminal-protocol";
 import { spawn, type IPty, type IDisposable } from "node-pty";
 import { statSync } from "node:fs";
 import { homedir } from "node:os";
+import { fileURLToPath } from "node:url";
+import { shellArgs } from './shell';
+export { defaultShell } from './shell';
 import type { CliId, CliDefinition } from "@roost/cli-adapters";
 import type { ServerMessage, ReplayCursor, AgentEvent } from "@roost/terminal-protocol";
 import { createAgentEventScanner, CLI_AGENT_PROTOCOL_VERSION,
@@ -90,7 +93,7 @@ export function createTerminalRuntime(options: TerminalRuntimeOptions) {
   function resolveCwd(cwd?: string) {
     const fallback = isDirectory(options.defaultCwd) ? options.defaultCwd : homedir();
     if (!cwd) return fallback;
-    const expanded = cwd === "~" ? homedir() : cwd.replace(/^~\//, `${homedir()}/`);
+    const expanded = cwd === "~" ? homedir() : cwd.replace(/^~[\\/]/, `${homedir()}/`);
     return isDirectory(expanded) ? expanded : fallback;
   }
 
@@ -134,11 +137,6 @@ export function createTerminalRuntime(options: TerminalRuntimeOptions) {
     $0 借来放 shell 自己的路径，命令结束后 `exec "$0" -l` 把交互 shell 还给用户：恢复
     失败时看到的是一条错误加一个能用的提示符，而不是一个自己关掉的终端。
   */
-  function launchArgs(command?: readonly string[]) {
-    if (!command?.length) return ["-l"];
-    return ["-i", "-l", "-c", '"$@"; exec "$0" -l', options.shell, ...command];
-  }
-
   function ensureSession(id: string, cwd: string, command?: readonly string[]): TerminalSession {
     if (disposed) throw new Error("Terminal runtime disposed");
     const existing = live.get(id);
@@ -147,7 +145,7 @@ export function createTerminalRuntime(options: TerminalRuntimeOptions) {
     replay.hydrate(id);
     let pty: IPty;
     try {
-      pty = spawn(options.shell, launchArgs(command), {
+      pty = spawn(options.shell, shellArgs(options.shell, command), {
         name: "xterm-256color", cols: 80, rows: 24, cwd: resolved, env: { ...env, ...options.sessionEnv?.(id, replay.getInstanceId(id)!) },
       });
     } catch (error) {
@@ -160,8 +158,21 @@ export function createTerminalRuntime(options: TerminalRuntimeOptions) {
     };
     live.set(id, session);
     const agentScanner = createAgentEventScanner();
+    let cwdPending = '';
     session.subscriptions.push(pty.onData((data) => {
       if (disposed || live.get(id) !== session) return;
+      if (process.platform === 'win32') {
+        // Windows has no supported process-CWD API. Our PowerShell prompt emits OSC 7.
+        cwdPending = (cwdPending + data).slice(-16384);
+        for (const match of cwdPending.matchAll(/\x1b\]7;(file:[^\x07\x1b]*)(?:\x07|\x1b\\)/g)) {
+          try {
+            const cwd = fileURLToPath(match[1]);
+            if (isDirectory(cwd) && cwd !== session.cwd) { session.cwd = cwd; emit(id, { type: 'cwd', cwd }); }
+          } catch { /* Ignore malformed or non-local terminal sequences. */ }
+        }
+        const last = cwdPending.lastIndexOf('\x1b]7;');
+        cwdPending = last >= 0 && !/[\x07]/.test(cwdPending.slice(last)) ? cwdPending.slice(last) : '';
+      }
       // 先扫再落盘：事件即使在没有浏览器连接时也要被观测到——
       // 「你走开了」恰恰是这个信号最有价值的时刻。
       for (const agent of agentScanner.push(data)) emit(id, { type: "agent", agent, terminalInstanceId: session.instanceId });

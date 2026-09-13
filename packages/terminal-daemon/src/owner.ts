@@ -1,6 +1,7 @@
 import {parseOpenCodeObservation} from './opencode-observation.ts';
 import { realpathSync } from 'node:fs';
-import { relative } from 'node:path';
+import { relative, isAbsolute } from 'node:path';
+import { protectWindowsPipe } from './windows-security.ts';
 import { createAiCommandOwner } from './ai-command-owner.ts';
 import { createPeerDeliveryOwner } from './peer-delivery.ts';
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
@@ -73,7 +74,16 @@ export async function startTerminalOwner(options: {socketPath:string; dataDir:st
     没法按方法名区分，留着。
   */
   const ONE_SHOT_METHODS = new Set(['claudeHook','opencodeEvent','qwenEvent']);
+  const quarantine = new Set<Socket>();
   const server = createServer(socket => {
+    if (process.platform === 'win32' && !ready) {
+      // The Windows default pipe ACL can grant read access to other users.
+      // Never send protocol data until the owner-only DACL has been installed.
+      quarantine.add(socket);
+      socket.on('error', () => {});
+      socket.on('close', () => quarantine.delete(socket));
+      return;
+    }
     clients.add(socket); socket.on('close',()=>clients.delete(socket));
     if(ready)hello(socket);
     read(socket, message => {
@@ -112,7 +122,7 @@ export async function startTerminalOwner(options: {socketPath:string; dataDir:st
                 !timingSafeEqual(Buffer.from(input.token), Buffer.from(hookToken(live.id, live.instanceId)))) throw new Error('invalid hook instance');
             const names: Record<string, string> = {SessionStart:'session_start',UserPromptSubmit:'prompt_submit',Stop:'stop'};
             if (!Object.hasOwn(names, input.event) || typeof input.sessionId !== 'string' || !/^[a-zA-Z0-9_-]{1,512}$/.test(input.sessionId) ||
-                typeof input.transcriptPath !== 'string' || !input.transcriptPath.startsWith('/') || input.transcriptPath.length > 4096) throw new Error('invalid hook event');
+                typeof input.transcriptPath !== 'string' || !isAbsolute(input.transcriptPath) || input.transcriptPath.length > 4096) throw new Error('invalid hook event');
             const saved = store.agentJournal.append(live.id, live.instanceId, {event:names[input.event], agent:'claude', sessionId:input.sessionId, transcriptPath:input.transcriptPath});
             commands.hook(live.id,{event:input.event,sessionId:input.sessionId,prompt:typeof input.prompt==='string'&&Buffer.byteLength(input.prompt)<=16384?input.prompt:undefined,version:typeof input.version==='string'?input.version:undefined},saved.sourceSeq);
             broadcast({type:'event',id:live.id,event:{type:'agent',...saved}});
@@ -139,8 +149,8 @@ export async function startTerminalOwner(options: {socketPath:string; dataDir:st
                 typeof input.inputPath !== 'string' || input.inputPath.length > 4096 || !launch.qwenRuntimeRoot) throw new Error('invalid Qwen event');
             // Only a daemon-created, per-launch input file can authorize native
             // submissions. A browser-supplied or old launch path cannot bind it.
-            if (!/^run-[a-zA-Z0-9]+\/input\.jsonl$/.test(relative(realpathSync(launch.qwenRuntimeRoot),realpathSync(input.inputPath)))) throw new Error('invalid Qwen input path');
-            const transcriptPath = typeof input.transcriptPath === 'string' && input.transcriptPath.startsWith('/') && input.transcriptPath.length <= 4096 ? input.transcriptPath : undefined;
+            if (!/^run-[a-zA-Z0-9]+\/input\.jsonl$/.test(relative(realpathSync(launch.qwenRuntimeRoot),realpathSync(input.inputPath)).replaceAll('\\', '/'))) throw new Error('invalid Qwen input path');
+            const transcriptPath = typeof input.transcriptPath === 'string' && isAbsolute(input.transcriptPath) && input.transcriptPath.length <= 4096 ? input.transcriptPath : undefined;
             const saved = store.agentJournal.append(live.id,live.instanceId,{event:names[input.event],agent:'qwen',sessionId:input.sessionId,transcriptPath});
             commands.qwenHook(live.id,{event:input.event,sessionId:input.sessionId,version:input.version,protocolVersion:input.protocolVersion,inputPath:input.inputPath,lifecycleSupported:input.lifecycleSupported===true,
               prompt:typeof input.prompt==='string'&&Buffer.byteLength(input.prompt)<=16384?input.prompt:undefined},saved.sourceSeq);
@@ -189,12 +199,15 @@ export async function startTerminalOwner(options: {socketPath:string; dataDir:st
   });
   try {
     await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(options.socketPath,resolve)});
-    await chmod(options.socketPath,0o600);
+    if (process.platform === 'win32') await protectWindowsPipe(options.socketPath);
+    else await chmod(options.socketPath,0o600);
+    for (const socket of quarantine) socket.destroy();
+    quarantine.clear();
     commands.recover();
     peers.start();
     ready = true;
     for(const socket of clients)hello(socket);
-  } catch(error) {peers.dispose();commands.dispose();runtime.dispose();store.close();await launch.dispose();throw error;}
+  } catch(error) {for(const socket of [...quarantine, ...clients])socket.destroy();server.close();peers.dispose();commands.dispose();runtime.dispose();store.close();await launch.dispose();throw error;}
   let lastPrune = 0;
   const timer = setInterval(()=>{
     void runtime.scanLiveSessions().catch(error=>console.error('terminal scan failed',error));

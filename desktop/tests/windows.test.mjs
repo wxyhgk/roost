@@ -1,0 +1,31 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
+
+test('Windows PowerShell CLI observer preserves literal argv through an npm shim', { skip: process.platform !== 'win32', timeout: 30000 }, async t => {
+  const source = fileURLToPath(new URL('../src-tauri/resources/runtime/', import.meta.url));
+  const { createClaudeLaunch } = await import(pathToFileURL(join(source, 'packages/terminal-daemon/src/claude-launch.js')));
+  const { shellArgs, defaultShell } = await import(pathToFileURL(join(source, 'packages/terminal-runtime/src/shell.js')));
+  const temp = await mkdtemp(join(tmpdir(), 'roost-cli-test-'));
+  const bin = join(temp, '中文 cli'), output = join(temp, 'argv.json');
+  await mkdir(bin);
+  await writeFile(join(bin, 'cli.cjs'), `if(process.argv.includes('--version'))console.log('1.2.3');else require('node:fs').writeFileSync(process.env.ROOST_TEST_ARGS,JSON.stringify(process.argv.slice(2)))`);
+  await writeFile(join(bin, 'claude.cmd'), '@echo off\r\n"node.exe" "%~dp0\\cli.cjs" %*\r\n');
+  const shell = defaultShell();
+  const integration = await createClaudeLaunch(shell, { ...process.env, PATH: bin + ';' + process.env.PATH, ROOST_TEST_ARGS: output });
+  t.after(async () => { await integration.dispose(); await rm(temp, { recursive: true, force: true, maxRetries: 5 }); });
+  assert.ok(integration.env.ROOST_POWERSHELL_INIT);
+  const args = ['中文 空格', "quote'\"", '$env:PATH', '& whoami', '%PATH%', '', 'back\\slash'];
+  const child = spawn(shell, shellArgs(shell, ['claude', ...args]).filter(arg => arg !== '-NoExit'), { env: integration.env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  let stderr = ''; child.stderr.on('data', data => { stderr += data; });
+  const [code] = await once(child, 'exit');
+  assert.equal(code, 0, stderr);
+  const actual = JSON.parse(await readFile(output, 'utf8'));
+  assert.deepEqual(actual.slice(0, 2), ['--plugin-dir', join(integration.env.ROOST_POWERSHELL_INIT, '..', 'plugin')]);
+  assert.deepEqual(actual.slice(2), args);
+});

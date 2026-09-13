@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { openSync, closeSync, fstatSync, writeSync, constants } from 'node:fs';
+import { CLI_LAUNCH_TOOLS } from './cli-launch-tools.ts';
 /** Single bounded native submission, never a PTY key sequence or automatic retry. */
 export function writeQwenCommand(inputPath: string, text: string) {
   if (!text.trim() || text !== text.trim() || Buffer.byteLength(text) > 16384 || /^[\s]*\//.test(text) || /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(text)) throw new Error('unsupported_input');
@@ -23,17 +24,18 @@ export async function installQwenLaunch(bin: string, dir: string) {
   return runtimeRoot;
 }
 export const QWEN_LAUNCH_SCRIPT = `import {spawn,spawnSync} from 'node:child_process';
-import {accessSync,constants,realpathSync,mkdtempSync,writeFileSync,rmSync,readdirSync,statSync,openSync,readSync,closeSync,fstatSync} from 'node:fs';
-import {delimiter,join} from 'node:path';
+import {accessSync,constants,realpathSync,mkdtempSync,writeFileSync,rmSync,readdirSync,statSync,openSync,readSync,closeSync,fstatSync,readFileSync} from 'node:fs';
+import {delimiter,join,resolve} from 'node:path';
 import {createConnection} from 'node:net';
 import {StringDecoder} from 'node:string_decoder';
 import {homedir} from 'node:os';
+${CLI_LAUNCH_TOOLS}
 const root=__RUNTIME_ROOT__,bin=__BIN__,e=process.env;
 const paths=(e.PATH??'').split(delimiter).filter(p=>{try{return realpathSync(p)!==realpathSync(bin)}catch{return p!==bin}});
-const executable=paths.map(p=>join(p,'qwen')).find(p=>{try{accessSync(p,constants.X_OK);return true}catch{return false}});
+const executable=resolveCli(paths,'qwen');
 if(!executable){console.error('qwen: command not found');process.exit(127)}
-const args=process.argv.slice(2);
-let version='';try{version=(spawnSync(executable,['--version'],{encoding:'utf8',timeout:2000}).stdout??'').trim()}catch{}
+const args=cliArgs();
+let version='';try{version=(spawnCliSync(executable,['--version'],{encoding:'utf8',timeout:2000}).stdout??'').trim()}catch{}
 const management=['auth','channel','extensions','hooks','mcp','review','serve','sessions','update'].includes(args[0]);
 const observe=!management&&version==='0.23.1'&&e.ROOST_QWEN_OBSERVING!=='1'&&e.ROOST_QWEN_SOCKET&&e.ROOST_QWEN_TOKEN&&!args.some(a=>/^(--help|-h|--version|-v|--acp|--json-fd|--json-file|--input-file|--output-format|-o|--prompt|-p)(=|$)/.test(a));
 const dir=observe?mkdtempSync(join(root,'run-')):null,inputPath=dir?join(dir,'input.jsonl'):null,outputPath=dir?join(dir,'output.jsonl'):null;
@@ -58,7 +60,7 @@ function line(raw){let b;try{b=JSON.parse(raw)}catch{return}
  else if(b.type==='result')emit('Stop');
  else if(b.type==='control_request'&&b.request?.subtype==='can_use_tool')emit('PermissionRequest');
 }
-const child=spawn(executable,observe?['--json-file',outputPath,'--input-file',inputPath,...args]:args,{stdio:'inherit',env:{...e,PATH:paths.join(delimiter),...(observe?{ROOST_QWEN_OBSERVING:'1'}:{})}});
+const child=spawnCli(executable,observe?['--json-file',outputPath,'--input-file',inputPath,...args]:args,{stdio:'inherit',env:{...e,PATH:paths.join(delimiter),...(observe?{ROOST_QWEN_OBSERVING:'1'}:{})}});
 let offset=0;
 function poll(){if(!observe||disabled)return;let fd;try{fd=openSync(outputPath,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);const st=fstatSync(fd);if(!st.isFile()||st.size<offset){disabled=true;return}const buf=Buffer.alloc(Math.min(262144,st.size-offset));const count=readSync(fd,buf,0,buf.length,offset);offset+=count;pending+=decoder.write(buf.subarray(0,count));let i;while((i=pending.indexOf('\\n'))>=0){const row=pending.slice(0,i);pending=pending.slice(i+1);if(row.length<=1048576)line(row)}if(pending.length>1048576){pending='';disabled=true}}catch{}finally{if(fd!==undefined)closeSync(fd)}}
 const poller=observe?setInterval(poll,100):null;

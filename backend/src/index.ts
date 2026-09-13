@@ -12,7 +12,7 @@ import type { AuthOptions } from './auth';
 
 export async function startBackend(options: { auth?: AuthOptions } = {}) {
   const auth = options.auth ?? await loadAuthentication(dataDir);
-  const runtime = await openTerminalDaemon({ dataDir, defaultCwd: homedir(), shell: process.env.SHELL || "/bin/zsh" });
+  const runtime = await openTerminalDaemon({ dataDir, defaultCwd: homedir() });
   let store;
   try { store = createWorkspaceStore({ dataDir }); } catch (error) { runtime.dispose(); throw error; }
   let server;

@@ -71,6 +71,15 @@ fn digest(path: &Path) -> Result<String> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
+#[cfg(target_os = "windows")]
+pub fn verify_upstream_node(path: &Path) -> Result<()> {
+    let manifest: serde_json::Value = serde_json::from_str(MANIFEST)?;
+    if manifest["nodeHash"].as_str() != Some(digest(path)?.as_str()) {
+        return Err("Bundled Node runtime checksum mismatch".into());
+    }
+    Ok(())
+}
+
 pub fn install(app: &tauri::AppHandle, host: &dyn platform::Host) -> Result<PathBuf> {
     let manifest = manifest()?;
     let base = host.runtime_base(&app.path().home_dir()?);

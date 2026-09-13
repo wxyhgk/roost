@@ -1,7 +1,7 @@
 # Roost desktop
 
-共用的 Tauri 2 桌面工程。目前可运行的是 Apple Silicon / macOS 15+ 预览版，
-Windows 和 Linux 已登记构建目标与平台配置，尚未开放构建。复用现有 React 前端、
+共用的 Tauri 2 桌面工程，提供 Apple Silicon / macOS 15+ 与 Windows x64 预览构建，
+Linux 尚未开放构建。复用现有 React 前端、
 Node 后端和独立终端守护进程；安装后的应用不需要源码目录、npm、Vite、Caddy
 或机器上的 Node。当前产物采用本机 ad-hoc 签名，尚未进行 Developer ID 签名、公证。
 
@@ -22,10 +22,10 @@ desktop/
       main.rs                 窗口和应用生命周期
       backend.rs              后端进程、启动握手、免密码会话
       runtime.rs              运行包安装和清单校验
-      platform/               Host 接口与已实现的 macOS 适配
+      platform/               Host 接口与 macOS / Windows 适配
     tauri.conf.json            公共配置和根项目版本
     tauri.macos.conf.json      Mac 图标、签名、app 产物
-    tauri.windows.conf.json    Windows ICO、NSIS 产物规划
+    tauri.windows.conf.json    Windows ICO、NSIS 安装包
     tauri.linux.conf.json      Linux deb / AppImage 产物规划
   tests/                      构建目标检查、实际运行包集成测试
 ```
@@ -33,7 +33,7 @@ desktop/
 | Target | Status | 仍需完成 |
 | --- | --- | --- |
 | `aarch64-apple-darwin` | preview | 输入法、监听等既有待验收项见下文 |
-| `x86_64-pc-windows-msvc` | planned | Host 适配、ZIP 解包、命名管道权限、Shell/CLI 启动、ConPTY 和退出恢复 |
+| `x86_64-pc-windows-msvc` | preview | CI 验证实际安装包运行时；WebView2 窗口、真实输入法和实际 CLI 交互仍需人工验收 |
 | `x86_64-unknown-linux-gnu` | planned | Host 适配、默认 Shell、WebKitGTK 免密码启动、发行版依赖和打包验收 |
 
 目标和支持状态集中在 `scripts/lib/targets.mjs`。`planned` 目标会在下载或修改构建
@@ -46,7 +46,8 @@ Windows 的 IPC、进程识别、Shell 和 CLI 启动应在 `terminal-daemon` / 
 
 ## Build and run
 
-在仓库根目录执行（需要 Node、Rust、Xcode Command Line Tools）：
+在仓库根目录执行（需要 Node、Rust；Mac 需要 Xcode Command Line Tools，Windows
+需要 Visual Studio C++ Build Tools、WebView2。Rust 版本由 `rust-toolchain.toml` 固定）：
 
 ```sh
 npm ci
@@ -57,6 +58,14 @@ npm run desktop:build
 Mac 产物：`desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Roost.app`。
 可复制到 `~/Applications` 后从 Finder 打开。`desktop:dev` 同样使用编译后的后端，
 不依赖正在运行的网页开发服务器；修改后端后重新运行该命令重新生成运行包。
+
+Windows 使用 Windows 10 22H2 / Windows 11 x64，产物位于
+`desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/`。
+安装包包含 Node、ConPTY 和后端，不需要用户安装 Node；使用系统 PowerShell 5.1，
+也可通过 `ROOST_SHELL` 选择 `pwsh.exe`。会读取用户 PowerShell profile，临时增加
+Claude / OpenCode / Qwen 观察函数和工作目录上报，不修改 profile 或全局执行策略。
+CLI 仍需用户自行安装；观察函数支持原生 `.exe` 和标准 npm `.cmd` 启动文件，
+将 npm 启动文件解析为 JS 入口后直接运行。自定义 batch 启动文件不冒充已支持的 npm CLI。
 
 可显式指定目标：`npm run desktop:build -- --target aarch64-apple-darwin`。
 构建必须在匹配的系统和 CPU 架构上进行，安装相应平台的原生依赖后再打包。
@@ -79,12 +88,14 @@ npm 和 Cargo 依赖分别
 业务数据库来进行打包测试。日志位于该目录的 `desktop.log`、`terminal-daemon.log`。
 
 运行文件安装到 `~/Library/Application Support/Roost/runtime/<build-id>/`。
+Windows 对应 `%LOCALAPPDATA%/Roost/runtime/<build-id>/`。运行目录和预览数据目录
+使用当前用户专有 ACL；终端使用命名管道，并在收紧管道 ACL 后才开放握手和输出。
 运行时不从 `.app` 或源码目录执行辅助脚本，旧发布目录不会被自动删除。
 初次安装校验资源哈希和已签名 Node，后续检查安装清单及 Node 的安装时哈希。
 清单包含目标、Node 文件名、可执行资源列表；启动时核对 Cargo 目标，拒绝混用其他
 平台的运行包。清单和编译后的 ESM 路径统一使用 `/`，独立于宿主路径分隔符。
 
-- 关闭窗口隐藏应用；从 Dock 重开继续使用同一窗口。
+- Mac 关闭窗口隐藏应用；从 Dock 重开继续使用同一窗口。Windows 关闭窗口退出应用。
 - ⌘Q 关闭应用自己启动的 HTTP 后端，不结束终端守护进程。
 - 再次打开应用，HTTP 后端连接相同数据目录的守护进程。
 - 机器重启、守护进程退出后的旧进程不能复活，只有历史记录可以读取。
@@ -120,8 +131,21 @@ PATH 启动，验证原生 PTY / sharp、静态文件、无密码本机会话和
 
 构建目标检查可独立运行：`node --test desktop/tests/targets.test.mjs`。它验证目标
 匹配、运行时锁、依赖平台过滤，以及未就绪目标不会修改当前运行包。
-`runtime.test.mjs` 当前执行的是 Mac 原生产物验收；其他平台启用前，需要扩充
-安装包定位、测试环境和退出清理规则，并在各平台 CI 与真实 UI 上验证。
+`runtime.test.mjs` 在两个平台使用对应 Shell 和随包 Node，Windows 从 NSIS 静默
+安装的文件取出运行时，再移动到中文和空格路径进行同一组测试。
+`windows.test.mjs` 还验证 PowerShell → npm CLI 的中文、空参数、引号和特殊字符传递。
+
+## GitHub Actions
+
+`.github/workflows/desktop.yml` 在 main 推送、PR、`v*` 标签以及手动运行时触发，
+使用 `macos-15` ARM64 和 `windows-2022` x64 各自安装依赖、构建、执行运行包测试。
+应用版本从根 `package.json` 读取，Node 从 `runtime-lock.json` 读取；版本标签必须
+等于 `v` 加应用版本。不会自动创建 Release 或发布标签。
+
+成功后在 Actions 运行页面下载保留 14 天的产物：Mac `.app.zip`、Windows NSIS
+`.exe`，附 SHA-256 和版本 / commit / buildId 信息。Mac 先用 ditto 压缩，保留
+应用执行权限；只有安装后运行时测试通过才上传。Mac 使用 ad-hoc 签名，Windows
+尚无发行者签名，因此这两类产物目前都属于预览版。自动测试不代表真实系统 UI 验收。
 
 已在实际 `.app` 中检查免密码进入、隐藏密码设置、新建终端、中文输出和 OpenCode
 1.18.30 启动界面。退出应用、替换构建并重开后，原 PTY 的 PID / 实例保持一致，

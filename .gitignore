@@ -29,3 +29,4 @@ backend/lib/
 /desktop/src-tauri/runtime-manifest.json
 /desktop/src-tauri/icons/
 /desktop/src-tauri/tauri.generated.json
+desktop/artifacts/

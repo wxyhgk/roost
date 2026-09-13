@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { readlinkSync } from "node:fs";
 import { promisify } from "node:util";
+import { defaultShell } from './shell';
 import { detectCli, detectConfiguredCli, type CliDefinition } from "@roost/cli-adapters";
 
 const execFileAsync = promisify(execFile);
@@ -13,6 +14,12 @@ type ProcRow = { pid: number; ppid: number; args: string };
 
 export async function processTable(signal?: AbortSignal) {
   try {
+    if (process.platform === 'win32') {
+      const { stdout } = await execFileAsync(defaultShell({ ...process.env, ROOST_SHELL: undefined }),
+        ['-NoProfile', '-NonInteractive', '-Command', '[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); @(Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,CommandLine) | ConvertTo-Json -Compress'],
+        { timeout: 5000, windowsHide: true, signal, maxBuffer: 4 * 1024 * 1024 });
+      return windowsProcessRows(stdout);
+    }
     const { stdout } = await execFileAsync("ps", ["-axo", "pid=,ppid=,args="], {
       timeout: 2000,
       signal,
@@ -31,6 +38,13 @@ export async function processTable(signal?: AbortSignal) {
   } catch {
     return [];
   }
+}
+
+export function windowsProcessRows(json: string): ProcRow[] {
+  const values = JSON.parse(json.replace(/^\uFEFF/, ''));
+  return (Array.isArray(values) ? values : [values]).flatMap(row =>
+    Number.isInteger(row?.ProcessId) && Number.isInteger(row?.ParentProcessId) && typeof row?.CommandLine === 'string'
+      ? [{ pid: row.ProcessId, ppid: row.ParentProcessId, args: row.CommandLine.replaceAll('\\', '/') }] : []);
 }
 
 export function cliForPid(rootPid: number, rows: ProcRow[], definitions?: readonly CliDefinition[]) {
@@ -62,6 +76,7 @@ export function cliForPid(rootPid: number, rows: ProcRow[], definitions?: readon
 export async function batchCwds(pids: number[], signal?: AbortSignal) {
   const map = new Map<number, string>();
   if (pids.length === 0) return map;
+  if (process.platform === 'win32') return map; // PowerShell OSC 7 supplies CWD changes.
   if (process.platform === "linux") {
     for (const pid of pids) {
       const cwd = pidCwdLinux(pid);
@@ -85,4 +100,3 @@ export async function batchCwds(pids: number[], signal?: AbortSignal) {
   }
   return map;
 }
-

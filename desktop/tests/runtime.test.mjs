@@ -11,10 +11,16 @@ import { WebSocket } from 'ws';
 import { resolveTarget, assertBuildable } from '../scripts/lib/targets.mjs';
 
 const bundle = process.env.ROOST_DESKTOP_BUNDLE;
+const windows = process.platform === 'win32';
 const target = resolveTarget();
 assertBuildable(target);
-const source = bundle ? join(bundle, 'Contents/Resources/runtime') : fileURLToPath(new URL('../src-tauri/resources/runtime/', import.meta.url));
-const binary = bundle ? join(bundle, 'Contents/MacOS/roost-node') : fileURLToPath(new URL('../src-tauri/binaries/' + target.sidecar, import.meta.url));
+const source = bundle ? join(bundle, windows ? 'runtime' : 'Contents/Resources/runtime') : fileURLToPath(new URL('../src-tauri/resources/runtime/', import.meta.url));
+const binary = bundle ? join(bundle, windows ? 'roost-node.exe' : 'Contents/MacOS/roost-node') : fileURLToPath(new URL('../src-tauri/binaries/' + target.sidecar, import.meta.url));
+const cleanEnv = windows ? {
+  HOME: homedir(), USERPROFILE: homedir(), SystemRoot: process.env.SystemRoot, WINDIR: process.env.WINDIR,
+  LOCALAPPDATA: process.env.LOCALAPPDATA, APPDATA: process.env.APPDATA, TEMP: tmpdir(), TMP: tmpdir(),
+  PATH: join(process.env.SystemRoot, 'System32') + ';' + join(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0'),
+} : { HOME: homedir(), PATH: '/usr/bin:/bin', SHELL: '/bin/sh', LANG: 'en_US.UTF-8' };
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function waitFor(read, timeout = 10000) {
   const until = Date.now() + timeout;
@@ -22,7 +28,7 @@ async function waitFor(read, timeout = 10000) {
   throw Error('Timed out waiting for desktop runtime');
 }
 
-test('relocated production runtime authenticates, serves assets and preserves a real PTY across HTTP restarts', { timeout: 65000 }, async t => {
+test('relocated production runtime authenticates, serves assets and preserves a real PTY across HTTP restarts', { timeout: 120000 }, async t => {
   const temp = await mkdtemp(join(tmpdir(), 'roost-desktop-'));
   const runtime = join(temp, '应用 runtime'), data = join(temp, 'workspace');
   const children = [], sockets = [];
@@ -34,8 +40,12 @@ test('relocated production runtime authenticates, serves assets and preserves a 
         child.stdin.end(); await waitFor(() => child.exitCode !== null || child.signalCode !== null).catch(() => child.kill());
       }
     }
-    if (owner) { const pid = owner.ownerPid; owner.dispose(); try { process.kill(pid, 'SIGTERM'); } catch {} await sleep(300); }
-    await rm(temp, { recursive: true, force: true });
+    if (owner) {
+      const pid = owner.ownerPid;
+      for (const session of owner.listSessions()) await owner.killSession(session.id).catch(() => {});
+      owner.dispose(); try { process.kill(pid, 'SIGTERM'); } catch {} await sleep(windows ? 1000 : 300);
+    }
+    await rm(temp, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
   });
   await cp(source, runtime, { recursive: true });
   const manifest = JSON.parse(await readFile(join(runtime, 'manifest.json'), 'utf8'));
@@ -48,11 +58,11 @@ test('relocated production runtime authenticates, serves assets and preserves a 
   const node = join(runtime, 'bin', target.nodeExecutable);
   // Exercise the packaged native modules with the bundled LTS Node, not Homebrew Node.
   const native = execFileSync(node, ['--input-type=module', '-e', "import sharp from 'sharp';import pty from 'node-pty';console.log(typeof pty.spawn, (await sharp({create:{width:2,height:2,channels:4,background:'#fff'}}).png().toBuffer()).length>0)"],
-    { cwd: runtime, env: { HOME: homedir(), PATH: '/usr/bin:/bin' }, encoding: 'utf8' });
+    { cwd: runtime, env: cleanEnv, encoding: 'utf8' });
   assert.match(native, /function true/);
   async function launch() {
     const child = spawn(node, [join(runtime, 'desktop/runtime/server.mjs')], {
-      cwd: temp, env: { HOME: homedir(), PATH: '/usr/bin:/bin', SHELL: '/bin/sh', LANG: 'en_US.UTF-8' }, stdio: ['pipe', 'pipe', 'pipe'],
+      cwd: temp, env: cleanEnv, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'],
     });
     children.push(child);
     let errors = ''; child.stderr.on('data', bytes => { errors += bytes; });
@@ -61,7 +71,7 @@ test('relocated production runtime authenticates, serves assets and preserves a 
     const ready = await Promise.race([
       once(lines, 'line').then(([line]) => JSON.parse(line)),
       once(child, 'exit').then(() => { throw Error('Runtime exited before readiness: ' + errors); }),
-      new Promise((_, reject) => { const timer = setTimeout(() => reject(Error('Readiness timeout: ' + errors)), 18000); timer.unref(); }),
+      new Promise((_, reject) => { const timer = setTimeout(() => reject(Error('Readiness timeout: ' + errors)), 35000); timer.unref(); }),
     ]);
     assert.equal(ready.pid, child.pid);
     return { child, ...ready, cookie: ready.cookie.split(';')[0], errors: () => errors };
@@ -101,7 +111,7 @@ test('relocated production runtime authenticates, serves assets and preserves a 
   }
   let client = await terminal();
   const identity = client.hello;
-  client.ws.send(JSON.stringify({ type: 'input', data: "printf '\\162\\157\\157\\163\\164桌面验证\\n'\n" }));
+  client.ws.send(JSON.stringify({ type: 'input', data: windows ? "Write-Output ('roost' + '桌面验证')\r" : "printf '\\162\\157\\157\\163\\164桌面验证\\n'\n" }));
   await waitFor(() => client.messages.filter(m => m.type === 'output').map(m => m.data).join('').includes('roost桌面验证'))
     .catch(error => { throw Error(error.message + ': ' + JSON.stringify(client.messages)); });
   // macOS file monitoring uses its compiled child-process entry too.
@@ -120,7 +130,7 @@ test('relocated production runtime authenticates, serves assets and preserves a 
   assert.equal(client.hello.pid, identity.pid);
   assert.equal(client.hello.instanceId, identity.instanceId);
   assert.ok(client.messages.some(m => m.type === 'replay' && m.data.includes('roost桌面验证')));
-  client.ws.send(JSON.stringify({ type: 'input', data: "printf '\\162\\157\\157\\163\\164-after-reopen\\n'\n" }));
+  client.ws.send(JSON.stringify({ type: 'input', data: windows ? "Write-Output ('roost-' + 'after-reopen')\r" : "printf '\\162\\157\\157\\163\\164-after-reopen\\n'\n" }));
   await waitFor(() => client.messages.find(m => m.type === 'output' && m.data.includes('roost-after-reopen')));
   assert.equal((await request(`/api/sessions/${id}/kill`, { method: 'POST' })).status, 200);
 });

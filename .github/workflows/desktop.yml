@@ -1,0 +1,76 @@
+name: Desktop
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, desktop/windows-ci]
+    tags: ['v*']
+    paths-ignore: ['research/**', 'tasks/**', '**/*.md']
+  pull_request:
+    paths-ignore: ['research/**', 'tasks/**', '**/*.md']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS Apple Silicon
+            runner: macos-15
+            target: aarch64-apple-darwin
+          - name: Windows x64
+            runner: windows-2022
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Read application and toolchain versions
+        id: metadata
+        run: node desktop/scripts/ci.mjs metadata
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: ${{ steps.metadata.outputs.node }}
+          cache: npm
+      - name: Install pinned Rust
+        working-directory: desktop
+        run: rustup show active-toolchain
+      - name: Install dependencies
+        run: npm ci
+      - name: Check types and package boundaries
+        run: |
+          npm run typecheck --workspaces --if-present
+          node scripts/check-boundaries.mjs
+      - name: Check platform contracts
+        run: |
+          node --test desktop/tests/targets.test.mjs
+          node --import tsx --test packages/terminal-runtime/tests/windows.test.ts
+      - name: Build desktop
+        run: npm run desktop:build -- --target "${{ matrix.target }}"
+      - name: Test Rust host and manifest
+        working-directory: desktop/src-tauri
+        run: cargo test --locked --release --target "${{ matrix.target }}"
+      - name: Test installed production runtime
+        run: node desktop/scripts/ci.mjs test
+      - name: Package verified artifacts
+        run: node desktop/scripts/ci.mjs package
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: Roost-${{ steps.metadata.outputs.version }}-${{ matrix.target }}
+          path: desktop/artifacts/*
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0

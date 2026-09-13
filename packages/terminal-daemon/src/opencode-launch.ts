@@ -2,6 +2,7 @@ import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { OPENCODE_OBSERVATION_PROTOCOL_VERSION } from './opencode-protocol.ts';
+import { CLI_LAUNCH_TOOLS } from './cli-launch-tools.ts';
 
 const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
 
@@ -18,14 +19,15 @@ export async function installOpenCodeLaunch(bin: string, runtimeDir: string) {
 
 export function openCodeLaunchScript(bin: string, config: string) {
   return `import {spawn} from 'node:child_process';
-import {accessSync,constants,realpathSync} from 'node:fs';
+import {accessSync,constants,realpathSync,readFileSync} from 'node:fs';
 import {createServer} from 'node:net';
-import {delimiter,join} from 'node:path';
+import {delimiter,join,resolve} from 'node:path';
+${CLI_LAUNCH_TOOLS}
 const bin=${JSON.stringify(bin)},config=${JSON.stringify(config)};
 const paths=(process.env.PATH??'').split(delimiter).filter(p=>{try{return realpathSync(p)!==realpathSync(bin)}catch{return p!==bin}});
-const executable=paths.map(p=>join(p,'opencode')).find(p=>{try{accessSync(p,constants.X_OK);return true}catch{return false}});
+const executable=resolveCli(paths,'opencode');
 if(!executable){console.error('opencode: command not found');process.exit(127)}
-const args=process.argv.slice(2), e=process.env;
+const args=cliArgs(), e=process.env;
 const commands=new Set(['completion','acp','mcp','attach','run','debug','providers','auth','agent','upgrade','uninstall','serve','web','models','stats','export','import','github','pr','session','plugin','plug','db']);
 let observe=!e.ROOST_OPENCODE_OBSERVING&&!e.OPENCODE_TUI_CONFIG&&e.OPENCODE_PURE!=='1'&&e.OPENCODE_PURE!=='true'&&!!e.ROOST_OPENCODE_SOCKET&&
  !args.some(a=>['--help','-h','--version','-v','--pure','--mini','--mdns'].includes(a))&&!commands.has(args[0]);
@@ -42,7 +44,7 @@ if(observe){
  }
  if(!hostname)extra.push('--hostname','127.0.0.1');
 }
-const child=spawn(executable,[...extra,...args],{stdio:'inherit',env:{...e,PATH:paths.join(delimiter),...(observe?{OPENCODE_TUI_CONFIG:config,ROOST_OPENCODE_OBSERVING:'1',ROOST_OPENCODE_ENDPOINT:'http://127.0.0.1:'+port}:{})}});
+const child=spawnCli(executable,[...extra,...args],{stdio:'inherit',env:{...e,PATH:paths.join(delimiter),...(observe?{OPENCODE_TUI_CONFIG:config,ROOST_OPENCODE_OBSERVING:'1',ROOST_OPENCODE_ENDPOINT:'http://127.0.0.1:'+port}:{})}});
 for(const signal of ['SIGTERM','SIGHUP'])process.on(signal,()=>child.kill(signal));
 process.on('SIGINT',()=>{});
 child.on('error',()=>{console.error('opencode: launch failed');process.exitCode=126});
@@ -52,6 +54,7 @@ child.on('exit',(code,signal)=>{process.exitCode=code??(signal==='SIGINT'?130:1)
 
 /** The route belongs to this TUI; service-wide session events alone never establish identity. */
 export const OPENCODE_TUI_OBSERVER_SCRIPT = `import {createConnection} from 'node:net';
+import {isAbsolute} from 'node:path';
 export const id='roost-terminal-observer';
 export async function tui(api){
  const e=process.env;
@@ -76,7 +79,7 @@ export async function tui(api){
   const route=api.route.current,id=route?.name==='session'?route.params?.sessionID:null;
   if(typeof id!=='string'||!/^ses[a-zA-Z0-9_-]{1,253}$/.test(id))return null;
   const session=api.state.session.get(id);
-  if(!session||session.id!==id||typeof session.directory!=='string'||!session.directory.startsWith('/')||session.directory.length>4096)return null;
+  if(!session||session.id!==id||typeof session.directory!=='string'||!isAbsolute(session.directory)||session.directory.length>4096)return null;
   const endpoint=new URL(base);endpoint.searchParams.set('directory',session.directory);
   return{id,endpoint:endpoint.href};
  }
