@@ -1,6 +1,19 @@
-import { useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { fetchConversation, listConversations, type Conversation } from "../../../shared/api/conversations";
-import { ConversationDetail } from "../../conversations/ConversationDetail";
+/*
+  对话视图不进首屏。
+
+  桌面端默认镜头是 tui（见 defaultLens），`ConversationDetail` 只有切到「对话」才渲染，
+  但它拖着 markdown-it 一起待在首屏 chunk 里。整个组件懒加载省 51.5 KB（gzip，实测）。
+
+  **另一处 import 必须一起改**：BookmarksDialog 也静态 import 它，而 LeftRail 又静态
+  import BookmarksDialog。只改这一处实测一个字节都省不下来——一个模块只要还有一条静态
+  引用链通到首屏，另一条懒加载就等于没做。
+
+  懒加载整个组件，而不是只把 markdown-it 动态化：后者会让每条消息先闪一下纯文本再变成
+  渲染结果，那比晚一拍出现更糟。组件在加载完之前根本不挂，切换时只是一次极短的空白。
+*/
+const ConversationDetail = lazy(() => import("../../conversations/ConversationDetail").then(m => ({ default: m.ConversationDetail })));
 import type { Lens } from "../../../shared/view";
 import { t } from "@roost/i18n";
 
@@ -106,5 +119,5 @@ function ConversationContent({ conversationId, readOnly }: { conversationId: str
   }, [conversationId, retry]);
   if (error) return <button className="p-4 text-caption text-text-dim" onClick={() => setRetry(value => value + 1)}>{t.bookmarks.historyFailed} · {t.bookmarks.retry}</button>;
   if (!conversation) return <div className="px-2.5 py-2 text-caption text-text-dim">{t.terminal.lens.resolving}</div>;
-  return <ConversationDetail key={conversation.id} conversation={conversation} readOnly={readOnly} />;
+  return <Suspense fallback={null}><ConversationDetail key={conversation.id} conversation={conversation} readOnly={readOnly} /></Suspense>;
 }
