@@ -1,7 +1,7 @@
 {
   "name": "backend",
   "private": true,
-  "version": "0.0.2",
+  "version": "0.0.3",
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -11,19 +11,19 @@
     "rebuild-pty": "node ../scripts/rebuild-pty.mjs"
   },
   "dependencies": {
-    "@roost/attachment-store": "0.0.0",
     "@roost/ai-session-bridge": "0.0.0",
+    "@roost/ai-transcript": "0.0.0",
+    "@roost/attachment-store": "0.0.0",
     "@roost/cli-adapters": "0.0.0",
+    "@roost/server-monitor": "0.0.0",
+    "@roost/subscriptions": "0.0.0",
     "@roost/terminal-daemon": "0.0.0",
     "@roost/terminal-protocol": "0.0.0",
     "@roost/terminal-runtime": "0.0.0",
     "@roost/workspace-store": "0.0.0",
     "@xmldom/xmldom": "^0.9.12",
     "sharp": "^0.35.4",
-    "ws": "^8.21.3",
-    "@roost/ai-transcript": "0.0.0",
-    "@roost/server-monitor": "0.0.0",
-    "@roost/subscriptions": "0.0.0"
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "@types/node": "^26.4.1",

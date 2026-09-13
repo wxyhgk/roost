@@ -30,5 +30,6 @@
     "backend",
     "frontend",
     "stable-workbench"
-  ]
+  ],
+  "version": "0.0.3"
 }
