@@ -132,6 +132,12 @@ npm test --prefix backend
 
 安装时会自动修复 macOS 预编译 PTY 辅助程序的执行权限。如果安装后的原生 PTY 模块仍无法加载，可尝试 `npm run rebuild-pty --prefix backend`（需要本机编译工具链）。
 
+## 给 AI 助手
+
+在这个仓库里工作的 AI 助手请先读 [AGENTS.md](AGENTS.md)：里面是光读代码看不出来、
+但踩了会疼的事——哪个服务重启会杀掉所有终端、发布前端为什么不能用 `cp`、跑测试要先
+`umask 022`、依赖边界检查管什么。[CLAUDE.md](CLAUDE.md) 指向同一份，不另写一遍。
+
 ## 代码如何组织
 
 私有本地包与前后端一起安装、一起发布当前应用，不需要发布到 npm。
