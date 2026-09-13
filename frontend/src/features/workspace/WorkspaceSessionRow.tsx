@@ -8,7 +8,7 @@ import { useSessionActivity } from "../session-status/useSessionActivity";
 import { sessionTitle } from "../../shared/sessionTitle";
 import { useWorkspace } from "../../shared/store";
 import type { Session } from "../../shared/types";
-import { InlineRename } from "../../shared/ui/InlineRename";
+import { InlineRename, renameOnDoubleClick } from "../../shared/ui/InlineRename";
 import { SessionLogo } from "../../shared/ui/SessionLogo";
 import { SessionMenu } from "./SessionMenu";
 import { t } from "@roost/i18n";
@@ -77,7 +77,9 @@ export function WorkspaceSessionRow({ session, current, onOpen }: {
       ref={drop.setNodeRef}
       className="session-row relative select-none py-0.5"
       data-toolbar-open={toolbarOpen}
-      onClick={() => { if (!renaming) onOpen(); }}
+      // 双击的第二下不重复打开，理由同分组行。
+      onClick={event => { if (event.detail > 1 || renaming) return; onOpen(); }}
+      {...renameOnDoubleClick(() => setRenaming(true))}
     >
       {/* 落点在这一行「之前」——和分组行那条线同一套视觉语言。 */}
       {over && <span className="absolute inset-x-0 -top-px z-10 h-[3px] rounded-full bg-accent/60" />}

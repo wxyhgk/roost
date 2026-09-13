@@ -9,7 +9,7 @@ import { shortPath } from "./shortPath";
 import { sessionTitle } from "../../../shared/sessionTitle";
 import { useWorkspace } from "../../../shared/store";
 import type { Session } from "../../../shared/types";
-import { InlineRename } from "../../../shared/ui/InlineRename";
+import { InlineRename, renameOnDoubleClick } from "../../../shared/ui/InlineRename";
 import { SessionLogo } from "../../../shared/ui/SessionLogo";
 import { SessionMenu } from "../../workspace/SessionMenu";
 import { SessionNoteEditor } from "./SessionNoteEditor";
@@ -106,7 +106,11 @@ export function SessionCard({ session, selected, onOpen }: {
         </>
       }
       bottom={
-        <div className="flex min-w-0 flex-col gap-1">
+        /*
+          双击身份这一条改名。**不挂到整张卡上**：卡片主体是终端预览，在那儿双击的
+          含义是「打开这个终端」（预览区自己就是个按钮），改名抢过去会很怪。
+        */
+        <div className="flex min-w-0 flex-col gap-1" {...renameOnDoubleClick(() => setRenaming(true))}>
           <div className="flex items-center gap-1.5">
             <span role="img" aria-label={badge.dotLabel} title={badge.dotLabel}
               className={`h-2 w-2 shrink-0 rounded-full ${badge.dotTone}`} />

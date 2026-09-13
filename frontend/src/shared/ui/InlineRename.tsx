@@ -1,4 +1,31 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type MouseEvent } from "react";
+
+/** 菜单按钮、输入框这些自己有含义的元素，双击不该被改名接管。 */
+const interactive = (target: EventTarget | null) =>
+  !!(target as HTMLElement | null)?.closest("button, input, textarea, a, select");
+
+/**
+ * 双击卡片改名，摊到要响应的那个容器上。
+ *
+ * **必须同时挡住 mousedown。** 选中文字是浏览器在「第二次 mousedown」上做的事，
+ * 而 dblclick 在那之后才触发——只在 dblclick 里 preventDefault 是来不及的，
+ * 双击改名会连带把卡片上的字选蓝一片。
+ *
+ * 只挡双击的那一下，所以正常的按住拖选仍然可用；也不用 `select-none` 整片关掉，
+ * 那样标题和路径就再也复制不了了。
+ */
+export function renameOnDoubleClick(start: () => void) {
+  return {
+    onMouseDown(event: MouseEvent<HTMLElement>) {
+      if (event.detail > 1 && !interactive(event.target)) event.preventDefault();
+    },
+    onDoubleClick(event: MouseEvent<HTMLElement>) {
+      if (interactive(event.target)) return;
+      event.stopPropagation();
+      start();
+    },
+  };
+}
 
 type Props = {
   value: string;
@@ -58,10 +85,21 @@ export function InlineRename({
 
   return (
     <input
-      // The display style is also passed in by selected cards (white text on
-      // the bar). Override it in edit mode so the dark input background keeps
-      // the draft readable regardless of the parent card state.
-      className={`w-full min-w-0 rounded border border-accent bg-bg-raised px-1 py-px !text-text caret-accent placeholder:text-text-dim outline-none ${className ?? ""}`}
+      /*
+        编辑态和展示态**占完全相同的盒子**，一个像素都不许差。
+
+        原来输入框比那段文字多出 1px 边框和 px-1/py-px 的内边距：进入编辑时整行长高
+        4px、文字往右跳 5px。改个名字而已，周围的东西不该动——而且文字位移会让人觉得
+        自己点错了地方。
+
+        所以不加边框、不加内边距（`border-0 p-0` 是显式声明，不赌 preflight 的默认
+        值），可见的那圈提示改用 ring：它是 box-shadow 实现的，永远不参与布局。
+        字号行高由外面传进来的 className 决定，和展示态用的是同一份。
+
+        选中的卡片会传进浅色文字（深色条上的白字），编辑态要盖掉它——深色输入背景上
+        白字看不清，所以 `!text-text`。
+      */
+      className={`w-full min-w-0 rounded-[3px] border-0 bg-bg-raised p-0 ring-1 ring-accent !text-text caret-accent placeholder:text-text-dim outline-none ${className ?? ""}`}
       value={draft}
       autoFocus
       onFocus={(event) => event.currentTarget.select()}
