@@ -59,8 +59,12 @@ jobs:
           node --test desktop/tests/targets.test.mjs
           node --import tsx --test packages/terminal-runtime/tests/windows.test.ts
           node --import tsx --test backend/tests/windows-paths.test.ts frontend/tests/file-links.test.ts
+      - name: Prepare and test runtime before native compilation
+        run: |
+          npm run desktop:prepare -- --target "${{ matrix.target }}"
+          node --test --test-concurrency=1 desktop/tests/*.test.mjs
       - name: Build desktop
-        run: npm run desktop:build -- --target "${{ matrix.target }}"
+        run: npm run desktop:build -- --skip-frontend --target "${{ matrix.target }}"
       - name: Test Rust host and manifest
         working-directory: desktop/src-tauri
         run: cargo test --locked --release --target "${{ matrix.target }}"
