@@ -3,7 +3,8 @@
 共用的 Tauri 2 桌面工程，提供 Apple Silicon / macOS 15+ 与 Windows x64 预览构建，
 Linux 尚未开放构建。复用现有 React 前端、
 Node 后端和独立终端守护进程；安装后的应用不需要源码目录、npm、Vite、Caddy
-或机器上的 Node。当前产物采用本机 ad-hoc 签名，尚未进行 Developer ID 签名、公证。
+或机器上的 Node。Mac 产物采用 ad-hoc 签名，尚未进行 Developer ID 签名、公证；
+Windows 安装包尚无发行者签名。
 
 ## Structure and platform status
 
@@ -33,7 +34,7 @@ desktop/
 | Target | Status | 仍需完成 |
 | --- | --- | --- |
 | `aarch64-apple-darwin` | preview | 输入法、监听等既有待验收项见下文 |
-| `x86_64-pc-windows-msvc` | preview | CI 验证实际安装包运行时；WebView2 窗口、真实输入法和实际 CLI 交互仍需人工验收 |
+| `x86_64-pc-windows-msvc` | preview | CI 已验证安装包、WebView2 免密码进入、新建终端和刷新；真实输入法和实际 CLI 对话仍需人工验收 |
 | `x86_64-unknown-linux-gnu` | planned | Host 适配、默认 Shell、WebKitGTK 免密码启动、发行版依赖和打包验收 |
 
 目标和支持状态集中在 `scripts/lib/targets.mjs`。`planned` 目标会在下载或修改构建
@@ -142,10 +143,19 @@ PATH 启动，验证原生 PTY / sharp、静态文件、无密码本机会话和
 应用版本从根 `package.json` 读取，Node 从 `runtime-lock.json` 读取；版本标签必须
 等于 `v` 加应用版本。不会自动创建 Release 或发布标签。
 
-成功后在 Actions 运行页面下载保留 14 天的产物：Mac `.app.zip`、Windows NSIS
+成功后在 Actions 运行页面下载保留 14 天的产物：Mac `.zip`（内含 `.app`）、Windows NSIS
 `.exe`，附 SHA-256 和版本 / commit / buildId 信息。Mac 先用 ditto 压缩，保留
-应用执行权限；只有安装后运行时测试通过才上传。Mac 使用 ad-hoc 签名，Windows
-尚无发行者签名，因此这两类产物目前都属于预览版。自动测试不代表真实系统 UI 验收。
+应用执行权限；只有安装后测试通过才上传。Windows 还通过匹配 WebView2 运行时版本
+的官方 Edge WebDriver 打开实际安装的应用，检查免密码进入、新建终端和刷新后会话
+保留。测试驱动只在 CI 中下载，不包含在安装包内。
+
+Mac 使用 ad-hoc 签名，Windows 尚无发行者签名，因此这两类产物目前都属于预览版。
+自动检查不覆盖真实输入法组合、完整 CLI 对话及休眠唤醒。
+
+v0.0.4 的[双平台 CI 验收](https://github.com/wxyhgk/roost/actions/runs/34744940227)
+已通过：两端完成构建、Rust 宿主测试和最终运行包测试；Windows 另外完成 NSIS
+安装和实际 WebView2 窗口检查。Mac 压缩包约 58 MiB，Windows 安装包约 39 MiB。
+此轮仅构建与验证，没有替换本机正在运行的应用或重启用户守护进程。
 
 已在实际 `.app` 中检查免密码进入、隐藏密码设置、新建终端、中文输出和 OpenCode
 1.18.30 启动界面。退出应用、替换构建并重开后，原 PTY 的 PID / 实例保持一致，
