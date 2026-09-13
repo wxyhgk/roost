@@ -59,6 +59,20 @@ jobs:
           node --test desktop/tests/targets.test.mjs
           node --import tsx --test packages/terminal-runtime/tests/windows.test.ts
           node --import tsx --test backend/tests/windows-paths.test.ts frontend/tests/file-links.test.ts
+      # 归档是每次都要从 nodejs.org 下的约 30MB，之前没有缓存——CI 因此在一次瞬时
+      # `fetch failed` 上红过。缓存把这个失败面直接去掉（下载本身也有重试兜底）。
+      #
+      # key 里带 runtime-lock.json 的哈希：Node 版本一变就是另一个 key，不会取到旧的。
+      # 不设 restore-keys——模糊回落只会把另一个版本的目录搬过来占地方，而代码是按
+      # 确切文件名判断在不在的，照样要下。
+      #
+      # 缓存安全的前提是：从缓存读出来仍然按 sha256 校验（见 node-runtime.mjs 里
+      # `Cached Node archive checksum mismatch` 那行），坏内容会当场报错而不是被用掉。
+      - name: Cache Node runtime archive
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: desktop/.cache/node
+          key: node-runtime-${{ runner.os }}-${{ matrix.target }}-${{ hashFiles('desktop/runtime-lock.json') }}
       - name: Prepare and test runtime before native compilation
         run: |
           npm run desktop:prepare -- --target "${{ matrix.target }}"
