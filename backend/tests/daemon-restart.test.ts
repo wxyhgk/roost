@@ -53,7 +53,8 @@ test('real HTTP process restarts and SIGKILL preserve PTY identity and continue 
   for(const signal of ['SIGTERM','SIGKILL'] as const) {
     client.ws.send(JSON.stringify({type:'input',data:"sleep 0.15; printf '\\137\\137AFTER_RESTART\\137\\137\\n'\n"}));
     // Wait until the daemon received input (PTY echo), then stop only the gateway.
-    await client.wait(m=>m.type==='output'&&m.seq>replay.seq);
+    await client.wait(m=>m.type==='output'&&m.seq>replay.seq && client.messages
+      .filter(frame=>frame.type==='output'&&frame.seq>replay.seq).map(frame=>frame.data).join('').includes('sleep 0.15; printf'));
     const stopped=once(app.child,'exit');app.child.kill(signal);await stopped;
     process.kill(pid,0);
     await delay(250);app=await gateway(dir);gateways.push(app.child);

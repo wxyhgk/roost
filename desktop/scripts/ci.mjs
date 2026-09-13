@@ -41,6 +41,7 @@ switch (process.argv[2]) {
       run(await installer(), ['/S', '/D=' + installed]);
     }
     run(process.execPath, ['--test', '--test-concurrency=1', 'desktop/tests/runtime.test.mjs', 'desktop/tests/windows.test.mjs'], { env: { ...process.env, ROOST_DESKTOP_BUNDLE: installed } });
+    if (!mac) await (await import('./windows-ui.mjs')).testWindowsUi(installed);
     break;
   }
   case 'package': {
