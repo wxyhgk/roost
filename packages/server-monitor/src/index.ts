@@ -2,10 +2,18 @@ import { createLinuxProcesses } from './linux-processes.ts';
 import * as os from 'node:os';
 import si from 'systeminformation';
 import { createProbe } from './probe.ts';
-import { hasSystemd, normalizeServices, readServices } from './services.ts';
-import type { CpuInfo, DiskInfo, GpuInfo, MemoryInfo, NetworkInfo, ProcessList, ServerSnapshot, ServerSummary, SystemInfo, ThermalInfo, DiskActivity, ConnectionInfo } from './types.ts';
+import { normalizeFor, serviceManager } from './manager.ts';
+import type { CpuInfo, DiskInfo, GpuInfo, MemoryInfo, NetworkInfo, ProcessList, ServerSnapshot, ServiceInfo, ServerSummary, SystemInfo, ThermalInfo, DiskActivity, ConnectionInfo } from './types.ts';
 export { createServerMonitorProcess } from './collector-client.ts';
-export { normalizeServices } from './services.ts';
+/**
+ * 校验并规范化用户配置的服务名，**按这台机器实际用的管理器**。
+ *
+ * 后端保存配置时用的就是它。原来直接导出 systemd 那版，在 macOS 上会把
+ * `com.roost.terminal` 补成 `.service` 结尾——存下去是个 launchd 永远找不到的名字。
+ */
+export function normalizeServiceNames(value: unknown): string[] {
+  return normalizeFor(serviceManager(), value);
+}
 export type { ServerSnapshot } from './types.ts';
 const valid = (n: unknown): number | null => typeof n === 'number' && Number.isFinite(n) && n >= 0 ? n : null;
 const pct = (n: unknown) => { const v = valid(n); return v === null ? null : Math.min(100, v); };
@@ -27,10 +35,11 @@ export function processList(data: si.Systeminformation.ProcessesData): ProcessLi
   rows.sort((a, b) => (b.cpu ?? 0) - (a.cpu ?? 0) || b.memory - a.memory || a.pid - b.pid);
   return { total: data.all, running: data.running, sleeping: data.sleeping ?? 0, blocked: data.blocked ?? 0, zombie: rows.filter(p => p.state === 'zombie' || p.state === 'Z').length, list: rows.slice(0, 200), limited: rows.length > 200 };
 }
-export function createServerMonitor(initialServices: string[] = ['roost-web', 'roost-terminal', 'caddy']) {
-  let units = normalizeServices(initialServices), warmed = false;
+export function createServerMonitor(initialServices?: string[]) {
+  const manager = serviceManager();
+  let units = normalizeFor(manager, initialServices ?? manager?.defaults ?? []), warmed = false;
   let cpuDescription: ReturnType<typeof si.cpu> | undefined;
-  const systemd = hasSystemd();
+  const supported = manager ? manager.available() : Promise.resolve(false);
   const system = createProbe<SystemInfo>(async () => {
     const [o, s] = await Promise.all([si.osInfo(), si.system()]);
     return { distro: text(o.distro), release: text(o.release), manufacturer: text(s.manufacturer), model: text(s.model), virtual: s.virtual, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone };
@@ -70,17 +79,17 @@ export function createServerMonitor(initialServices: string[] = ['roost-web', 'r
   const connections = createProbe<ConnectionInfo>(() => si.networkConnections().then(connectionSummary), 15000);
   const linuxProcesses = createLinuxProcesses();
   const processes = createProbe(() => process.platform === 'linux' ? linuxProcesses() : si.processes().then(processList), 10000);
-  const services = createProbe(async () => { if (!await systemd) throw new Error('systemd unavailable'); return readServices(units); }, 4000);
+  const services = createProbe(async () => { if (!manager || !await supported) throw new Error('service manager unavailable'); return manager.read(units); }, 4000);
   return {
     async summary(): Promise<ServerSummary> {
       const [c, m, n] = await Promise.all([cpu.get(), memory.get(), network.get()]);
       return { timestamp: Date.now(), host: { hostname: os.hostname(), platform: os.platform(), release: os.release(), arch: os.arch(), uptime: os.uptime() }, cpu: c, memory: m, network: n };
     },
     async snapshot(): Promise<ServerSnapshot> {
-      const [c, m, n, d, g, p, s, supported, hostSystem, temperatures, activity, sockets] = await Promise.all([cpu.get(), memory.get(), network.get(), disks.get(), gpu.get(), processes.get(), services.get(), systemd, system.get(), thermal.get(), diskActivity.get(), connections.get()]);
-      return { timestamp: Date.now(), host: { hostname: os.hostname(), platform: os.platform(), release: os.release(), arch: os.arch(), uptime: os.uptime() }, cpu: c, memory: m, network: n, disks: d, gpu: g, processes: p, services: s, serviceManager: supported ? 'systemd' : 'unsupported', configuredServices: [...units], system: hostSystem, thermal: temperatures, diskActivity: activity, connections: sockets };
+      const [c, m, n, d, g, p, s, supportedNow, hostSystem, temperatures, activity, sockets] = await Promise.all([cpu.get(), memory.get(), network.get(), disks.get(), gpu.get(), processes.get(), services.get(), supported, system.get(), thermal.get(), diskActivity.get(), connections.get()]);
+      return { timestamp: Date.now(), host: { hostname: os.hostname(), platform: os.platform(), release: os.release(), arch: os.arch(), uptime: os.uptime() }, cpu: c, memory: m, network: n, disks: d, gpu: g, processes: p, services: s, serviceManager: manager && supportedNow ? manager.kind : 'unsupported', configuredServices: [...units], system: hostSystem, thermal: temperatures, diskActivity: activity, connections: sockets };
     },
-    configure(next: string[]) { units = normalizeServices(next); services.invalidate(); },
+    configure(next: string[]) { units = normalizeFor(manager, next); services.invalidate(); },
     dispose() { for (const probe of [cpu, memory, network, disks, gpu, processes, services, system, thermal, diskActivity, connections]) probe.dispose(); },
   };
 }

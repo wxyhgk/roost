@@ -35,21 +35,28 @@ test('metrics and service writes require login and never sample for unauthentica
   const response = await f.request('/api/server/status'); assert.equal(response.status, 200); assert.equal(response.headers.get('cache-control'), 'no-store');
   assert.equal(f.samples(), 1);
 });
+/*
+  这里用的名字都已经带 .service 后缀且只含 [A-Za-z0-9_.-]——**在 systemd 和 launchd
+  两套规则下规范化的结果相同**（前者不会重复补后缀，后者原样接受）。这些用例测的是
+  落盘、权限、重启后恢复和拒绝非法输入，不是名字规则；规则本身由 server-monitor 包
+  的单元测试分别钉着。原来写死了 systemd 的结果（`nginx` → `nginx.service`、带 @ 的
+  模板单元），在 macOS 上跑就会被 launchd 的校验拒掉。
+*/
 test('service configuration persists atomically and is restored by a new handler', async t => {
   const f = await fixture(t);
-  const response = await f.request('/api/server/services', { services: ['nginx', 'worker@one.service', 'nginx'] });
-  assert.equal(response.status, 200); assert.deepEqual(await response.json(), { services: ['nginx.service', 'worker@one.service'] });
+  const response = await f.request('/api/server/services', { services: ['nginx.service', 'worker-one.service', 'nginx.service'] });
+  assert.equal(response.status, 200); assert.deepEqual(await response.json(), { services: ['nginx.service', 'worker-one.service'] });
   const path = join(f.dir, 'monitored-services.json'); assert.equal((await stat(path)).mode & 0o777, 0o600);
   const next = await fixture(t, f.dir);
-  assert.deepEqual(await (await next.request('/api/server/status')).json(), { configuredServices: ['nginx.service', 'worker@one.service'] });
+  assert.deepEqual(await (await next.request('/api/server/status')).json(), { configuredServices: ['nginx.service', 'worker-one.service'] });
   await f.request('/api/server/services', { services: [] }); assert.deepEqual(JSON.parse(await readFile(path, 'utf8')), []);
 });
 test('invalid unit names, oversized writes and unsupported methods cannot alter the saved list', async t => {
   const f = await fixture(t);
-  await f.request('/api/server/services', { services: ['caddy'] });
+  await f.request('/api/server/services', { services: ['caddy.service'] });
   assert.equal((await f.request('/api/server/services', { services: ['caddy; reboot'] })).status, 400);
   assert.equal((await f.request('/api/server/services', { services: ['x'.repeat(9000)] })).status, 413);
-  assert.equal((await f.request('/api/server/services', { services: ['caddy'] }, 'POST')).status, 405);
+  assert.equal((await f.request('/api/server/services', { services: ['caddy.service'] }, 'POST')).status, 405);
   assert.deepEqual(JSON.parse(await readFile(join(f.dir, 'monitored-services.json'), 'utf8')), ['caddy.service']);
 });
 

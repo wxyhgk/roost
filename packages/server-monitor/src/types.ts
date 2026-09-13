@@ -29,5 +29,5 @@ export type ServerSnapshot = {
   cpu: Metric<CpuInfo>; memory: Metric<MemoryInfo>; network: Metric<NetworkInfo[]>;
   disks: Metric<DiskInfo[]>; gpu: Metric<GpuInfo[]>; processes: Metric<ProcessList>; services: Metric<ServiceInfo[]>;
   system: Metric<SystemInfo>; thermal: Metric<ThermalInfo>; diskActivity: Metric<DiskActivity>; connections: Metric<ConnectionInfo>;
-  serviceManager: 'systemd' | 'unsupported'; configuredServices: string[];
+  serviceManager: 'systemd' | 'launchd' | 'unsupported'; configuredServices: string[];
 };

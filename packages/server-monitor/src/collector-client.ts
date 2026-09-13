@@ -1,5 +1,5 @@
 import { fork, type ChildProcess } from 'node:child_process';
-import { normalizeServices } from './services.ts';
+import { normalizeFor, serviceManager } from './manager.ts';
 import type { ServerSnapshot, ServerSummary } from './types.ts';
 type Pending = { resolve: (s: ServerSummary) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> };
 /** Lazy, shared collector isolation: synchronous platform tools never run on the
@@ -7,7 +7,9 @@ type Pending = { resolve: (s: ServerSummary) => void; reject: (e: Error) => void
 export function createServerMonitorProcess({ collectorUrl = new URL('./collector.mjs', import.meta.url), timeout = 10000, retryAfter = 1000 } = {}) {
   let worker: ChildProcess | null = null, disposed = false, retryAt = 0, id = 0, generation = 0;
   let stopping: Promise<void> | null = null;
-  let units = normalizeServices(['roost-web', 'roost-terminal', 'caddy']);
+  /* 和子进程用同一套规则和同一份默认值，否则父进程发下去的服务名子进程根本认不出。 */
+  const manager = serviceManager();
+  let units = normalizeFor(manager, manager?.defaults ?? []);
   type Kind = 'snapshot' | 'summary';
   const flights = new Map<Kind, { generation: number; promise: Promise<ServerSummary> }>();
   const pending = new Map<number, Pending>();
@@ -64,7 +66,7 @@ export function createServerMonitorProcess({ collectorUrl = new URL('./collector
   return {
     snapshot() { return read('snapshot') as Promise<ServerSnapshot>; },
     summary() { return read('summary'); },
-    configure(next: string[]) { units = normalizeServices(next); generation++; if (worker) send(worker, { type: 'configure', units }); },
+    configure(next: string[]) { units = normalizeFor(manager, next); generation++; if (worker) send(worker, { type: 'configure', units }); },
     dispose() { disposed = true; if (worker) fail(worker); },
   };
 }

@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { createServerMonitorProcess, normalizeServices, type ServerMonitor } from '@roost/server-monitor';
+import { createServerMonitorProcess, normalizeServiceNames, type ServerMonitor } from '@roost/server-monitor';
 import { readJson, sendError, HttpInputError } from './http';
 
 export function createServerMonitorHandler(dataDir?: string, monitor: ServerMonitor = createServerMonitorProcess()) {
@@ -10,7 +10,7 @@ export function createServerMonitorHandler(dataDir?: string, monitor: ServerMoni
   let loading: Promise<void> | undefined, writes = Promise.resolve();
   const load = () => loading ??= (async () => {
     if (!path) return;
-    try { monitor.configure(normalizeServices(JSON.parse(await readFile(path, 'utf8')))); }
+    try { monitor.configure(normalizeServiceNames(JSON.parse(await readFile(path, 'utf8')))); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
   })();
   const json = (res: ServerResponse, data: unknown) => { res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(data)); };
@@ -31,7 +31,7 @@ export function createServerMonitorHandler(dataDir?: string, monitor: ServerMoni
       if (url.pathname === '/api/server/services' && req.method === 'PUT') {
         const body = await readJson(req, 8192);
         let units: string[];
-        try { units = normalizeServices(body.services); } catch { throw new HttpInputError(400, 'Use up to 24 valid systemd service names'); }
+        try { units = normalizeServiceNames(body.services); } catch { throw new HttpInputError(400, 'Use up to 24 valid service names'); }
         const save = writes.catch(() => {}).then(async () => {
           await load();
           if (path && dataDir) {

@@ -6,7 +6,7 @@ export const serverMonitor = {
   download: '下载', upload: '上传', traffic: '累计流量 · 网卡计数', networkHint: '概览使用默认网卡，避免重复计算虚拟网卡流量', defaultInterface: '默认', noNetwork: '没有可用网卡',
   noGpu: '未检测到 GPU', gpuHint: '利用率、显存和温度取决于设备及驱动支持', sharedMemory: '共享内存', vram: '显存', temperature: '温度', noDisks: '未检测到文件系统', memoryHint: '已用内存不包含系统报告的可回收空间',
   processFilter: '进程 / PID', processCpu: '按 CPU 排序', processMemory: '按内存排序', processCount: (shown: number, total: number) => `显示 ${shown} / ${total} 个进程`, processLimit: '保留 CPU 占用最高的 200 个进程', processName: '进程', user: '用户', state: '状态', noProcesses: '没有匹配的进程',
-  editServices: '配置关注的服务', serviceHint: '每行一个 systemd 服务名，例如 nginx 或 docker.service，最多 24 个。', servicePlaceholder: 'nginx\ndocker.service\ncaddy', save: '保存', saving: '保存中…', cancel: '取消', serviceInvalid: '请输入有效服务名，每行一个，最多 24 个', serviceSaved: '关注的服务已保存', serviceFailed: '服务配置保存失败，请重试', noServices: '还没有关注的服务', noSystemd: '此主机未提供 systemd 服务状态', cpuTime: '累计 CPU 时间',
+  editServices: '配置关注的服务', serviceHint: { systemd: '每行一个 systemd 服务名，例如 nginx 或 docker.service，最多 24 个。', launchd: '每行一个 launchd 标签，例如 com.roost.terminal，最多 24 个。不要加 .service 后缀。' }, servicePlaceholder: { systemd: 'nginx\ndocker.service\ncaddy', launchd: 'com.roost.terminal\ncom.roost.backend\ncom.roost.web' }, save: '保存', saving: '保存中…', cancel: '取消', serviceInvalid: '请输入有效服务名，每行一个，最多 24 个', serviceSaved: '关注的服务已保存', serviceFailed: '服务配置保存失败，请重试', noServices: '还没有关注的服务', noServiceManager: '此主机不提供服务状态：只支持 Linux 的 systemd 和 macOS 的 launchd', cpuTime: '累计 CPU 时间',
   active: '运行中', inactive: '未运行', activating: '启动中', deactivating: '停止中', failedState: '失败', unknown: '未知', notFound: '未找到', all: '全部',
   virtualMachine: "虚拟机",
   hardware: "硬件",
