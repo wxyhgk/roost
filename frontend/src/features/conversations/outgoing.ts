@@ -1,0 +1,67 @@
+/**
+ * 发出去的消息：状态语义与允许的操作。
+ *
+ * 这一步的实质全在状态怎么解释上，而每一条误读都会造成实际损害：
+ * 把 dispatching 当成已送达会让人以为 AI 收到了；自动换 requestId 重发会造成重复
+ * 提交；把 accepted 当成"已完成"会让人以为任务做完了。所以写成纯函数并逐条测。
+ */
+
+/* 线上载荷的形状属于 api 层；这里只管解释这些状态意味着什么。 */
+export type { Delivery, DeliveryState } from "../../shared/api/conversationPayloads";
+import type { Delivery } from "../../shared/api/conversationPayloads";
+
+/** 后端上限：15 KiB **字节**。中文一个字三字节，按字符数判会放行超限的内容。 */
+export const MAX_PEER_TEXT_BYTES = 15 * 1024;
+export const textBytes = (text: string) => new TextEncoder().encode(text).length;
+
+export type OutgoingView = {
+  /** 是否还在等待结果：决定要不要显示在待发区。 */
+  pending: boolean;
+  /** 能否取消——只有 queued 可以，其余会被后端以 409 already_dispatching 拒绝。 */
+  cancellable: boolean;
+  /**
+   * 是否应当在待发区**隐藏**。
+   *
+   * accepted 意味着正文已经进入 CLI 的原生历史，会从历史那条路显示出来。
+   * 此时还在待发区留一份，同一句话就会出现两次——这正是契约里点名要避免的。
+   */
+  hideFromPending: boolean;
+  /** 允许重试。注意重试必须**沿用原 requestId 和原正文**。 */
+  retryable: boolean;
+  /** 是否提供「跳到终端」——只有需要你去终端里做点什么时才给。 */
+  jumpToTerminal: boolean;
+};
+
+export function viewOf(delivery: Delivery): OutgoingView {
+  const { state, reason } = delivery;
+  const base: OutgoingView = {
+    pending: false, cancellable: false, hideFromPending: false, retryable: false, jumpToTerminal: false,
+  };
+  switch (state) {
+    case "queued":
+      return { ...base, pending: true, cancellable: true,
+        // 草稿阻塞和对话框都需要你回终端处理；忙碌只是等，跳过去没有意义。
+        jumpToTerminal: reason === "terminal_draft" || reason === "dialog" };
+    case "dispatching":
+      // 已进入提交流程但还没有回执。**不是已接收**，也不允许自动重发。
+      return { ...base, pending: true };
+    case "uncertain":
+      // 可能已经写进去了。保留这条请求，绝不自动换 requestId 重发——
+      // 那会造成同一句话提交两次。
+      return { ...base, pending: true };
+    case "accepted":
+      return { ...base, hideFromPending: true };
+    case "failed":
+    case "cancelled":
+      // 保留原文供查看和重试；重试沿用原 requestId。
+      return { ...base, pending: true, retryable: true };
+  }
+}
+
+/** 待发区该显示哪些：已被原生历史接手的不再重复显示。 */
+export function pendingOutgoing<T extends { delivery: Delivery }>(items: T[]): T[] {
+  return items.filter(item => {
+    const view = viewOf(item.delivery);
+    return view.pending && !view.hideFromPending;
+  });
+}

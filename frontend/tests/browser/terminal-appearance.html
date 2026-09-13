@@ -1,0 +1,26 @@
+<!doctype html><meta charset="utf-8"><title>Terminal contrast and protocol verification</title>
+<style>body{font:14px sans-serif;background:#eee;color:#111}section{display:inline-block;margin:6px;vertical-align:top}h2{font-size:16px}.term{width:620px;height:170px}pre{white-space:pre-wrap}</style>
+<h1>Terminal contrast / renderer comparison</h1><div id="panes"></div><pre id="result">Running</pre>
+<script type="module">
+import { Terminal } from '@xterm/xterm';
+import { WebglAddon } from '@xterm/addon-webgl';
+import { attachAppearance } from '/src/features/terminal/appearance.ts';
+import '@xterm/xterm/css/xterm.css';
+const theme={background:'#000000',foreground:'#f5f5f7',cursor:'#fff',cursorAccent:'#000000',selectionBackground:'#48484a'};
+const samples='\x1b[48;2;238;238;238m\x1b[38;2;245;245;247m Light input / 浅底浅字 \x1b[0m\r\n\x1b[48;2;25;25;25m\x1b[38;2;35;35;35m Dark input / 深底深字 \x1b[0m\r\n\x1b[31m- removed\x1b[0m  \x1b[32m+ added\x1b[0m\r\n\x1b[7m inverse \x1b[0m   \x1b[2m dim text \x1b[0m';
+const reports=[];
+for(const renderer of ['WebGL','DOM'])for(const ratio of [1,4.5]){
+  const section=document.createElement('section');section.innerHTML=`<h2>${renderer}, contrast ${ratio}</h2><div class="term"></div>`;document.querySelector('#panes').append(section);
+  const term=new Terminal({cols:60,rows:8,fontSize:16,allowProposedApi:true,theme,minimumContrastRatio:ratio});term.open(section.querySelector('.term'));if(renderer==='WebGL')term.loadAddon(new WebglAddon());
+  const replies=[];const a=attachAppearance(term,theme,data=>replies.push(data));a.setOwner(true);a.setReady(true);term.onData(data=>a.forwardColorResponse(data));
+  const write=data=>new Promise(resolve=>term.write(data,resolve));
+  await write('\x1b[?20');await write('31h\x1b[?2031$p\x1b[?996n\x1b]11;?\x07');
+  // Verify native OSC set/query and stacked query replies remain intact.
+  await write('\x1b]11;#123456\x1b\\\x1b]10;?;?\x1b\\');
+  const custom=replies.some(data=>data.includes('rgb:1212/3434/5656'));
+  await write('\x1b]111\x1b\\');
+  await write(samples);
+  reports.push({renderer,ratio,subscribed:a.snapshot()==='\x1b[?2031h',query:replies.includes('\x1b[?2031;1$y'),dark:replies.includes('\x1b[?997;1n'),nativeOscSetAndStack:custom});
+}
+document.querySelector('#result').textContent=JSON.stringify(reports,null,2);
+</script>

@@ -1,0 +1,15 @@
+<!doctype html><meta charset="utf-8"><title>Editor soft wrapping regression</title>
+<style>body{margin:20px;font:14px sans-serif}.sample{width:280px;height:180px;border:1px solid #888;margin:12px 0}textarea{box-sizing:border-box;resize:none;white-space:pre-wrap;overflow-wrap:anywhere}pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}</style>
+<button id="check">验证长行换行</button><output id="result">Ready</output>
+<div id="editor" class="sample"></div><textarea id="note" class="sample" wrap="soft" aria-label="笔记长行"></textarea><div class="sample"><pre id="preview"></pre></div>
+<script type="module">
+import { createEditor } from '/src/shared/editor/index.ts';
+const source='const longValue = "'+'LongToken中文'.repeat(70)+'";';
+const editor=createEditor(document.querySelector('#editor'),source,'example.ts');
+const note=document.querySelector('#note'), preview=document.querySelector('#preview');note.value=source;preview.textContent=source;
+document.querySelector('#check').onclick=()=>{
+ const scroller=editor.view.scrollDOM;
+ const result={editorWrapped:editor.view.lineWrapping,editorNoHorizontalScroll:scroller.scrollWidth<=scroller.clientWidth+1,notesNoHorizontalScroll:note.scrollWidth<=note.clientWidth+1,previewNoHorizontalScroll:preview.scrollWidth<=preview.clientWidth+1,originalContentUnchanged:editor.getContent()===source&&note.value===source&&editor.view.state.doc.lines===1};
+ document.querySelector('#result').textContent=JSON.stringify(result);
+};
+</script>

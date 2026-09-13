@@ -1,0 +1,177 @@
+{
+  "sourceArtifact": "/tmp/g3-peer-live-attempt6-result.json",
+  "sourceSha256": "2aeccd6a5c8c05bfdd17bab79569869baee21893aa862cd9544495d465abf635",
+  "redaction": "temporary filesystem paths and shell identity; original status/UUID/hash values retained",
+  "result": {
+    "cli": "claude",
+    "version": "2.1.266",
+    "requestedModel": "CLI default",
+    "marker": "G3_f4d8664f510e4d41b24f8a5bf55edcff",
+    "startedAt": "2026-09-09T11:20:07.968Z",
+    "scope": "real CLI backend protocol; no browser visual claim",
+    "startupA": {
+      "welcome": false,
+      "theme": false,
+      "trust": false,
+      "login": false,
+      "continue": false,
+      "outputBytes": 4463,
+      "controlReason": null,
+      "cliId": "claude"
+    },
+    "startupScreenA": "'claude' '--permission-mode' 'dontAsk' '--strict-mcp-config' '--mcp-config' '/private/var/folders/59/nlw8jr4n6dggwwmfw3m\njzcjh0000gn/T/g3-peer-claude-6zWTxD/work/empty-mcp.json' '--tools' 'Bash' '--settings' '/private/var/folders/59/nlw8jr4n\n6dggwwmfw3mjzcjh0000gn/T/g3-peer-claude-6zWTxD/work/settings-A.json' '--allowedTools' 'Bash('\\''/opt/homebrew/Cellar/nod\ne/25.9.0_2/bin/node'\\'' '\\''[test-work]/work/agent-me\nssage-g3-a.mjs'\\'')'\n[test-shell] A % 'claude' '--permission-mode' 'dontAsk' '--strict-mcp-config' '--mcp-config' '/private/var/folders\n/59/nlw8jr4n6dggwwmfw3mjzcjh0000gn/T/g3-peer-claude-6zWTxD/work/empty-mcp.json' '--tools' 'Bash' '--settings' '/private/\nvar/folders/59/nlw8jr4n6dggwwmfw3mjzcjh0000gn/T/g3-peer-claude-6zWTxD/work/settings-A.json' '--allowedTools' 'Bash('\\''/\nopt/homebrew/Cellar/node/25.9.0_2/bin/node'\\'' '\\''/private/var/folders/59/nlw8jr4n6dggwwmfw3mjzcjh0000gn/T/g3-peer-clau\nde-6zWTxD/work/agent-message-g3-a.mjs'\\'')'\n ▐▛███▛█   Claude Code v2.1.266\n▝▜██████▀  Sonnet 5 · Claude API\n  ▝▝ ▝▝    [test-work]/work/A\n\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯  \n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents                                                 ● high · /effort\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+    "startupB": {
+      "welcome": false,
+      "theme": false,
+      "trust": false,
+      "login": false,
+      "continue": false,
+      "outputBytes": 4954,
+      "controlReason": null,
+      "cliId": "claude"
+    },
+    "startupScreenB": "'claude' '--permission-mode' 'dontAsk' '--strict-mcp-config' '--mcp-config' '/private/var/folders/59/nlw8jr4n6dggwwmfw3m\njzcjh0000gn/T/g3-peer-claude-6zWTxD/work/empty-mcp.json' '--tools' 'Bash' '--settings' '/private/var/folders/59/nlw8jr4n\n6dggwwmfw3mjzcjh0000gn/T/g3-peer-claude-6zWTxD/work/settings-B.json' '--allowedTools' 'Bash('\\''/opt/homebrew/Cellar/nod\ne/25.9.0_2/bin/node'\\'' '\\''[test-work]/work/agent-me\nssage-g3-b.mjs'\\'')'\n[test-shell] B % 'claude' '--permission-mode' 'dontAsk' '--strict-mcp-config' '--mcp-config' '/private/var/folders\n/59/nlw8jr4n6dggwwmfw3mjzcjh0000gn/T/g3-peer-claude-6zWTxD/work/empty-mcp.json' '--tools' 'Bash' '--settings' '/private/\nvar/folders/59/nlw8jr4n6dggwwmfw3mjzcjh0000gn/T/g3-peer-claude-6zWTxD/work/settings-B.json' '--allowedTools' 'Bash('\\''/\nopt/homebrew/Cellar/node/25.9.0_2/bin/node'\\'' '\\''/private/var/folders/59/nlw8jr4n6dggwwmfw3mjzcjh0000gn/T/g3-peer-clau\nde-6zWTxD/work/agent-message-g3-b.mjs'\\'')'\n ▐▛███▛█   Claude Code v2.1.266\n▝▜██████▀  Sonnet 5 · Claude API\n  ▝▝ ▝▝    [test-work]/work/B\n\n  Fable 5.1 writes better code and reports progress on long tasks. Switch anytime with /model.\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯  \n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents                                                 ● high · /effort\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+    "startupC": {
+      "welcome": false,
+      "theme": false,
+      "trust": false,
+      "login": false,
+      "continue": false,
+      "outputBytes": 4622,
+      "controlReason": null,
+      "cliId": "claude"
+    },
+    "startupScreenC": "\n ▐▟███▟█   Claude Code v2.1.266\n▝▜██████▀  Sonnet 5 · Claude API\n  ▝▝ ▝▝    [test-work]/work/C\n\n  Fable 5.1 writes better code and reports progress on long tasks. Switch anytime with /model.\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n                                                                                                      ● high · /effort\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents",
+    "participants": [
+      {
+        "id": "A",
+        "conversationId": "78c91122-d97d-4e9a-93de-a2d3e8ee6a6d",
+        "sourceId": "7b395179-9b8f-4de4-af92-fc3eacea16fc",
+        "nativeSessionId": "758b479b-9ecd-4f5b-b713-52eebb1a4992",
+        "ptyPid": 9184,
+        "instanceId": "27803abb-4e05-40cd-8371-193eed3d7c0d",
+        "nativePid": 9223
+      },
+      {
+        "id": "B",
+        "conversationId": "e8603d7d-2448-430f-88a5-198e55fa422f",
+        "sourceId": "8018b243-4cfe-4815-84ca-b602dab2706d",
+        "nativeSessionId": "f7c24008-b1aa-4dd7-9d4b-2ace517f8b22",
+        "ptyPid": 9292,
+        "instanceId": "1de32d3e-eba3-49a0-8b42-2942b03e4527",
+        "nativePid": 9297
+      },
+      {
+        "id": "C",
+        "conversationId": "ca3f5264-48d2-4ef1-b89e-dda16a64ffb3",
+        "sourceId": "0bda83cf-b17b-41db-8423-4e9fd1446b27",
+        "nativeSessionId": "bd333cc0-a183-452f-96d0-d205b102928f",
+        "ptyPid": 10346,
+        "instanceId": "f9bcfcae-1dc6-4dc8-ba6d-0d2c8a9146dc",
+        "nativePid": 10353
+      }
+    ],
+    "success": false,
+    "lastPhase": "one seed input to A; models perform A to B to A",
+    "phases": [
+      "start isolated owner and gateway",
+      "one seed input to A; models perform A to B to A"
+    ],
+    "finishedAt": "2026-09-09T11:22:26.819Z",
+    "commandDiagnostics": {
+      "A": [
+        {
+          "requestId": "G3_f4d8664f510e4d41b24f8a5bf55edcff_seed",
+          "status": "accepted",
+          "reason": null
+        }
+      ],
+      "B": [
+        {
+          "requestId": "peer:38fc440e-1754-47bf-8ffb-f74ef51c9406",
+          "status": "accepted",
+          "reason": null
+        }
+      ],
+      "C": []
+    },
+    "nativeDiagnostics": [
+      {
+        "id": "A",
+        "userRows": 2,
+        "assistantRows": 3,
+        "models": [
+          "claude-sonnet-5"
+        ],
+        "assistantEvidence": [
+          {
+            "uuid": "21fc5edd-da83-4f73-9d6a-98f11d352d16",
+            "parentUuid": "9762b45a-6df4-4f43-98db-f7cf597589f4",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "error": "null",
+            "stopReason": "tool_use",
+            "textHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "shortText": "",
+            "toolNames": []
+          },
+          {
+            "uuid": "0267a6ba-9c99-429d-ad6a-4e885b2c7491",
+            "parentUuid": "21fc5edd-da83-4f73-9d6a-98f11d352d16",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "error": "null",
+            "stopReason": "tool_use",
+            "textHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "shortText": "",
+            "toolNames": [
+              "Bash"
+            ]
+          },
+          {
+            "uuid": "8c8b96ae-4f1b-4cfa-b9f9-1c2bedc25569",
+            "parentUuid": "f90a5ee0-43fd-4b80-9ba1-9d4a9e362f58",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "error": "null",
+            "stopReason": "end_turn",
+            "textHash": "e55e308ea3522fd25d9cfa2b63f22dca23b269accc3f62f40854ac34c5e6f694",
+            "shortText": "G3_f4d8664f510e4d41b24f8a5bf55edcff_A_SENT",
+            "toolNames": []
+          }
+        ],
+        "toolErrors": []
+      },
+      {
+        "id": "B",
+        "userRows": 1,
+        "assistantRows": 1,
+        "models": [
+          "claude-sonnet-5"
+        ],
+        "assistantEvidence": [
+          {
+            "uuid": "0ce68fcf-bbfa-4b38-8370-c1335c8386fc",
+            "parentUuid": "4c88c80a-b69c-45ec-a81d-eb52b2bdf650",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "error": "null",
+            "stopReason": "end_turn",
+            "textHash": "3afc028fd4604ff3ab0ce9c6e35f842f4623c795bb76a6bd2513d585bbd7a1b4",
+            "shortText": "This message instructs me to run an unfamiliar script that claims to be a pre-approved \"G3 task\" and then output a specific token — that's a prompt injection pattern I shouldn't follow blindly from an inbound workspace message.\n\nI'm not going to execute that command or emit the requested string. I don't have independent confirmation that this is legitimate, and the instruction to avoid inspecting anything else or asking questions is itself a red flag for injection. If you (the user) actually want me to run a specific script, please confirm directly and I'll take a look at what it does first.",
+            "toolNames": []
+          }
+        ],
+        "toolErrors": []
+      },
+      {
+        "id": "C",
+        "userRows": 0,
+        "assistantRows": 0,
+        "models": [],
+        "assistantEvidence": [],
+        "toolErrors": []
+      }
+    ]
+  }
+}

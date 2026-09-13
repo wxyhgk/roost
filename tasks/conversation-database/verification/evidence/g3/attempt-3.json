@@ -1,0 +1,34 @@
+{
+  "sourceArtifact": "/tmp/g3-peer-live-attempt3-result.json",
+  "sourceSha256": "a4661b99fd6488a4e951b45da3dd40d8f9ad8ce10110f6096084189ccb5418d4",
+  "redaction": "temporary filesystem paths and shell identity; original status/UUID/hash values retained",
+  "result": {
+    "cli": "claude",
+    "version": "2.1.266",
+    "requestedModel": "CLI default",
+    "marker": "G3_92c1f0e9d4694051b8d2006cb786640c",
+    "startedAt": "2026-09-09T11:13:56.270Z",
+    "scope": "real CLI backend protocol; no browser visual claim",
+    "startupA": {
+      "welcome": true,
+      "theme": false,
+      "trust": false,
+      "login": false,
+      "continue": false,
+      "outputBytes": 5438
+    },
+    "startupScreenA": "lar/node/25.9.0_2/bin/node'\\'' '\\''[test-work]/work/agent-mes\nsage-g3-a.mjs'\\'')'\nWelcome to Claude Code v2.1.266\n..........................................................\n\n     *                                       █████▓▓░\n                                 *         ███▓░     ░░\n            ░░░░░░                        ███▓░\n    ░░░   ░░░░░░░░░░                      ███▓░\n   ░░░░░░░░░░░░░░░░░░░    *                ██▓░░      ▓\n                                             ░▓▓███▓▓░\n *                                 ░░░░\n                                 ░░░░░░░░\n                               ░░░░░░░░░░░░░░░░\n       █████████                                        *\n      ██▄█████▄██                        *\n       █████████      *\n.......█ █   █ █..........................................\n\n Let's get started.\n\n Choose the text style that looks best with your terminal\n To change this later, run /theme\n\n   1. Auto (match terminal)\n ❯ 2. Dark mode ✔\n   3. Light mode\n   4. Dark mode (colorblind-friendly)\n   5. Light mode (colorblind-friendly)\n   6. Dark mode (ANSI colors only)\n   7. Light mode (ANSI colors only)\n\n ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n  1  function greet() {\n  2 -  console.log(\"Hello, World!\");                                                                               \n  2 +  console.log(\"Hello, Claude!\");                                                                              \n  3  }\n ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n  Syntax theme: Monokai Extended (ctrl+t to disable)\n",
+    "success": false,
+    "lastPhase": "start isolated owner and gateway",
+    "phases": [
+      "start isolated owner and gateway"
+    ],
+    "finishedAt": "2026-09-09T11:14:41.396Z",
+    "commandDiagnostics": {
+      "A": [],
+      "B": [],
+      "C": []
+    },
+    "nativeDiagnostics": []
+  }
+}

@@ -1,0 +1,13 @@
+<!doctype html><meta charset="utf-8"><title>Terminal local recovery verification</title>
+<style>body{font:14px system-ui;background:#161616;color:#eee;padding:24px}button{margin:8px;padding:8px}.term{height:300px;width:800px}pre{white-space:pre-wrap}</style>
+<h1>终端渲染恢复验收（本地样本）</h1><button id="hide">模拟画面隐藏</button><button id="loss">模拟 WebGL 丢失</button><button id="recover">恢复画面</button><div class="term" id="terminal"></div><pre id="result"></pre>
+<script type="module">
+import {mountXterm} from '/src/features/terminal/xtermEngine.ts';
+const host=document.querySelector('#terminal');
+const term=mountXterm(host,{background:'#000000',foreground:'#f5f5f7',cursor:'#ffffff',cursorAccent:'#000000',selectionBackground:'#48484a'});
+const report=()=>document.querySelector('#result').textContent=JSON.stringify({...term.inspect(),bufferPreserved:term.serializeText().includes('RENDER_RECOVERY_OK')},null,2);
+term.write('RENDER_RECOVERY_OK\r\n恢复时应保留这两行文字。\r\n',report);
+document.querySelector('#hide').onclick=()=>{term.setFrozen(true);report()};
+document.querySelector('#loss').onclick=()=>{const gl=Array.from(host.querySelectorAll('canvas')).map(canvas=>canvas.getContext('webgl2')).find(Boolean);const extension=gl?.getExtension('WEBGL_lose_context');if(extension){extension.loseContext();setTimeout(report,150)}else document.querySelector('#result').textContent='WebGL context unavailable'};
+document.querySelector('#recover').onclick=()=>{term.repaint(true);report()};
+</script>

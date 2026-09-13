@@ -1,0 +1,25 @@
+{
+  "results": {
+    "daemonSerial": {
+      "pass": 50,
+      "skip": 2,
+      "fail": 0
+    },
+    "backendDefault": {
+      "pass": 171,
+      "skip": 7,
+      "fail": 0
+    },
+    "backendTypecheck": "pass",
+    "realAttempts": 1,
+    "realPassed": 1
+  },
+  "logSha256": {
+    "/tmp/g3-mcp-postfix-preflight.log": "108c69fd1f4fe6ba4028c90ff541a1ffbe0e75deb201e4b18e2b809abb3d470b",
+    "/tmp/g3-mcp-postfix-daemon-final.log": "a9d1183be68250bab193cedd7a887b557f46039534c470694185386927139446",
+    "/tmp/g3-mcp-postfix-backend-final.log": "9f8403f69b604e95e0b633b17d69ad353c3c63db6d9eaa6244c41fc8c060999b",
+    "/tmp/g3-mcp-postfix-backend-typecheck.log": "63e7d44cd940c6a65e25c0f110258185670fc8ceb61704afe4097744b1f6e728",
+    "/tmp/g3-mcp-postfix-attempt1.log": "3a0f53579377a8990ca9ba992e1de0aa850dcdecb9a5d701b0566c07f7604ab3"
+  },
+  "resilienceSourceSha256": "94efae624dc7fa4397adda894d7b03babd98a5f648e2b50f48864f54c5c96403"
+}

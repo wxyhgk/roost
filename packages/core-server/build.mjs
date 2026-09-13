@@ -1,0 +1,12 @@
+import { build } from 'esbuild';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+const result=await build({entryPoints:[fileURLToPath(new URL('./src/main.ts',import.meta.url))],bundle:true,platform:'node',format:'esm',target:'node22',write:false,metafile:true,external:['bufferutil','utf-8-validate'],banner:{js:"import { createRequire as __createRequire } from 'node:module'; const require = __createRequire(import.meta.url);"}});
+const inputs=Object.keys(result.metafile.inputs);
+if(inputs.some(path=>/workspace-store|terminal-runtime|backend\/src|frontend\/src|node-pty/.test(path)))throw new Error('stable core pulled in a business or PTY owner dependency');
+const bytes=result.outputFiles[0].contents,buildId=createHash('sha256').update(bytes).digest('hex').slice(0,16);
+await mkdir(new URL('./dist/',import.meta.url),{recursive:true});
+await writeFile(new URL('./dist/core.mjs',import.meta.url),bytes);
+await writeFile(new URL('./dist/manifest.json',import.meta.url),JSON.stringify({buildId,inputs},null,2)+'\n');
+console.log(`Built standalone core ${buildId}`);

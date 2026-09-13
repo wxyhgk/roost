@@ -1,0 +1,21 @@
+node_modules
+dist
+.DS_Store
+*.local
+
+# Third-party source checkouts used for research
+/research/third-party/
+
+# Jupyter 编辑器在旁边留下的副本，不是源码
+.ipynb_checkpoints/
+
+# `npm install --prefix backend` 会在这里留下指向 backend/lib 的可执行链接（本机产物）。
+backend/bin/
+backend/lib/
+
+# 工作区数据库。默认写在 ~/.roost，但 ROOST_DATA_DIR
+# 指到仓库里做隔离测试时会落在这儿——那是用户数据，不该进版本库。
+# .dockerignore 早就挡了这几条，这里补上保持一致。
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm

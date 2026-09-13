@@ -1,0 +1,34 @@
+{
+  "sourceArtifact": "/tmp/g3-peer-live-attempt4-result.json",
+  "sourceSha256": "26798bf9a0ae71a5263af8d226f97eae07f73937aa8c6946935a32eb97f900d9",
+  "redaction": "temporary filesystem paths and shell identity; original status/UUID/hash values retained",
+  "result": {
+    "cli": "claude",
+    "version": "2.1.266",
+    "requestedModel": "CLI default",
+    "marker": "G3_9f62cc7717e84216b65e522c944e691c",
+    "startedAt": "2026-09-09T11:15:11.159Z",
+    "scope": "real CLI backend protocol; no browser visual claim",
+    "startupA": {
+      "welcome": true,
+      "theme": false,
+      "trust": false,
+      "login": false,
+      "continue": false,
+      "outputBytes": 5434
+    },
+    "startupScreenA": "lar/node/25.9.0_2/bin/node'\\'' '\\''[test-work]/work/agent-mes\nsage-g3-a.mjs'\\'')'\nWelcome to Claude Code v2.1.266\n..........................................................\n\n     *                                       █████▓▓░\n                                 *         ███▓░     ░░\n            ░░░░░░                        ███▓░\n    ░░░   ░░░░░░░░░░                      ███▓░\n   ░░░░░░░░░░░░░░░░░░░    *                ██▓░░      ▓\n                                             ░▓▓███▓▓░\n *                                 ░░░░\n                                 ░░░░░░░░\n                               ░░░░░░░░░░░░░░░░\n       █████████                                        *\n      ██▄█████▄██                        *\n       █████████      *\n.......█ █   █ █..........................................\n\n Claude Code can be used with your Claude subscription or billed based on API usage through your Console account.\n\n Select login method:\n\n ❯ 1. Claude account with subscription · Pro, Max, Team, or Enterprise\n   2. Anthropic Console account · API usage billing\n   3. 3rd-party platform · Amazon Bedrock, Microsoft Foundry, or Vertex AI\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+    "success": false,
+    "lastPhase": "start isolated owner and gateway",
+    "phases": [
+      "start isolated owner and gateway"
+    ],
+    "finishedAt": "2026-09-09T11:16:41.254Z",
+    "commandDiagnostics": {
+      "A": [],
+      "B": [],
+      "C": []
+    },
+    "nativeDiagnostics": []
+  }
+}

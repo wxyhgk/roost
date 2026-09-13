@@ -1,0 +1,35 @@
+{
+  "recordedAt": "2026-09-09T12:09:08.293768+00:00",
+  "scope": "independent no-model MCP protocol and isolated IPC testing",
+  "sdk": "@modelcontextprotocol/sdk@1.30.0",
+  "schema": "zod@4.5.4",
+  "jsonlProtocolVersion": "2025-11-25",
+  "modelRequests": 0,
+  "g3LiveCooperationReleased": false,
+  "checks": [
+    {
+      "name": "agent-messaging complete suite",
+      "tests": 19,
+      "pass": 19,
+      "skip": 0,
+      "fail": 0,
+      "log": "/tmp/mcp-package-tests-final.log",
+      "logSha256": "846e85ae539bbcd750c7c586d095475be559fa8d895a3045f7bdbdfd7a37cce8"
+    },
+    {
+      "name": "terminal-daemon complete serial suite",
+      "tests": 49,
+      "pass": 47,
+      "skip": 2,
+      "fail": 0,
+      "log": "/tmp/mcp-daemon-final.log",
+      "logSha256": "b35d278743e50c6009b167a61cec95620bee1e3d25d72b5a7ea6d5581f55ee5f"
+    }
+  ],
+  "sourceSha256": {
+    "packages/agent-messaging/tests/client.test.mjs": "d3e8c0f9fc483f9b846f112d916ab6eeee411f414fd637beb393447f12708ee9",
+    "packages/agent-messaging/tests/stdio.test.mjs": "245e2f75aa51c9a18f0f45ebf1560ebac047d382d42d35c87fd74eae1abc37b9",
+    "packages/agent-messaging/tests/fixtures.mjs": "76a483a90f2b0daabc3b1fdb6f2592b91fb7e6db71b9d5892d124ac575d2d901",
+    "packages/terminal-daemon/tests/peer-mcp.test.ts": "5f30842010cab009a0013177ddc08078e91240f200054e7adc8c70d3e412212e"
+  }
+}

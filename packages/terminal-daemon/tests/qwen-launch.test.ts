@@ -1,0 +1,29 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';
+import {mkdtemp,mkdir,writeFile,readFile,rm,symlink} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join} from 'node:path';import {spawn} from 'node:child_process';import {createServer} from 'node:net';
+import {installQwenLaunch,writeQwenCommand} from '../src/qwen-launch.ts';
+test('Qwen native input is one JSONL append, rejects unsafe and duplicate-file rollover',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'qwen-input-')),path=join(dir,'in');try{await writeFile(path,'');writeQwenCommand(path,'Hello\nWorld');assert.deepEqual(JSON.parse((await readFile(path,'utf8')).trim()),{type:'submit',text:'Hello\nWorld'});assert.throws(()=>writeQwenCommand(path,' /quit'));assert.throws(()=>writeQwenCommand(path,' x '));await symlink(path,join(dir,'link'));assert.throws(()=>writeQwenCommand(join(dir,'link'),'no'));}finally{await rm(dir,{recursive:true,force:true})}
+});
+test('Qwen wrapper forwards same child native metadata and removes its input file on exit',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'qwen-launch-')),bin=join(dir,'bin'),real=join(dir,'real'),socket=join(dir,'ipc');await mkdir(bin);await mkdir(real);const received:any[]=[];
+ const server=createServer(s=>{s.write(JSON.stringify({type:'hello'})+'\n');let pending='';s.on('data',c=>{pending+=c;let i;while((i=pending.indexOf('\n'))>=0){const b=JSON.parse(pending.slice(0,i));pending=pending.slice(i+1);received.push(b.args[0]);s.write(JSON.stringify({type:'reply',requestId:b.requestId,result:{ok:true}})+'\n')}})});
+ await new Promise<void>(resolve=>server.listen(socket,resolve));
+ try{
+ await writeFile(join(real,'qwen'),`#!/usr/bin/env node\nconst fs=require('node:fs');if(process.argv.includes('--version')){console.log('0.23.1');process.exit(0)}if(process.argv.includes('extensions')){console.log(JSON.stringify(process.argv.slice(2)));process.exit(0)}\nfs.appendFileSync(process.argv[process.argv.indexOf('--json-file')+1],JSON.stringify({type:'system',subtype:'session_start',session_id:'native-1',data:{protocol_version:2}})+'\\n');fs.appendFileSync(process.argv[process.argv.indexOf('--json-file')+1],JSON.stringify({type:'user',session_id:'native-1',message:{content:[{type:'text',text:'hello'}]}})+'\\n');setTimeout(()=>{},50);`,{mode:0o700});
+ const root=await installQwenLaunch(bin,dir);const child=spawn(join(bin,'qwen'),[],{env:{...process.env,PATH:real+':'+process.env.PATH,ROOST_QWEN_SOCKET:socket,ROOST_QWEN_TOKEN:'test',ROOST_QWEN_INSTANCE:'instance',ROOST_QWEN_TERMINAL:'terminal'},stdio:['ignore','pipe','pipe']});let error='';child.stderr.on('data',c=>error+=c);const code=await new Promise(resolve=>child.on('close',resolve));assert.equal(code,0,error);assert.deepEqual(received.map(v=>v.event),['SessionStart','UserPromptSubmit','SessionEnd']);assert.equal(received[1].prompt,'hello');assert.ok(received[0].inputPath.startsWith(root));await assert.rejects(readFile(received[0].inputPath),{code:'ENOENT'});
+ const management=spawn(join(bin,'qwen'),['extensions','list'],{env:{...process.env,PATH:real+':'+process.env.PATH},stdio:['ignore','pipe','pipe']});let result='';management.stdout.on('data',c=>result+=c);assert.equal(await new Promise(r=>management.on('close',r)),0);assert.deepEqual(JSON.parse(result),['extensions','list']);
+ }finally{await new Promise<void>(resolve=>server.close(()=>resolve()));await rm(dir,{recursive:true,force:true})}
+});
+
+test('real Qwen 0.23.1 keeps TUI and accepts native input in that same session', {skip: process.env.ROOST_VERIFY_QWEN_SYNC !== '1', timeout: 60000},async()=>{
+ const pty=await import('node-pty');const {readQwenTranscript}=await import('../../ai-transcript/src/qwen.ts');
+ const dir=await mkdtemp(join(tmpdir(),'qwen-live-')),bin=join(dir,'bin'),socket=join(dir,'ipc');await mkdir(bin);let terminal:ReturnType<typeof pty.spawn>|undefined, inputPath='',transcriptPath='',nativeId='';const events:string[]=[];
+ const server=createServer(s=>{s.write('{"type":"hello"}\n');let pending='';s.on('data',c=>{pending+=c;let n;while((n=pending.indexOf('\n'))>=0){const b=JSON.parse(pending.slice(0,n));pending=pending.slice(n+1);const e=b.args[0];events.push(e.event);inputPath=e.inputPath;nativeId=e.sessionId;if(e.transcriptPath)transcriptPath=e.transcriptPath;s.write(JSON.stringify({type:'reply',requestId:b.requestId,result:{ok:true}})+'\n')}})});
+ await new Promise<void>(r=>server.listen(socket,r));let transcriptConfirmed=false;
+ try{await installQwenLaunch(bin,dir);terminal=pty.spawn(join(bin,'qwen'),[],{name:'xterm-256color',cols:100,rows:30,cwd:process.cwd(),env:{...process.env,ROOST_QWEN_SOCKET:socket,ROOST_QWEN_TOKEN:'isolated-test',ROOST_QWEN_INSTANCE:'isolated',ROOST_QWEN_TERMINAL:'isolated'}});terminal.onData(()=>{});
+  const deadline=Date.now()+45000;while(!events.includes('SessionStart')&&Date.now()<deadline)await new Promise(r=>setTimeout(r,100));assert.ok(inputPath,'native session_start required');
+  writeQwenCommand(inputPath,'Reply exactly ROOST_QWEN_NATIVE_PROBE_OK. Do not use tools or modify files.');
+  while(Date.now()<deadline){if(transcriptPath){const batch=await readQwenTranscript(transcriptPath,nativeId);if(batch.items.some(v=>v.role==='assistant'&&v.data.parts.some(p=>p.type==='text'&&p.text?.includes('ROOST_QWEN_NATIVE_PROBE_OK')))){transcriptConfirmed=true;break}}await new Promise(r=>setTimeout(r,200))}
+  assert.ok(events.includes('UserPromptSubmit'));assert.ok(transcriptConfirmed,'same native session transcript must contain real assistant answer');
+ }finally{if(terminal){const exited=new Promise<void>(r=>terminal!.onExit(()=>r()));terminal.kill();await exited}if(transcriptConfirmed&&transcriptPath.endsWith('/'+nativeId+'.jsonl'))await rm(transcriptPath,{force:true});await new Promise<void>(r=>server.close(()=>r()));await rm(dir,{recursive:true,force:true})}
+});

@@ -1,0 +1,88 @@
+<!doctype html><meta charset="utf-8"><title>终端原位置预显 · 300ms 回显验证</title>
+<style>body{background:#181818;color:#ddd;font:14px system-ui;padding:24px}button,select{font:inherit;margin:0 8px 12px 0;padding:6px 12px}#host{position:relative;width:800px;height:320px;background:#181818}pre{white-space:pre-wrap;max-width:900px}label{margin-right:16px}</style>
+<h1>终端原位置预显</h1><p>独立测试终端，模拟 300ms 远端回显，不连接真实会话。</p>
+<button id="run">运行回归验证</button><button id="demo">保持一段预显供检查</button>
+<button id="live">连接隔离 OpenCode</button>
+<button id="live-check">验证真实 OpenCode 预显</button>
+<label>输入模式 <select id="mode"><option value="shell">Shell</option><option value="tui">全屏 AI CLI 重绘</option></select></label>
+<div id="host"></div><pre id="result" role="status">正在初始化</pre>
+<script type="module">
+import { mountXterm } from '/src/features/terminal/xtermEngine.ts';
+import { echoWidth } from '/src/features/terminal/localEcho.ts';
+const host=document.querySelector('#host'),result=document.querySelector('#result'),mode=document.querySelector('#mode');
+const theme={background:'#181818',foreground:'#eeeeee',cursor:'#ffffff',cursorAccent:'#000000',selectionBackground:'#444444'};
+let term,remote='',generation=0,held=false,sendCount=0;const errors=[];
+let socket;
+window.addEventListener('error',e=>errors.push(e.message));window.addEventListener('unhandledrejection',e=>errors.push(String(e.reason)));
+const frame=()=>new Promise(r=>requestAnimationFrame(r));
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+const overlay=()=>host.querySelector('.terminal-local-echo')?.textContent??'';
+const width=text=>[...text].reduce((sum,ch)=>sum+(echoWidth(ch)??1),0);
+function screen(text){return mode.value==='tui'?'\x1b[?2026h\x1b[?25l\x1b[H\x1b[2JAI CLI · redraw fixture\x1b[6;10H> '+text+'\x1b[7m \x1b[0m\x1b[1;1H\x1b[?2026l':'\r\x1b[K> '+text;}
+async function write(text){await new Promise(r=>term.write(text,r));await frame();}
+async function send(data,delay=300){
+ sendCount++;const epoch=generation;
+ if(data==='\x7f'||data==='\b')remote=[...remote].slice(0,-1).join('');else if(data==='\r')remote='';else if(!/[\x00-\x1f\x7f]/.test(data))remote+=data;
+ const text=remote;term.previewInput(data);
+ if(held)return;
+ await wait(delay);if(epoch!==generation)return;await write(screen(text));
+}
+async function reset(){generation++;socket?.close();socket=null;term?.dispose();host.replaceChildren();term=mountXterm(host,theme);remote='';held=false;sendCount=0;term.onData(data=>{void send(data);});await write(screen(''));term.focus();}
+mode.onchange=()=>void reset();
+await reset();result.textContent='就绪：可直接在终端打字，回显延迟 300ms。';
+document.querySelector('#live').onclick=()=>{
+ generation++;socket?.close();term?.dispose();host.replaceChildren();host.style.width='800px';host.style.height='320px';
+ term=mountXterm(host,theme);term.resize(80,20);socket=new WebSocket('ws://127.0.0.1:8791');
+ const live=socket;
+ live.onopen=()=>{result.textContent='真实 OpenCode：上下行各延迟 150ms；只编辑草稿，不按 Enter 提交。';term.focus();};
+ live.onmessage=e=>term.write(String(e.data));live.onerror=()=>{result.textContent='请先启动 terminal-local-echo-live.mts';};
+ live.onclose=()=>term.clearLocalEcho();
+ term.onData(data=>{if(live.readyState===WebSocket.OPEN){live.send(data);term.previewInput(data);result.textContent='隔离 OpenCode 输入（未提交）：'+JSON.stringify(data);}});
+};
+document.querySelector('#live-check').onclick=async()=>{
+ if(socket?.readyState!==WebSocket.OPEN){result.textContent='先连接隔离 OpenCode';return;}
+ term.focus();const live=socket,checks=[];
+ const sendKey=data=>{live.send(data);term.previewInput(data);};
+ try{
+  // Keep focus in the terminal throughout the run: browser automation may
+  // otherwise refocus for every press, correctly invalidating predictions.
+  sendKey('a');await wait(600);sendKey('b');await wait(600);
+  const before=term.snapshot(),started=performance.now();sendKey('原位置');
+  checks.push({name:'native TUI instant preview',ok:overlay()==='原位置',preview:overlay(),ms:performance.now()-started});
+  checks.push({name:'native snapshot excludes preview',ok:term.snapshot()===before});
+  await wait(600);checks.push({name:'native TUI echo clears preview',ok:overlay()===''&&term.serializeText().includes('原位置')});
+  sendKey('\x7f');checks.push({name:'native backspace previews erase',ok:!!host.querySelector('.terminal-local-echo-cell')});
+  await wait(600);checks.push({name:'native backspace reconciles',ok:overlay()===''});
+  result.textContent=JSON.stringify({passed:checks.every(x=>x.ok),checks,noModelRequest:true},null,2);
+ }catch(error){result.textContent=String(error);}
+};
+document.querySelector('#demo').onclick=async()=>{mode.value='tui';await reset();await send('原');held=true;void send('位置预显');result.textContent='浅色文字为本地预显。两秒后自动撤销未确认预显；没有发送任何模型请求。';};
+document.querySelector('#run').onclick=async()=>{
+ const checks=[],timings=[];document.querySelector('#run').disabled=true;
+ const check=(name,ok)=>{checks.push({name,ok});if(!ok)throw Error(name);};
+ try{
+  for(const kind of ['shell','tui']){
+   mode.value=kind;await reset();
+   const cold=send('a');check(kind+' first key is a probe',overlay()==='');await cold;
+   const before=term.snapshot(),started=performance.now(),one=send('b');
+   check(kind+' immediately previews b',overlay()==='b');
+   timings.push({kind,previewMs:performance.now()-started,simulatedEchoMs:300});
+   check(kind+' snapshot excludes preview',term.snapshot()===before);
+   const el=host.querySelector('.terminal-local-echo-cell'),box=el.getBoundingClientRect(),grid=host.querySelector('.xterm-screen').getBoundingClientRect();
+   const expectedX=kind==='tui'?12:3,expectedY=kind==='tui'?5:0;
+   check(kind+' overlay shares cursor grid',Math.abs(box.x-(grid.x+expectedX*grid.width/term.cols))<1&&Math.abs(box.y-(grid.y+expectedY*grid.height/term.rows))<1);
+   const two=send('中文'),three=send('\x7f');check(kind+' Chinese and backspace preview',overlay()==='b中');
+   await Promise.all([one,two,three]);check(kind+' all echoes reconcile',overlay()===''&&term.serializeText().includes('ab中'));
+   const pending=send('字');check(kind+' pending Chinese preview',overlay()==='字');
+   const textarea=host.querySelector('textarea');textarea.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true,data:''}));
+   const position=textarea.getBoundingClientRect();
+   check(kind+' IME follows predicted cursor',Math.abs(position.x-(grid.x+(expectedX-1+width('ab中字'))*grid.width/term.cols))<2);
+   textarea.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true,data:''}));await pending;
+   held=true;await send('z');term.clearLocalEcho();check(kind+' disconnect reset removes preview',overlay()==='');held=false;
+   await reset();await send('a');held=true;await send('b');await write(screen('server disagreed'));check(kind+' mismatch removes preview',overlay()==='');
+   await reset();await send('a');held=true;await send('b');term.resize(term.cols-1,term.rows);check(kind+' resize removes preview',overlay()==='');
+  }
+  check('no browser errors',errors.length===0);result.textContent=JSON.stringify({passed:true,checks,timings},null,2);
+ }catch(error){result.textContent=JSON.stringify({passed:false,error:String(error),checks,errors},null,2)}finally{held=false;document.querySelector('#run').disabled=false;}
+};
+</script>

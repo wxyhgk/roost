@@ -1,0 +1,15 @@
+{
+  "name": "@roost/ai-session-bridge",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "node --import tsx --test tests/*.test.ts"
+  },
+  "dependencies": {
+    "@roost/ai-transcript": "0.0.0"
+  }
+}

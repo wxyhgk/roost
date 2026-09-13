@@ -1,0 +1,90 @@
+{
+  "sourceArtifact": "/tmp/g3-peer-live-attempt5-result.json",
+  "sourceSha256": "ff019588870cd3f189d8c5a9535b0797184c42cb6063078d06811d166792dfea",
+  "redaction": "temporary filesystem paths and shell identity; original status/UUID/hash values retained",
+  "result": {
+    "cli": "claude",
+    "version": "2.1.266",
+    "requestedModel": "CLI default",
+    "marker": "G3_9fbfd779933542b28df9972da0391354",
+    "startedAt": "2026-09-09T11:16:45.403Z",
+    "scope": "real CLI backend protocol; no browser visual claim",
+    "startupA": {
+      "welcome": false,
+      "theme": false,
+      "trust": false,
+      "login": false,
+      "continue": false,
+      "outputBytes": 4471,
+      "controlReason": null,
+      "cliId": "claude"
+    },
+    "startupScreenA": "'claude' '--permission-mode' 'dontAsk' '--strict-mcp-config' '--mcp-config' '/private/var/folders/59/nlw8jr4n6dggwwmfw3m\njzcjh0000gn/T/g3-peer-claude-L6ZqSr/work/empty-mcp.json' '--tools' 'Bash' '--settings' '/private/var/folders/59/nlw8jr4n\n6dggwwmfw3mjzcjh0000gn/T/g3-peer-claude-L6ZqSr/work/settings-A.json' '--allowedTools' 'Bash('\\''/opt/homebrew/Cellar/nod\ne/25.9.0_2/bin/node'\\'' '\\''[test-work]/work/agent-me\nssage-g3-a.mjs'\\'')'\n[test-shell] A % 'claude' '--permission-mode' 'dontAsk' '--strict-mcp-config' '--mcp-config' '/private/var/folders\n/59/nlw8jr4n6dggwwmfw3mjzcjh0000gn/T/g3-peer-claude-L6ZqSr/work/empty-mcp.json' '--tools' 'Bash' '--settings' '/private/\nvar/folders/59/nlw8jr4n6dggwwmfw3mjzcjh0000gn/T/g3-peer-claude-L6ZqSr/work/settings-A.json' '--allowedTools' 'Bash('\\''/\nopt/homebrew/Cellar/node/25.9.0_2/bin/node'\\'' '\\''/private/var/folders/59/nlw8jr4n6dggwwmfw3mjzcjh0000gn/T/g3-peer-clau\nde-L6ZqSr/work/agent-message-g3-a.mjs'\\'')'\n ▐▛███▛█   Claude Code v2.1.266\n▝▜██████▀  Sonnet 5 · Claude API\n  ▝▝ ▝▝    [test-work]/work/A\n\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯  \n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents                                                 ● high · /effort\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+    "startupB": {
+      "welcome": false,
+      "theme": false,
+      "trust": false,
+      "login": false,
+      "continue": false,
+      "outputBytes": 4755,
+      "controlReason": null,
+      "cliId": "claude"
+    },
+    "startupScreenB": "'claude' '--permission-mode' 'dontAsk' '--strict-mcp-config' '--mcp-config' '/private/var/folders/59/nlw8jr4n6dggwwmfw3m\njzcjh0000gn/T/g3-peer-claude-L6ZqSr/work/empty-mcp.json' '--tools' 'Bash' '--settings' '/private/var/folders/59/nlw8jr4n\n6dggwwmfw3mjzcjh0000gn/T/g3-peer-claude-L6ZqSr/work/settings-B.json' '--allowedTools' 'Bash('\\''/opt/homebrew/Cellar/nod\ne/25.9.0_2/bin/node'\\'' '\\''[test-work]/work/agent-me\nssage-g3-b.mjs'\\'')'\n[test-shell] B % 'claude' '--permission-mode' 'dontAsk' '--strict-mcp-config' '--mcp-config' '/private/var/folders\n/59/nlw8jr4n6dggwwmfw3mjzcjh0000gn/T/g3-peer-claude-L6ZqSr/work/empty-mcp.json' '--tools' 'Bash' '--settings' '/private/\nvar/folders/59/nlw8jr4n6dggwwmfw3mjzcjh0000gn/T/g3-peer-claude-L6ZqSr/work/settings-B.json' '--allowedTools' 'Bash('\\''/\nopt/homebrew/Cellar/node/25.9.0_2/bin/node'\\'' '\\''/private/var/folders/59/nlw8jr4n6dggwwmfw3mjzcjh0000gn/T/g3-peer-clau\nde-L6ZqSr/work/agent-message-g3-b.mjs'\\'')'\n ▐▛███▛█   Claude Code v2.1.266\n▝▜██████▀  Sonnet 5 · Claude API\n  ▝▝ ▝▝    [test-work]/work/B\n\n  Fable 5.1 writes better code and reports progress on long tasks. Switch anytime with /model.\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯  \n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents                                                 ● high · /effort\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+    "startupC": {
+      "welcome": false,
+      "theme": false,
+      "trust": false,
+      "login": false,
+      "continue": false,
+      "outputBytes": 4117,
+      "controlReason": null,
+      "cliId": "claude"
+    },
+    "startupScreenC": "\n           Claude Code v2.1.266\n           Sonnet 5 · Claude API\n           [test-work]/work/C\n\n  Fable 5.1 writes better code and reports progress on long tasks. Switch anytime with /model.\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n                                                                                                      ● high · /effort\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents",
+    "success": false,
+    "lastPhase": "one seed input to A; models perform A to B to A",
+    "phases": [
+      "start isolated owner and gateway",
+      "one seed input to A; models perform A to B to A"
+    ],
+    "finishedAt": "2026-09-09T11:18:42.807Z",
+    "commandDiagnostics": {
+      "A": [
+        {
+          "requestId": "G3_9fbfd779933542b28df9972da0391354_seed",
+          "status": "accepted",
+          "reason": null
+        }
+      ],
+      "B": [
+        {
+          "requestId": "peer:8cdb915b-013b-4602-93a1-757b1c590fd5",
+          "status": "accepted",
+          "reason": null
+        }
+      ],
+      "C": []
+    },
+    "nativeDiagnostics": [
+      {
+        "id": "A",
+        "userRows": 2,
+        "assistantRows": 3,
+        "toolErrors": []
+      },
+      {
+        "id": "B",
+        "userRows": 1,
+        "assistantRows": 1,
+        "toolErrors": []
+      },
+      {
+        "id": "C",
+        "userRows": 0,
+        "assistantRows": 0,
+        "toolErrors": []
+      }
+    ]
+  }
+}

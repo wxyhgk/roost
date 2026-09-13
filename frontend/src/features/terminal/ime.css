@@ -1,0 +1,20 @@
+/* xterm writes inline geometry repeatedly. These rules keep both IME helpers
+   in the same coordinate space even between composition events and frames. */
+.xterm .roost-ime-anchor {
+  position: var(--ime-position) !important;
+  left: var(--ime-left) !important;
+  top: var(--ime-top) !important;
+  width: var(--ime-width) !important;
+  height: var(--ime-height) !important;
+  line-height: var(--ime-height) !important;
+  clip-path: none !important;
+  clip: auto !important;
+  overflow: visible !important;
+  z-index: 20 !important;
+  pointer-events: none !important;
+}
+.xterm .xterm-helper-textarea.roost-ime-anchor { opacity: 0 !important; }
+.xterm .composition-view.roost-ime-anchor {
+  background: var(--terminal-bg, #000);
+  color: var(--terminal-fg, #fff);
+}

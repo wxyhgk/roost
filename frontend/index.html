@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>Roost</title>
+    <script>
+      document.documentElement.dataset.theme =
+        // 改名那一次：搬运在模块里跑，而这段在它之前执行，所以这里自己认一次旧键，
+        // 否则改名后第一次打开会闪一下错误的主题。等浏览器都搬完就可以只留前一个。
+        (localStorage.getItem("roost-theme") ?? localStorage.getItem("diy-theme")) === "light" ? "light" : "dark";
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!--
+      只要 IBM Plex Mono：它是终端字体栈的第一位（features/terminal/font.ts）。
+
+      原来还一起请求了 IBM Plex Sans 的三个字重，但那个家族**全项目零引用**——
+      `--font-sans` 里根本没有它，界面走的是系统字体栈。白下的字体：这张 CSS 从
+      11891 B 降到 3932 B，随之省下的 woff2 文件更多。
+
+      仍然是渲染阻塞的。看着该改成异步，但不能改：终端的字符格尺寸是按字体量的，
+      改成异步会让「字体晚到」从罕见路径变成每次都走的路径，而那条路径正是
+      issues/2026-09-10-restore-loses-rows-below-cursor.md 的主题。真要去掉这个
+      跨域阻塞，正确做法是把字体自托管，而不是把它挪到关键路径外面。
+    -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

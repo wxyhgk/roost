@@ -1,0 +1,38 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, writeFile, rm, appendFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { createWorkspaceStore } from '@roost/workspace-store';
+import { createAiSessionBridge } from '@roost/ai-session-bridge';
+import { createAiTranscriptSource } from '../src/ai-transcript-source.ts';
+const row=(value:unknown)=>JSON.stringify(value)+'\n';
+test('explicit Codex identity ingests snapshot and durable history without event_msg duplicates',async t=>{
+ const dir=await mkdtemp(join(tmpdir(),'codex-source-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ const path=join(dir,'rollout.jsonl');
+ await writeFile(path,row({type:'session_meta',payload:{id:'codex-native'}})+row({type:'response_item',payload:{type:'message',id:'answer',role:'assistant',content:[{type:'output_text',text:'saved answer'}]}})+row({type:'event_msg',payload:{type:'agent_message',message:'saved answer'}}));
+ const store=createWorkspaceStore({dataDir:join(dir,'db')}); const bridge=createAiSessionBridge({storage:store.aiSessions});
+ const binding=bridge.bind({webSessionId:'s',terminalInstanceId:'i',cliId:'codex',nativeSessionId:'codex-native',transcriptPath:path});
+ const source=createAiTranscriptSource(bridge);t.after(()=>{source.dispose();store.close();});
+ let snapshots=0;bridge.subscribeSnapshots('s',()=>snapshots++);
+ await source.catchUp('s');assert.equal(source.status('s').mode,'transcript');assert.equal(snapshots,1);
+ assert.equal(bridge.read('s').events.filter(e=>e.event.type==='message').length,1);
+ let page=store.aiSessions.history!.pageMessages('s',binding.generation);
+ assert.equal(page.items.length,1);assert.equal(page.items[0].event.content,'saved answer');
+ await appendFile(path,row({type:'response_item',payload:{type:'function_call_output',call_id:'call',output:'x'.repeat(9000)}}));
+ await source.catchUp('s');page=store.aiSessions.history!.pageMessages('s',binding.generation);
+ assert.equal(page.items.length,2);
+ const tool=page.items.find(item=>item.event.role==='tool')!;
+ await rm(path);
+ assert.equal(store.aiSessions.history!.getMessage('s',binding.generation,tool.messageId).event.content!.length,9000);
+});
+test('Codex source requires explicit source and refuses unrelated native identity',async t=>{
+ const dir=await mkdtemp(join(tmpdir(),'codex-identity-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ const path=join(dir,'rollout.jsonl');await writeFile(path,row({type:'session_meta',payload:{id:'other'}}));
+ const bridge=createAiSessionBridge();bridge.bind({webSessionId:'missing',terminalInstanceId:'i',cliId:'codex',nativeSessionId:'native'});
+ bridge.bind({webSessionId:'wrong',terminalInstanceId:'j',cliId:'codex',nativeSessionId:'expected',transcriptPath:path});
+ const source=createAiTranscriptSource(bridge);t.after(()=>source.dispose());
+ await source.catchUp('missing');assert.equal(source.status('missing').reason,'explicit_source_required');
+ await source.catchUp('wrong');assert.equal(source.status('wrong').reason,'session_mismatch');
+ assert.equal(bridge.read('wrong').events.length,0);
+});

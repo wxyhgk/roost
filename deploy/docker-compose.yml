@@ -1,0 +1,28 @@
+# 群晖 Container Manager：新增项目 -> 填写项目名称 -> 设置路径选本文件所在目录。
+# 镜像在群晖本机构建（见 deploy/README.md），不在线拉取。
+services:
+  workbench:
+    image: roost:1.0
+    container_name: ai-coding-web
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
+      - ./work:/work
+      # 群晖家目录，容器内用 /nas-home 建 session 即可看到真实文件
+      - /volume1/homes/YOUR_USER:/nas-home
+      # 整个 volume1（与群晖同路径，cwd 直接填 /volume1/GitRepo 这类）
+      - /volume1:/volume1
+    environment:
+      ROOST_DATA_DIR: /data
+      # 内网可信部署：跳过后端来源与主机校验，任何地址都能连 WS
+      ROOST_OPEN: 1
+      # 浏览器页面源（非 OPEN 模式时后端 Origin 白名单），按实际访问地址增减
+      ROOST_ALLOWED_ORIGINS: http://YOUR_NAS_IP:8080,http://YOUR_NAS_HOST:8080
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s

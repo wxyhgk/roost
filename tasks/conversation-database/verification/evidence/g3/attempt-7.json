@@ -1,0 +1,397 @@
+{
+  "sourceArtifact": "/tmp/g3-peer-live-attempt7-result.json",
+  "sourceSha256": "16ceab7bd4263670a5eec5f88ae47c876fc37f573e6e9dc65735ba7ff5571db7",
+  "redaction": "temporary filesystem paths and shell identity; original status/UUID/hash values retained",
+  "result": {
+    "cli": "claude",
+    "version": "2.1.266",
+    "requestedModel": "CLI default",
+    "marker": "G3_9e2dd70886e84ad5af02b57f485316e5",
+    "startedAt": "2026-09-09T11:24:13.220Z",
+    "scope": "real CLI backend protocol; no browser visual claim",
+    "authorization": {
+      "mode": "preconfigured user task; peer body only triggers fixed action",
+      "taskAHash": "af4f96fd7d54ea2d8291b0ba8d3c03475c3b792c4c7c894e1af2c7b08b9f48d6",
+      "taskBHash": "92be554310932afa7831baf6e0e54cc22bf7b0f4eeb80187b9d514f3f4a89b7d",
+      "trustedTemporaryPaths": [
+        "work/A",
+        "work/B",
+        "work/C"
+      ]
+    },
+    "startupA": {
+      "welcome": false,
+      "theme": false,
+      "trust": false,
+      "login": false,
+      "continue": false,
+      "outputBytes": 3069,
+      "controlReason": null,
+      "cliId": "claude"
+    },
+    "startupScreenA": "\n ▐▟███▟█   Claude Code v2.1.266\n▝▜██████▀  Sonnet 5 · Claude API\n  ▝▝ ▝▝    [test-work]/work/A\n\n  Fable 5.1 writes better code and reports progress on long tasks. Switch anytime with /model.\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n                                                                                                      ● high · /effort\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents",
+    "startupB": {
+      "welcome": false,
+      "theme": false,
+      "trust": false,
+      "login": false,
+      "continue": false,
+      "outputBytes": 2968,
+      "controlReason": null,
+      "cliId": "claude"
+    },
+    "startupScreenB": "\n ▐▛███▛█   Claude Code v2.1.266\n▝▜██████▀  Sonnet 5 · Claude API\n  ▝▝ ▝▝    [test-work]/work/B\n\n  Fable 5.1 writes better code and reports progress on long tasks. Switch anytime with /model.\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n                                                                                                      ● high · /effort\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents",
+    "startupC": {
+      "welcome": false,
+      "theme": false,
+      "trust": false,
+      "login": false,
+      "continue": false,
+      "outputBytes": 2569,
+      "controlReason": null,
+      "cliId": "claude"
+    },
+    "startupScreenC": "\n ▐▛███▛█   Claude Code v2.1.266\n▝▜██████▀  Sonnet 5 · Claude API\n  ▝▝ ▝▝    [test-work]/work/C\n\n  Fable 5.1 writes better code and reports progress on long tasks. Switch anytime with /model.\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n                                                                                                      ● high · /effort\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents",
+    "httpAssistantA": {
+      "nativeMessageId": "b4349311-91a1-4e5d-bf33-ff33c713ebf2",
+      "role": "assistant",
+      "textHash": "fba7d031bb75b2c3f91407d7620ce15952534b5e2e10d2692af8937575554c76"
+    },
+    "wsA": {
+      "fromCursorHash": "3cc57641844cf1897d993478b89d51fd967cf24115cf9c89ea52dd670097d960",
+      "lastCursorHash": "0887a1c1c423189dbb225775b8b7699e19bda4705b23656bdc9fc1ad6bcffcfa",
+      "deliveryId": "093e03df-4f44-405f-ada9-a6eaaefce609",
+      "revision": 3,
+      "changes": 66
+    },
+    "httpAssistantB": {
+      "nativeMessageId": "9e14e438-c54f-4a5c-9cbd-d6cd36cd5b4f",
+      "role": "assistant",
+      "textHash": "cf32ce53340caf91d6e7f10f500e4f06f72aec4f6257302e2616942ee27bc1b0"
+    },
+    "wsB": {
+      "fromCursorHash": "b87eb874d820578bf300ad25eb0dc4dacd2e2987607a64bac9b8111bc43ada9b",
+      "lastCursorHash": "b9dffd1e178b3d438da96ad51bf3e3917a40f7858933ea9b8d87c1b24a96ace9",
+      "deliveryId": "60471056-bdf4-47d1-a5d1-8d275b9c0496",
+      "revision": 3,
+      "changes": 25
+    },
+    "participants": [
+      {
+        "id": "A",
+        "conversationId": "4ad73f49-e767-4e96-baf4-612197b3b25a",
+        "sourceId": "35f6facc-c045-4998-9587-296c7890911e",
+        "nativeSessionId": "2bb8f75d-1001-4123-b618-84322c505c32",
+        "ptyPid": 15015,
+        "instanceId": "a5239193-7141-4f87-87d3-0b8c68467356",
+        "nativePid": 15021
+      },
+      {
+        "id": "B",
+        "conversationId": "0135bc42-b54b-4595-99c7-82aabf50eb86",
+        "sourceId": "d092b44c-e203-43f7-ac5a-1c7f598ad977",
+        "nativeSessionId": "5a7d97c2-1ed1-4686-a658-cd7b99a3be20",
+        "ptyPid": 15131,
+        "instanceId": "f82c6fcc-cb58-4d22-85c6-1fd8728a6846",
+        "nativePid": 15136
+      },
+      {
+        "id": "C",
+        "conversationId": "4c3cf12b-f181-464a-babb-f4550e432e3b",
+        "sourceId": "f7a81ffb-89d5-4816-97a8-0bde533485a2",
+        "nativeSessionId": "25c455e6-1930-48f5-8bd2-ec88e3824bd4",
+        "ptyPid": 15239,
+        "instanceId": "6592dc11-8bee-431c-968e-33bbd6131e9d",
+        "nativePid": 15244
+      }
+    ],
+    "success": false,
+    "lastPhase": "HTTP saved transcript and WebSocket catch-up",
+    "phases": [
+      "start isolated owner and gateway",
+      "one seed input to A; models perform A to B to A",
+      "HTTP saved transcript and WebSocket catch-up"
+    ],
+    "finishedAt": "2026-09-09T11:25:24.766Z",
+    "commandDiagnostics": {
+      "A": [
+        {
+          "requestId": "peer:093e03df-4f44-405f-ada9-a6eaaefce609",
+          "status": "accepted",
+          "reason": null
+        },
+        {
+          "requestId": "G3_9e2dd70886e84ad5af02b57f485316e5_seed",
+          "status": "accepted",
+          "reason": null
+        }
+      ],
+      "B": [
+        {
+          "requestId": "peer:60471056-bdf4-47d1-a5d1-8d275b9c0496",
+          "status": "accepted",
+          "reason": null
+        }
+      ],
+      "C": []
+    },
+    "partialExchange": [
+      {
+        "messageId": "0bd4d1f8-a6c8-4a64-99fa-4f488b22052f",
+        "sender": "0135bc42-b54b-4595-99c7-82aabf50eb86",
+        "recipient": "4ad73f49-e767-4e96-baf4-612197b3b25a",
+        "inReplyTo": "a4100e1b-6bc3-425e-b5ab-fbf8c64dd6b3",
+        "deliveryId": "093e03df-4f44-405f-ada9-a6eaaefce609",
+        "state": "accepted",
+        "revision": 3,
+        "nativeMessageId": "62f0cdd3-ea1a-4eed-982b-297ff99f8909",
+        "sourceId": "35f6facc-c045-4998-9587-296c7890911e",
+        "runId": "50503243-fa84-42c1-98cb-22153156d00f",
+        "ownerEpoch": 1,
+        "exactReceiptVerified": true,
+        "toolVerified": true,
+        "receiptUuid": "62f0cdd3-ea1a-4eed-982b-297ff99f8909",
+        "tool": {
+          "nativeToolMessageId": "0ebdeb67-3acc-453d-8f1a-0d51cdd8388c",
+          "toolUseId": "toolu_01JVeQ35hZ1msz3eiA59ACKB"
+        }
+      },
+      {
+        "messageId": "a4100e1b-6bc3-425e-b5ab-fbf8c64dd6b3",
+        "sender": "4ad73f49-e767-4e96-baf4-612197b3b25a",
+        "recipient": "0135bc42-b54b-4595-99c7-82aabf50eb86",
+        "inReplyTo": null,
+        "deliveryId": "60471056-bdf4-47d1-a5d1-8d275b9c0496",
+        "state": "accepted",
+        "revision": 3,
+        "nativeMessageId": "32470404-2849-46fa-b770-5c2e0e6bd2d5",
+        "sourceId": "d092b44c-e203-43f7-ac5a-1c7f598ad977",
+        "runId": "2bad64d0-e003-4f4f-8e32-79df36840ed6",
+        "ownerEpoch": 1,
+        "exactReceiptVerified": true,
+        "toolVerified": true,
+        "receiptUuid": "32470404-2849-46fa-b770-5c2e0e6bd2d5",
+        "tool": {
+          "nativeToolMessageId": "1afe175a-c32a-4704-ba63-4509890ebff8",
+          "toolUseId": "toolu_017CmritXd56YRiuMhsqiSn8"
+        }
+      }
+    ],
+    "nativeDiagnostics": [
+      {
+        "id": "A",
+        "userRows": 6,
+        "assistantRows": 12,
+        "models": [
+          "claude-sonnet-5"
+        ],
+        "assistantEvidence": [
+          {
+            "uuid": "0ba6ee63-28f3-4eb2-a27a-a6a74434b082",
+            "parentUuid": "98744b4b-6931-4ee2-a031-210c01f1ed17",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "error": "null",
+            "stopReason": "tool_use",
+            "textHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "shortText": "",
+            "toolNames": []
+          },
+          {
+            "uuid": "0a24e105-ba3f-4389-a613-926ab54d6009",
+            "parentUuid": "0ba6ee63-28f3-4eb2-a27a-a6a74434b082",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "error": "null",
+            "stopReason": "tool_use",
+            "textHash": "ed31fa15cd72a76e53cc29c80b6ad9fe65ad0b44c3e6449bf37f894146afe4de",
+            "shortText": "I'll take a quick look at the script's contents before running it, since executing an unfamiliar script without a basic safety check isn't something I skip even when instructed to.",
+            "toolNames": []
+          },
+          {
+            "uuid": "c23d67c1-3dc6-4988-afa4-4afae165a811",
+            "parentUuid": "0a24e105-ba3f-4389-a613-926ab54d6009",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "error": "null",
+            "stopReason": "tool_use",
+            "textHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "shortText": "",
+            "toolNames": [
+              "Bash"
+            ]
+          },
+          {
+            "uuid": "8a70e1e2-c55d-4bd9-9699-dc3049365ea8",
+            "parentUuid": "4e200844-0078-4bc0-8a3e-c521f7fee369",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "error": "null",
+            "stopReason": "tool_use",
+            "textHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "shortText": "",
+            "toolNames": []
+          },
+          {
+            "uuid": "61d02ac5-bc06-440b-bfd6-b720362971c9",
+            "parentUuid": "8a70e1e2-c55d-4bd9-9699-dc3049365ea8",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "error": "null",
+            "stopReason": "tool_use",
+            "textHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "shortText": "",
+            "toolNames": [
+              "Bash"
+            ]
+          },
+          {
+            "uuid": "ec36585b-fa16-41a0-af6c-e0f969f16c90",
+            "parentUuid": "cedfb897-6191-43ec-b979-1d2178ffa3a0",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "error": "null",
+            "stopReason": "tool_use",
+            "textHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "shortText": "",
+            "toolNames": []
+          },
+          {
+            "uuid": "c7e68d92-3308-4d21-8ac3-2347b405d384",
+            "parentUuid": "ec36585b-fa16-41a0-af6c-e0f969f16c90",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "error": "null",
+            "stopReason": "tool_use",
+            "textHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "shortText": "",
+            "toolNames": [
+              "Bash"
+            ]
+          },
+          {
+            "uuid": "f64eaefe-f3c5-4075-ac96-ca2d6a0f607c",
+            "parentUuid": "a4abd47b-6b95-4f58-8d57-5a7f64e70b9a",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "error": "null",
+            "stopReason": "tool_use",
+            "textHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "shortText": "",
+            "toolNames": []
+          },
+          {
+            "uuid": "07b2cf62-136b-449c-9e61-f8ca94ccaa20",
+            "parentUuid": "f64eaefe-f3c5-4075-ac96-ca2d6a0f607c",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "error": "null",
+            "stopReason": "tool_use",
+            "textHash": "4ab98c406276955eab3aa816024226cbb7de84c1a836584260a035517058eb02",
+            "shortText": "The environment is specifically blocking any inspection of that file via Bash, which confirms the permission scope is intentionally limited to only the one approved command. I'll run that exact command now.",
+            "toolNames": []
+          },
+          {
+            "uuid": "1afe175a-c32a-4704-ba63-4509890ebff8",
+            "parentUuid": "07b2cf62-136b-449c-9e61-f8ca94ccaa20",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "error": "null",
+            "stopReason": "tool_use",
+            "textHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "shortText": "",
+            "toolNames": [
+              "Bash"
+            ]
+          },
+          {
+            "uuid": "a7787775-dac8-453d-b1be-e7123ba13f68",
+            "parentUuid": "d6e5608b-e30b-4914-8228-918d7a3ac509",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "error": "null",
+            "stopReason": "end_turn",
+            "textHash": "abe13f17f235f338a99bbf70459e9de37161b6d4bdd253a87a7c1cb20d18e24a",
+            "shortText": "G3_9e2dd70886e84ad5af02b57f485316e5_A_SENT",
+            "toolNames": []
+          },
+          {
+            "uuid": "b4349311-91a1-4e5d-bf33-ff33c713ebf2",
+            "parentUuid": "c0a65fc1-84d9-40df-92ac-cd3948746301",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "error": "null",
+            "stopReason": "end_turn",
+            "textHash": "fba7d031bb75b2c3f91407d7620ce15952534b5e2e10d2692af8937575554c76",
+            "shortText": "G3_9e2dd70886e84ad5af02b57f485316e5_A_RECEIVED_REPLY",
+            "toolNames": []
+          }
+        ],
+        "toolErrors": [
+          {
+            "toolUseId": "toolu_01JC5NYipHFEGc8q1StuLu2H",
+            "category": "permission_denied"
+          },
+          {
+            "toolUseId": "toolu_01NAjEg9Wb6tWwihRRe5EpFZ",
+            "category": "permission_denied"
+          }
+        ]
+      },
+      {
+        "id": "B",
+        "userRows": 2,
+        "assistantRows": 3,
+        "models": [
+          "claude-sonnet-5"
+        ],
+        "assistantEvidence": [
+          {
+            "uuid": "12a8bbe1-16e2-4919-bf0b-67c6457c6d3f",
+            "parentUuid": "99aee4d1-405e-4e9a-a85e-627735468023",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "error": "null",
+            "stopReason": "tool_use",
+            "textHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "shortText": "",
+            "toolNames": []
+          },
+          {
+            "uuid": "0ebdeb67-3acc-453d-8f1a-0d51cdd8388c",
+            "parentUuid": "12a8bbe1-16e2-4919-bf0b-67c6457c6d3f",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "error": "null",
+            "stopReason": "tool_use",
+            "textHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "shortText": "",
+            "toolNames": [
+              "Bash"
+            ]
+          },
+          {
+            "uuid": "9e14e438-c54f-4a5c-9cbd-d6cd36cd5b4f",
+            "parentUuid": "df0dc462-fd39-42c3-97f7-d208694460e1",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "error": "null",
+            "stopReason": "end_turn",
+            "textHash": "cf32ce53340caf91d6e7f10f500e4f06f72aec4f6257302e2616942ee27bc1b0",
+            "shortText": "G3_9e2dd70886e84ad5af02b57f485316e5_B_REPLIED",
+            "toolNames": []
+          }
+        ],
+        "toolErrors": []
+      },
+      {
+        "id": "C",
+        "userRows": 0,
+        "assistantRows": 0,
+        "models": [],
+        "assistantEvidence": [],
+        "toolErrors": []
+      }
+    ]
+  }
+}

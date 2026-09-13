@@ -1,0 +1,14 @@
+id,phase,title,depends,status,notes
+1,壳,建前端和本机后端骨架,,done,frontend/ + backend/；根目录 npm run dev
+2,壳,左中右三栏布局,1,done,左 session 树 / 中 terminal / 右文件树；记住栏宽
+3,session,Session 列表和选中切换,2,done,Session 是主对象；点 session 只切中间和右侧
+4,session,空 Project 和拖拽组合,3,done,新建 project 不开 terminal；session 可拖进拖出
+5,terminal,新建 session 就开本机 PTY,3,done,node-pty；刷新可重连同一条 PTY
+6,files,右侧文件树跟当前 session 的 cwd,5,done,切 session 换树；读后端所在机器的真实目录
+7,persist,SQLite 快照：session/project/选中项,4;5,done,存在 ~/.diy-ai-coding-web/workspace.sqlite；PTY 由 backend 进程持有（和 Jupyter kernel 一样）
+8,persist,关掉的 session 可 reopen,7,done,关闭只摘 UI，PTY 仍在 server 里；Reopen 再连同一条
+9,i18n,前端文案集中到 @roost/i18n,,done,362 条全部迁完；除 molecule（他人在改）外前端字面量归零；包内一域一文件便于并行改写
+10,i18n,加英文语言包,9,done,zh/en 两份包 + 设置里的语言选择器 + localStorage 记忆；t 改 Proxy，调用点形状未变；顺带把草稿状态标识与文案解耦（SaveState 用键不用值）
+11,i18n,后端错误响应加稳定 code,,done,后端 14 个 code + sendError 统一出口；前端 api/errors.ts 统一解析：code 定含义的出中文，invalid_request 保留后端原文（哪个字段超范围只有后端知道），未 code 化端点按状态码兜底
+12,bug,文件保存失败显示裸 JSON,,done,随统一解析层一并修复；409 冲突体里的当前内容与 mtime 仍保留给冲突界面
+13,i18n,library 文案与错误码接入共享包,9,done,错误文案表已迁入 packages/i18n/src/errors.ts；library/api.ts 与 cli-configs 均改用 errorText；补了回退可复现的回归测试

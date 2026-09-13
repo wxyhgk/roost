@@ -1,0 +1,693 @@
+{
+  "sourceSha256": "ebf81efdd6746489bb49d6278b138db4cb6cd6045194396338b497d9f5af1fdb",
+  "source": "/tmp/g3-mcp-live-attempt1-result.json",
+  "result": {
+    "cli": "claude",
+    "version": "2.1.266",
+    "requestedModel": "CLI default",
+    "marker": "G3MCP_58aaee9c8ab344c29bc8f742a80345a8",
+    "startedAt": "2026-09-09T12:22:45.528Z",
+    "scope": "real CLI backend protocol; no browser visual claim",
+    "authorization": {
+      "mode": "direct user authorization in B native session; peer body only triggers fixed action",
+      "mcpConfigHash": "e1afbe28b721dd890912e59c299ac896263487e610831ab3d179360a4ada3c2d",
+      "builtinTools": [],
+      "allowedTools": [
+        "mcp__workspace_messaging__agent_context",
+        "mcp__workspace_messaging__agent_send",
+        "mcp__workspace_messaging__agent_inbox",
+        "mcp__workspace_messaging__agent_outbox"
+      ],
+      "trustedTemporaryPaths": [
+        "work/A",
+        "work/B",
+        "work/C"
+      ]
+    },
+    "startupA": {
+      "welcome": false,
+      "theme": false,
+      "trust": false,
+      "login": false,
+      "continue": false,
+      "outputBytes": 3042,
+      "controlReason": null,
+      "cliId": "claude"
+    },
+    "startupScreenA": "\n ▐█▟███▟   Claude Code v2.1.266\n▝▜██████▀  Sonnet 5 · Claude API\n  ▝▝ ▝▝    [isolated-test-path]\n\n  Fable 5.1 writes better code and reports progress on long tasks. Switch anytime with /model.\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n                                                                                                      ● high · /effort\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents",
+    "startupB": {
+      "welcome": false,
+      "theme": false,
+      "trust": false,
+      "login": false,
+      "continue": false,
+      "outputBytes": 2941,
+      "controlReason": null,
+      "cliId": "claude"
+    },
+    "startupScreenB": "\n ▐▛███▛█   Claude Code v2.1.266\n▝▜██████▀  Sonnet 5 · Claude API\n  ▝▝ ▝▝    [isolated-test-path]\n\n  Fable 5.1 writes better code and reports progress on long tasks. Switch anytime with /model.\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n                                                                                                      ● high · /effort\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents",
+    "startupC": {
+      "welcome": false,
+      "theme": false,
+      "trust": false,
+      "login": false,
+      "continue": false,
+      "outputBytes": 2942,
+      "controlReason": null,
+      "cliId": "claude"
+    },
+    "startupScreenC": "\n ▐▛███▛█   Claude Code v2.1.266\n▝▜██████▀  Sonnet 5 · Claude API\n  ▝▝ ▝▝    [isolated-test-path]\n\n  Fable 5.1 writes better code and reports progress on long tasks. Switch anytime with /model.\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n                                                                                                      ● high · /effort\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents",
+    "discoveryBeforeModel": true,
+    "bootstrap": {
+      "requestId": "G3MCP_58aaee9c8ab344c29bc8f742a80345a8_B_task",
+      "userNativeUuid": "b4353f07-03c8-4a95-b131-fa85979ce33f",
+      "assistantNativeUuid": "6a6f489c-1d62-4c55-bee8-ffc1d34b05be",
+      "accepted": true,
+      "acknowledged": true,
+      "idleBeforeSeed": true
+    },
+    "participants": [
+      {
+        "id": "A",
+        "conversationId": "59737e98-ccee-455a-abd0-0b865ef72660",
+        "sourceId": "feae27e9-40c5-42fc-9cda-aa8d6d2900e5",
+        "nativeSessionId": "f7980fd7-6ea7-4b95-bdd2-7db060ecbf0e",
+        "ptyPid": 86180,
+        "instanceId": "a6029426-0c19-4985-a751-abfe4532fb60",
+        "nativePid": 86234
+      },
+      {
+        "id": "B",
+        "conversationId": "46e4f168-9ed5-4b49-b163-ed2db7a679c8",
+        "sourceId": "c38b478b-a2e3-4756-b925-903fe3d01f35",
+        "nativeSessionId": "ce4babcd-5c03-49b5-938e-8871e7789a72",
+        "ptyPid": 86531,
+        "instanceId": "5131cd9f-3600-4bf2-8116-07e8c1095a9f",
+        "nativePid": 86537
+      },
+      {
+        "id": "C",
+        "conversationId": "8d2d6bc5-0082-49ac-a1d8-80cc4cbec1c6",
+        "sourceId": "6eedf1ee-fcc6-4bc9-937f-81b3d1af8e94",
+        "nativeSessionId": "1f2fa68a-79f3-457a-a0ff-078634759ae5",
+        "ptyPid": 86664,
+        "instanceId": "bf5edf52-8b06-4427-a764-24578512348c",
+        "nativePid": 86670
+      }
+    ],
+    "success": false,
+    "lastPhase": "one seed input to A; models perform A to B to A",
+    "phases": [
+      "start isolated owner and gateway",
+      "all three real CLI clients discover four MCP tools before model input",
+      "direct finite calculation task in B native session, before A seed",
+      "one seed input to A; models perform A to B to A"
+    ],
+    "finishedAt": "2026-09-09T12:24:11.420Z",
+    "mcpTransport": [
+      {
+        "terminal": "A",
+        "phase": "start",
+        "pid": 86512,
+        "childPid": 86525
+      },
+      {
+        "terminal": "A",
+        "phase": "request",
+        "method": "initialize"
+      },
+      {
+        "terminal": "A",
+        "phase": "reply",
+        "method": "initialize",
+        "ok": true
+      },
+      {
+        "terminal": "A",
+        "phase": "request",
+        "method": "notifications/initialized"
+      },
+      {
+        "terminal": "A",
+        "phase": "request",
+        "method": "tools/list"
+      },
+      {
+        "terminal": "A",
+        "phase": "reply",
+        "method": "tools/list",
+        "ok": true,
+        "tools": [
+          "agent_context",
+          "agent_send",
+          "agent_inbox",
+          "agent_outbox"
+        ]
+      },
+      {
+        "terminal": "A",
+        "phase": "request",
+        "method": "tools/call",
+        "tool": "agent_context"
+      },
+      {
+        "terminal": "A",
+        "phase": "request",
+        "method": "tools/call",
+        "tool": "agent_send"
+      },
+      {
+        "terminal": "B",
+        "phase": "start",
+        "pid": 86559,
+        "childPid": 86569
+      },
+      {
+        "terminal": "B",
+        "phase": "request",
+        "method": "initialize"
+      },
+      {
+        "terminal": "B",
+        "phase": "reply",
+        "method": "initialize",
+        "ok": true
+      },
+      {
+        "terminal": "B",
+        "phase": "request",
+        "method": "notifications/initialized"
+      },
+      {
+        "terminal": "B",
+        "phase": "request",
+        "method": "tools/list"
+      },
+      {
+        "terminal": "B",
+        "phase": "reply",
+        "method": "tools/list",
+        "ok": true,
+        "tools": [
+          "agent_context",
+          "agent_send",
+          "agent_inbox",
+          "agent_outbox"
+        ]
+      },
+      {
+        "terminal": "B",
+        "phase": "request",
+        "method": "tools/call",
+        "tool": "agent_context"
+      },
+      {
+        "terminal": "B",
+        "phase": "request",
+        "method": "tools/call",
+        "tool": "agent_inbox"
+      },
+      {
+        "terminal": "B",
+        "phase": "request",
+        "method": "tools/call",
+        "tool": "agent_send"
+      },
+      {
+        "terminal": "C",
+        "phase": "start",
+        "pid": 86720,
+        "childPid": 86728
+      },
+      {
+        "terminal": "C",
+        "phase": "request",
+        "method": "initialize"
+      },
+      {
+        "terminal": "C",
+        "phase": "reply",
+        "method": "initialize",
+        "ok": true
+      },
+      {
+        "terminal": "C",
+        "phase": "request",
+        "method": "notifications/initialized"
+      },
+      {
+        "terminal": "C",
+        "phase": "request",
+        "method": "tools/list"
+      },
+      {
+        "terminal": "C",
+        "phase": "reply",
+        "method": "tools/list",
+        "ok": true,
+        "tools": [
+          "agent_context",
+          "agent_send",
+          "agent_inbox",
+          "agent_outbox"
+        ]
+      }
+    ],
+    "commandDiagnostics": {
+      "A": [
+        {
+          "requestId": "G3MCP_58aaee9c8ab344c29bc8f742a80345a8_seed",
+          "status": "accepted",
+          "reason": null
+        }
+      ],
+      "B": [
+        {
+          "requestId": "peer:02b82a16-ee02-479d-ab8a-b1e89b87c9ed",
+          "status": "accepted",
+          "reason": null
+        },
+        {
+          "requestId": "G3MCP_58aaee9c8ab344c29bc8f742a80345a8_B_task",
+          "status": "accepted",
+          "reason": null
+        }
+      ],
+      "C": []
+    },
+    "partialExchange": [
+      {
+        "messageId": "871bbbb2-8570-40ec-94a3-7bb363195ce4",
+        "sender": "46e4f168-9ed5-4b49-b163-ed2db7a679c8",
+        "recipient": "59737e98-ccee-455a-abd0-0b865ef72660",
+        "inReplyTo": "0f6b748c-85bb-40af-821b-c460b7c8d998",
+        "deliveryId": "0971b94d-a4a9-4f9b-9888-3ba76cecc504",
+        "state": "queued",
+        "revision": 2,
+        "nativeMessageId": null,
+        "sourceId": null,
+        "runId": null,
+        "ownerEpoch": null,
+        "exactReceiptVerified": false,
+        "sendToolVerified": true,
+        "peerAncestryVerified": true,
+        "tool": {
+          "contextToolUseId": "toolu_019QG8aUVsiMi93nWF5KoEkg",
+          "contextResultNativeUuid": "5140288a-dc3f-499c-84da-d5f980da887c",
+          "sendToolUseId": "toolu_018YLL3UDg6wzEcWx1TBk8xf",
+          "sendNativeUuid": "14a9e794-a5d5-40df-ae8b-03ceeea934d6",
+          "sendResultNativeUuid": "1f2dff36-4c3d-4fbd-9f87-92ae1ead22e5",
+          "pins": {
+            "expectedConversationId": "46e4f168-9ed5-4b49-b163-ed2db7a679c8",
+            "expectedRunId": "01b7266c-3fb0-43d6-82a9-e95ef40ea242"
+          },
+          "messageId": "871bbbb2-8570-40ec-94a3-7bb363195ce4",
+          "deliveryId": "0971b94d-a4a9-4f9b-9888-3ba76cecc504"
+        },
+        "peerTool": {
+          "contextToolUseId": "toolu_019QG8aUVsiMi93nWF5KoEkg",
+          "contextResultNativeUuid": "5140288a-dc3f-499c-84da-d5f980da887c",
+          "sendToolUseId": "toolu_018YLL3UDg6wzEcWx1TBk8xf",
+          "sendNativeUuid": "14a9e794-a5d5-40df-ae8b-03ceeea934d6",
+          "sendResultNativeUuid": "1f2dff36-4c3d-4fbd-9f87-92ae1ead22e5",
+          "pins": {
+            "expectedConversationId": "46e4f168-9ed5-4b49-b163-ed2db7a679c8",
+            "expectedRunId": "01b7266c-3fb0-43d6-82a9-e95ef40ea242"
+          },
+          "messageId": "871bbbb2-8570-40ec-94a3-7bb363195ce4",
+          "deliveryId": "0971b94d-a4a9-4f9b-9888-3ba76cecc504",
+          "inboxToolUseId": "toolu_01UF3bfnRr1uQrLasSXrDL1k",
+          "inboxResultNativeUuid": "bb2c66c3-e75a-42ae-b2d5-feb3f271d8ec",
+          "inReplyTo": "0f6b748c-85bb-40af-821b-c460b7c8d998",
+          "peerReceiptUuid": "cf3b6c6a-749c-40ea-a04f-821d32d04760"
+        }
+      },
+      {
+        "messageId": "0f6b748c-85bb-40af-821b-c460b7c8d998",
+        "sender": "59737e98-ccee-455a-abd0-0b865ef72660",
+        "recipient": "46e4f168-9ed5-4b49-b163-ed2db7a679c8",
+        "inReplyTo": null,
+        "deliveryId": "02b82a16-ee02-479d-ab8a-b1e89b87c9ed",
+        "state": "accepted",
+        "revision": 3,
+        "nativeMessageId": "cf3b6c6a-749c-40ea-a04f-821d32d04760",
+        "sourceId": "c38b478b-a2e3-4756-b925-903fe3d01f35",
+        "runId": "01b7266c-3fb0-43d6-82a9-e95ef40ea242",
+        "ownerEpoch": 1,
+        "exactReceiptVerified": true,
+        "sendToolVerified": true,
+        "peerAncestryVerified": false,
+        "receiptUuid": "cf3b6c6a-749c-40ea-a04f-821d32d04760",
+        "tool": {
+          "contextToolUseId": "toolu_01Ey3NKNrVhU3BEZEsww6ACU",
+          "contextResultNativeUuid": "01c75bc2-13d8-4e3c-a96a-4125d961bb93",
+          "sendToolUseId": "toolu_01Neon2RHG3DFfYvzdZqzSCC",
+          "sendNativeUuid": "8b0367cc-e817-44c8-9ee0-55a1ac27b523",
+          "sendResultNativeUuid": "ec335c43-dbcd-4a11-8d8e-ba3f19ffe761",
+          "pins": {
+            "expectedConversationId": "59737e98-ccee-455a-abd0-0b865ef72660",
+            "expectedRunId": "c5c54669-f993-4783-8af3-82bc330dc010"
+          },
+          "messageId": "0f6b748c-85bb-40af-821b-c460b7c8d998",
+          "deliveryId": "02b82a16-ee02-479d-ab8a-b1e89b87c9ed"
+        }
+      }
+    ],
+    "toolScopeEvidence": [
+      {
+        "id": "A",
+        "nativeUuid": "edee9f94-065e-477b-99d4-0f449f3898ed",
+        "toolUseId": "toolu_01Ey3NKNrVhU3BEZEsww6ACU",
+        "name": "mcp__workspace_messaging__agent_context",
+        "isAllowedMcpTool": true,
+        "input": {},
+        "results": [
+          {
+            "nativeUuid": "01c75bc2-13d8-4e3c-a96a-4125d961bb93",
+            "isError": false,
+            "contentHash": "d827ac5ddf722f5facd4f3080a4cfcbae10cde6ec9be3581b7047ebdb0212a46",
+            "content": "{\"conversationId\":\"59737e98-ccee-455a-abd0-0b865ef72660\",\"runId\":\"c5c54669-f993-4783-8af3-82bc330dc010\"}"
+          }
+        ]
+      },
+      {
+        "id": "A",
+        "nativeUuid": "8b0367cc-e817-44c8-9ee0-55a1ac27b523",
+        "toolUseId": "toolu_01Neon2RHG3DFfYvzdZqzSCC",
+        "name": "mcp__workspace_messaging__agent_send",
+        "isAllowedMcpTool": true,
+        "input": {
+          "expectedConversationId": "59737e98-ccee-455a-abd0-0b865ef72660",
+          "expectedRunId": "c5c54669-f993-4783-8af3-82bc330dc010",
+          "recipientId": "46e4f168-9ed5-4b49-b163-ed2db7a679c8",
+          "requestId": "G3MCP_58aaee9c8ab344c29bc8f742a80345a8_A_B",
+          "text": "G3MCP_58aaee9c8ab344c29bc8f742a80345a8: Please calculate 17 * 23 and return the integer to me."
+        },
+        "results": [
+          {
+            "nativeUuid": "ec335c43-dbcd-4a11-8d8e-ba3f19ffe761",
+            "isError": false,
+            "contentHash": "237ad3c83ebbe05b9dbc821e15a9ed9816a8c7f88a8c69ad164e50a02ed2e030",
+            "content": "{\"message\":{\"id\":\"0f6b748c-85bb-40af-821b-c460b7c8d998\",\"senderKind\":\"agent\",\"senderConversationId\":\"59737e98-ccee-455a-abd0-0b865ef72660\",\"senderRunId\":\"c5c54669-f993-4783-8af3-82bc330dc010\",\"senderScope\":\"agent:59737e98-ccee-455a-abd0-0b865ef72660\",\"requestId\":\"G3MCP_58aaee9c8ab344c29bc8f742a80345a8_A_B\",\"recipientId\":\"46e4f168-9ed5-4b49-b163-ed2db7a679c8\",\"text\":\"G3MCP_58aaee9c8ab344c29bc8f742a80345a8: Please calculate 17 * 23 and return the integer to me.\",\"format\":\"text/v1\",\"createdAt\":1788956583150,\"inReplyTo\":null},\"delivery\":{\"id\":\"02b82a16-ee02-479d-ab8a-b1e89b87c9ed\",\"messageId\":\"0f6b748c-85bb-40af-821b-c460b7c8d998\",\"recipientId\":\"46e4f168-9ed5-4b49-b163-ed2db7a679c8\",\"enqueueSeq\":1,\"state\":\"queued\",\"reason\":\"pending\",\"revision\":1,\"createdAt\":1788956583150,\"updatedAt\":1788956583150,\"targetRunId\":null,\"targetSourceId\":null,\"targetOwnerEpoch\":null,\"commandSessionId\":null,\"commandRequestId\":\"peer:02b82a16-ee02-479d-ab8a-b1e89b87c9ed\",\"terminalInstanceId\":null,\"generation\":null,\"nativeSessionId\":null,\"commandDigest\":null,\"acceptedNativeMessageId\":null,\"acceptedAt\":null}}"
+          }
+        ]
+      },
+      {
+        "id": "B",
+        "nativeUuid": "869df7dd-0678-4c78-8343-cb71328c06f2",
+        "toolUseId": "toolu_019QG8aUVsiMi93nWF5KoEkg",
+        "name": "mcp__workspace_messaging__agent_context",
+        "isAllowedMcpTool": true,
+        "input": {},
+        "results": [
+          {
+            "nativeUuid": "5140288a-dc3f-499c-84da-d5f980da887c",
+            "isError": false,
+            "contentHash": "cc1910ea1e1f6fe5d2daaffc5492dbedaf81c8180064027586445306a36d317c",
+            "content": "{\"conversationId\":\"46e4f168-9ed5-4b49-b163-ed2db7a679c8\",\"runId\":\"01b7266c-3fb0-43d6-82a9-e95ef40ea242\"}"
+          }
+        ]
+      },
+      {
+        "id": "B",
+        "nativeUuid": "4908747c-eb05-4e15-bf84-9b35221ee898",
+        "toolUseId": "toolu_01UF3bfnRr1uQrLasSXrDL1k",
+        "name": "mcp__workspace_messaging__agent_inbox",
+        "isAllowedMcpTool": true,
+        "input": {
+          "expectedConversationId": "46e4f168-9ed5-4b49-b163-ed2db7a679c8",
+          "expectedRunId": "01b7266c-3fb0-43d6-82a9-e95ef40ea242"
+        },
+        "results": [
+          {
+            "nativeUuid": "bb2c66c3-e75a-42ae-b2d5-feb3f271d8ec",
+            "isError": false,
+            "contentHash": "8c492ea59d915f804bb12f7aec440f2b9ffed88c6412422c37043f0f24eff858",
+            "content": "{\"conversationId\":\"46e4f168-9ed5-4b49-b163-ed2db7a679c8\",\"runId\":\"01b7266c-3fb0-43d6-82a9-e95ef40ea242\",\"items\":[{\"message\":{\"id\":\"0f6b748c-85bb-40af-821b-c460b7c8d998\",\"senderKind\":\"agent\",\"senderConversationId\":\"59737e98-ccee-455a-abd0-0b865ef72660\",\"senderRunId\":\"c5c54669-f993-4783-8af3-82bc330dc010\",\"senderScope\":\"agent:59737e98-ccee-455a-abd0-0b865ef72660\",\"requestId\":\"G3MCP_58aaee9c8ab344c29bc8f742a80345a8_A_B\",\"recipientId\":\"46e4f168-9ed5-4b49-b163-ed2db7a679c8\",\"format\":\"text/v1\",\"createdAt\":1788956583150,\"inReplyTo\":null,\"preview\":\"G3MCP_58aaee9c8ab344c29bc8f742a80345a8: Please calculate 17 * 23 and return the integer to me.\",\"truncated\":false},\"delivery\":{\"id\":\"02b82a16-ee02-479d-ab8a-b1e89b87c9ed\",\"messageId\":\"0f6b748c-85bb-40af-821b-c460b7c8d998\",\"recipientId\":\"46e4f168-9ed5-4b49-b163-ed2db7a679c8\",\"enqueueSeq\":1,\"state\":\"accepted\",\"reason\":null,\"revision\":3,\"createdAt\":1788956583150,\"updatedAt\":1788956584150,\"targetRunId\":\"01b7266c-3fb0-43d6-82a9-e95ef40ea242\",\"targetSourceId\":\"c38b478b-a2e3-4756-b925-903fe3d01f35\",\"targetOwnerEpoch\":1,\"commandSessionId\":\"B\",\"commandRequestId\":\"peer:02b82a16-ee02-479d-ab8a-b1e89b87c9ed\",\"terminalInstanceId\":\"5131cd9f-3600-4bf2-8116-07e8c1095a9f\",\"generation\":\"bee80030-93e0-42e2-bf20-60d8676d2db7\",\"nativeSessionId\":\"ce4babcd-5c03-49b5-938e-8871e7789a72\",\"commandDigest\":\"b48c5e121093868fe31786055772a199c2bb2a8874d5c262c394c46dae0a1d94\",\"acceptedNativeMessageId\":\"cf3b6c6a-749c-40ea-a04f-821d32d04760\",\"acceptedAt\":1788956584150}}],\"nextCursor\":null}"
+          }
+        ]
+      },
+      {
+        "id": "B",
+        "nativeUuid": "14a9e794-a5d5-40df-ae8b-03ceeea934d6",
+        "toolUseId": "toolu_018YLL3UDg6wzEcWx1TBk8xf",
+        "name": "mcp__workspace_messaging__agent_send",
+        "isAllowedMcpTool": true,
+        "input": {
+          "expectedConversationId": "46e4f168-9ed5-4b49-b163-ed2db7a679c8",
+          "expectedRunId": "01b7266c-3fb0-43d6-82a9-e95ef40ea242",
+          "recipientId": "59737e98-ccee-455a-abd0-0b865ef72660",
+          "requestId": "G3MCP_58aaee9c8ab344c29bc8f742a80345a8_B_A",
+          "inReplyTo": "0f6b748c-85bb-40af-821b-c460b7c8d998",
+          "text": "G3MCP_58aaee9c8ab344c29bc8f742a80345a8: 391"
+        },
+        "results": [
+          {
+            "nativeUuid": "1f2dff36-4c3d-4fbd-9f87-92ae1ead22e5",
+            "isError": false,
+            "contentHash": "3eacedd742253eca711cfa864865d2f7a9a05e33b576938ea0e36edbe2a915bd",
+            "content": "{\"message\":{\"id\":\"871bbbb2-8570-40ec-94a3-7bb363195ce4\",\"senderKind\":\"agent\",\"senderConversationId\":\"46e4f168-9ed5-4b49-b163-ed2db7a679c8\",\"senderRunId\":\"01b7266c-3fb0-43d6-82a9-e95ef40ea242\",\"senderScope\":\"agent:46e4f168-9ed5-4b49-b163-ed2db7a679c8\",\"requestId\":\"G3MCP_58aaee9c8ab344c29bc8f742a80345a8_B_A\",\"recipientId\":\"59737e98-ccee-455a-abd0-0b865ef72660\",\"text\":\"G3MCP_58aaee9c8ab344c29bc8f742a80345a8: 391\",\"format\":\"text/v1\",\"createdAt\":1788956591202,\"inReplyTo\":\"0f6b748c-85bb-40af-821b-c460b7c8d998\"},\"delivery\":{\"id\":\"0971b94d-a4a9-4f9b-9888-3ba76cecc504\",\"messageId\":\"871bbbb2-8570-40ec-94a3-7bb363195ce4\",\"recipientId\":\"59737e98-ccee-455a-abd0-0b865ef72660\",\"enqueueSeq\":2,\"state\":\"queued\",\"reason\":\"pending\",\"revision\":1,\"createdAt\":1788956591202,\"updatedAt\":1788956591202,\"targetRunId\":null,\"targetSourceId\":null,\"targetOwnerEpoch\":null,\"commandSessionId\":null,\"commandRequestId\":\"peer:0971b94d-a4a9-4f9b-9888-3ba76cecc504\",\"terminalInstanceId\":null,\"generation\":null,\"nativeSessionId\":null,\"commandDigest\":null,\"acceptedNativeMessageId\":null,\"acceptedAt\":null}}"
+          }
+        ]
+      }
+    ],
+    "nativeDiagnostics": [
+      {
+        "id": "A",
+        "userRows": 3,
+        "assistantRows": 4,
+        "models": [
+          "claude-sonnet-5"
+        ],
+        "assistantEvidence": [
+          {
+            "uuid": "4d682642-e102-4d58-820e-fb40a5dfda7a",
+            "parentUuid": "c70f06e0-8938-49ce-9f59-620fd3c00994",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "error": "null",
+            "stopReason": "tool_use",
+            "textHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "shortText": "",
+            "toolNames": []
+          },
+          {
+            "uuid": "edee9f94-065e-477b-99d4-0f449f3898ed",
+            "parentUuid": "4d682642-e102-4d58-820e-fb40a5dfda7a",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "error": "null",
+            "stopReason": "tool_use",
+            "textHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "shortText": "",
+            "toolNames": [
+              "mcp__workspace_messaging__agent_context"
+            ]
+          },
+          {
+            "uuid": "8b0367cc-e817-44c8-9ee0-55a1ac27b523",
+            "parentUuid": "e55479fe-e2d8-4e7c-b74b-b5075acdac7d",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "error": "null",
+            "stopReason": "tool_use",
+            "textHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "shortText": "",
+            "toolNames": [
+              "mcp__workspace_messaging__agent_send"
+            ]
+          },
+          {
+            "uuid": "e0bfb47e-d04c-4b6d-ac3d-73d8db0b620d",
+            "parentUuid": "139e13cc-e645-4c76-b615-5fa15a37c57f",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "error": "null",
+            "stopReason": "end_turn",
+            "textHash": "856a0c72ffc80ed7497246823eef70e8d60a67f1060ae79139f08212a996b4a2",
+            "shortText": "G3MCP_58aaee9c8ab344c29bc8f742a80345a8 REQUESTED",
+            "toolNames": []
+          }
+        ],
+        "toolErrors": []
+      },
+      {
+        "id": "B",
+        "userRows": 5,
+        "assistantRows": 7,
+        "models": [
+          "claude-sonnet-5"
+        ],
+        "assistantEvidence": [
+          {
+            "uuid": "6a6f489c-1d62-4c55-bee8-ffc1d34b05be",
+            "parentUuid": "232de270-7305-4c66-9615-24b7fe505bf3",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "error": "null",
+            "stopReason": "end_turn",
+            "textHash": "e301724f9050cf6a67729a438f97b576f7b6c0793c9646699f09efdb75856ac0",
+            "shortText": "G3MCP_58aaee9c8ab344c29bc8f742a80345a8 READY",
+            "toolNames": []
+          },
+          {
+            "uuid": "12d81bfe-a4aa-418a-ab7c-204df3edca55",
+            "parentUuid": "569e0f06-ce9f-4477-97ed-d3c70bbe57e4",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "error": "null",
+            "stopReason": "tool_use",
+            "textHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "shortText": "",
+            "toolNames": []
+          },
+          {
+            "uuid": "869df7dd-0678-4c78-8343-cb71328c06f2",
+            "parentUuid": "12d81bfe-a4aa-418a-ab7c-204df3edca55",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "error": "null",
+            "stopReason": "tool_use",
+            "textHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "shortText": "",
+            "toolNames": [
+              "mcp__workspace_messaging__agent_context"
+            ]
+          },
+          {
+            "uuid": "4908747c-eb05-4e15-bf84-9b35221ee898",
+            "parentUuid": "d118c5f6-6385-4ffb-ac06-9094927c88e3",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "error": "null",
+            "stopReason": "tool_use",
+            "textHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "shortText": "",
+            "toolNames": [
+              "mcp__workspace_messaging__agent_inbox"
+            ]
+          },
+          {
+            "uuid": "9b046e8d-9846-4eeb-9f98-c920e39a5725",
+            "parentUuid": "6eb96a90-0d40-43ae-bfc0-7e65a489d9dc",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "error": "null",
+            "stopReason": "tool_use",
+            "textHash": "35d25b04733c33b07518e1ba56bce93f4220f238a72bce52f9666dae196a5889",
+            "shortText": "Message found with delivery.state accepted. 17 * 23 = 391.",
+            "toolNames": []
+          },
+          {
+            "uuid": "14a9e794-a5d5-40df-ae8b-03ceeea934d6",
+            "parentUuid": "9b046e8d-9846-4eeb-9f98-c920e39a5725",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "error": "null",
+            "stopReason": "tool_use",
+            "textHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "shortText": "",
+            "toolNames": [
+              "mcp__workspace_messaging__agent_send"
+            ]
+          },
+          {
+            "uuid": "cbbf4b9d-d0bf-4f4e-91d9-1e755468a2dc",
+            "parentUuid": "951e6510-7651-4185-a1d0-7a2f124474fa",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "error": "null",
+            "stopReason": "end_turn",
+            "textHash": "482dcfa265ece48963d533194f1032d77f3fa28c3677ec952244a7e303022f22",
+            "shortText": "G3MCP_58aaee9c8ab344c29bc8f742a80345a8 SENT 391",
+            "toolNames": []
+          }
+        ],
+        "toolErrors": []
+      },
+      {
+        "id": "C",
+        "userRows": 0,
+        "assistantRows": 0,
+        "models": [],
+        "assistantEvidence": [],
+        "toolErrors": []
+      }
+    ],
+    "cleanupRequiredIntervention": [],
+    "cleanup": [
+      {
+        "id": "A",
+        "kind": "pty",
+        "pid": 86180,
+        "alive": false
+      },
+      {
+        "id": "A",
+        "kind": "claude",
+        "pid": 86234,
+        "alive": false
+      },
+      {
+        "id": "B",
+        "kind": "pty",
+        "pid": 86531,
+        "alive": false
+      },
+      {
+        "id": "B",
+        "kind": "claude",
+        "pid": 86537,
+        "alive": false
+      },
+      {
+        "id": "C",
+        "kind": "pty",
+        "pid": 86664,
+        "alive": false
+      },
+      {
+        "id": "C",
+        "kind": "claude",
+        "pid": 86670,
+        "alive": false
+      },
+      {
+        "id": "A",
+        "kind": "wrapper",
+        "pid": 86512,
+        "alive": false
+      },
+      {
+        "id": "A",
+        "kind": "mcp-server",
+        "pid": 86525,
+        "alive": false
+      },
+      {
+        "id": "B",
+        "kind": "wrapper",
+        "pid": 86559,
+        "alive": false
+      },
+      {
+        "id": "B",
+        "kind": "mcp-server",
+        "pid": 86569,
+        "alive": false
+      },
+      {
+        "id": "C",
+        "kind": "wrapper",
+        "pid": 86720,
+        "alive": false
+      },
+      {
+        "id": "C",
+        "kind": "mcp-server",
+        "pid": 86728,
+        "alive": false
+      }
+    ]
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "name": "backend",
+  "private": true,
+  "version": "0.0.2",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --experimental-test-module-mocks --test tests/*.test.ts",
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "rebuild-pty": "node ../scripts/rebuild-pty.mjs"
+  },
+  "dependencies": {
+    "@roost/attachment-store": "0.0.0",
+    "@roost/ai-session-bridge": "0.0.0",
+    "@roost/cli-adapters": "0.0.0",
+    "@roost/terminal-daemon": "0.0.0",
+    "@roost/terminal-protocol": "0.0.0",
+    "@roost/terminal-runtime": "0.0.0",
+    "@roost/workspace-store": "0.0.0",
+    "@xmldom/xmldom": "^0.9.12",
+    "sharp": "^0.35.4",
+    "ws": "^8.21.3",
+    "@roost/ai-transcript": "0.0.0",
+    "@roost/server-monitor": "0.0.0",
+    "@roost/subscriptions": "0.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.1",
+    "@types/ws": "^8.18.1",
+    "@xterm/headless": "6.0.0",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2"
+  }
+}

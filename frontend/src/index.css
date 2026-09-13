@@ -1,0 +1,444 @@
+@import "tailwindcss";
+
+@theme {
+  /* Apple-style monochrome, dark */
+  --color-bg: #111113;
+  --color-bg-panel: #202023;
+  --color-bg-raised: #2c2c2e;
+  --color-bg-hover: #38383b;
+  --color-bg-active: #46464a;
+  --color-border: #3a3a3e;
+  --color-terminal-selection: #48484a;
+  --color-scrollbar: rgba(255, 255, 255, 0.25);
+  --color-scrollbar-hover: rgba(255, 255, 255, 0.40);
+  --color-text: #f5f5f7;
+  --color-text-dim: #8e8e93;
+  --color-accent: #ffffff;
+  --color-bar: #1c1c1e;
+  --color-bar-text: #ffffff;
+  --color-bar-dim: rgba(255, 255, 255, 0.6);
+  --color-danger: #ff453a;
+  --color-success: #30d158;
+  --color-warning: #ffd60a;
+  --color-danger-soft: rgba(255, 69, 58, 0.12);
+  --color-success-soft: rgba(48, 209, 88, 0.12);
+  --color-warning-soft: rgba(255, 214, 10, 0.12);
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "SF Mono", ui-monospace, "IBM Plex Mono", monospace;
+  --text-caption: 11px;
+  --text-caption--line-height: 1.45;
+  --text-body: 13px;
+  --text-body--line-height: 1.45;
+}
+/* Dark is the base; the light block below overrides. Shadows are plain properties, not
+   @theme tokens, because Tailwind inlines a theme shadow into the utility and would never
+   read the light override. */
+:root {
+  color-scheme: dark;
+  --shadow-pop: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --shadow-modal: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+html[data-theme="light"] {
+  /* Strict black & white: surfaces white, text black, hairlines black-based.
+     Functional tones collapse to black; dark theme keeps its hues. */
+  --color-bar: #e7e7eb;
+  --color-bar-text: #1c1c1e;
+  --color-bar-dim: rgba(28, 28, 30, 0.62);
+  --color-bg: #f4f4f6;
+  --color-bg-panel: #ffffff;
+  --color-bg-raised: #ffffff;
+  --color-bg-hover: #ededf0;
+  --color-bg-active: #e1e1e6;
+  --color-border: #bdbdbd;
+  --color-terminal-selection: #d1d1d6;
+  --color-text: #000000;
+  --color-text-dim: #666666;
+  --color-accent: #000000;
+  --color-scrollbar: rgba(0, 0, 0, 0.25);
+  --color-scrollbar-hover: rgba(0, 0, 0, 0.40);
+  --color-danger: #c62828;
+  --color-success: #218739;
+  --color-warning: #9a6700;
+  --color-danger-soft: rgba(198, 40, 40, 0.10);
+  --color-success-soft: rgba(33, 135, 57, 0.10);
+  --color-warning-soft: rgba(154, 103, 0, 0.12);
+  color-scheme: light;
+  /* White surfaces need far less alpha than the dark ramp to read as elevation. */
+  --shadow-pop: 0 4px 12px rgba(0, 0, 0, 0.12);
+  --shadow-modal: 0 12px 32px rgba(0, 0, 0, 0.18);
+}
+
+/* Aliases for xtermThemeFromCss() which reads --bg, --text, --accent, --border */
+:root {
+  --bg: var(--color-bg);
+  --text: var(--color-text);
+  --accent: var(--color-accent);
+  --border: var(--color-border);
+  --terminal-selection: var(--color-terminal-selection);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  min-height: 100dvh;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 13px;
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Resize handle pseudo-element */
+.resize {
+  width: 5px;
+  background: transparent;
+  position: relative;
+}
+.resize::after {
+  content: "";
+  position: absolute;
+  inset: 0 2px;
+  background: var(--color-border);
+}
+.resize:hover::after,
+.resize[data-resize-handle-active]::after {
+  background: var(--color-accent);
+}
+
+/* xterm.js internal DOM */
+html[data-terminal-theme="dark"] {
+  --terminal-bg: #111113;
+  --terminal-fg: #f5f5f7;
+  --terminal-selection: #48484a;
+}
+html[data-terminal-theme="light"] {
+  --terminal-bg: #ffffff;
+  --terminal-fg: #000000;
+  --terminal-selection: #d1d1d6;
+}
+.term-fit .xterm,
+.term-fit .xterm-viewport {
+  height: 100%;
+  width: 100%;
+  background: var(--terminal-bg, var(--color-bg));
+}
+.term-fit .xterm-viewport {
+  overflow-x: hidden;
+  overflow-y: auto;
+  background-color: var(--terminal-bg, var(--color-bg)) !important;
+}
+.term-fit canvas {
+  display: block;
+}
+
+/* Apple-style slim scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-scrollbar) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-scrollbar);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-scrollbar-hover);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* xterm custom DOM scrollbar override (inline styles from xterm.js) */
+.term-fit .xterm-scrollable-element > .scrollbar {
+  width: 6px !important;
+}
+.term-fit .xterm-scrollable-element > .scrollbar > .slider {
+  background: var(--color-scrollbar) !important;
+  border-radius: 3px !important;
+  min-height: 24px !important;
+}
+.term-fit .xterm-scrollable-element > .scrollbar > .slider:hover {
+  background: var(--color-scrollbar-hover) !important;
+}
+.term-fit .xterm-scrollable-element > .shadow {
+  display: none !important;
+}
+
+/* Shiki code highlight output */
+/*
+ * Markdown 预览的排版。
+ *
+ * 颜色一律走设计令牌，一个都不硬编码：这个面板跟随明暗主题，
+ * 写死颜色的结果是浅色下一片黑、或深色下一片白。
+ * 宽内容（表格、代码块）各自横向滚动，不允许把整个面板撑出横向滚动条。
+ */
+.md-body {
+  padding: 12px 14px;
+  color: var(--color-text);
+  font-size: 13px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.md-body > :first-child { margin-top: 0; }
+.md-body > :last-child { margin-bottom: 0; }
+.md-body h1, .md-body h2, .md-body h3,
+.md-body h4, .md-body h5, .md-body h6 {
+  margin: 1.4em 0 0.6em;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.md-body h1 { font-size: 1.5em; }
+.md-body h2 { font-size: 1.28em; }
+.md-body h3 { font-size: 1.12em; }
+.md-body h4, .md-body h5, .md-body h6 { font-size: 1em; }
+.md-body h1, .md-body h2 {
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--color-border);
+}
+.md-body p, .md-body ul, .md-body ol, .md-body blockquote, .md-body pre, .md-body table {
+  margin: 0.75em 0;
+}
+.md-body ul, .md-body ol { padding-left: 1.5em; }
+.md-body ul { list-style: disc; }
+.md-body ol { list-style: decimal; }
+.md-body li { margin: 0.25em 0; }
+.md-body li > ul, .md-body li > ol { margin: 0.25em 0; }
+.md-body a {
+  color: var(--color-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.md-body a:hover { text-decoration-thickness: 2px; }
+.md-body blockquote {
+  padding: 0.1em 0 0.1em 0.9em;
+  border-left: 3px solid var(--color-border);
+  color: var(--color-text-dim);
+}
+.md-body hr {
+  margin: 1.5em 0;
+  border: 0;
+  border-top: 1px solid var(--color-border);
+}
+.md-body code {
+  padding: 0.15em 0.35em;
+  border-radius: 4px;
+  background: var(--color-bg-hover);
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+}
+/* 代码块里的行内 code 样式要让位给块级容器，否则会叠两层背景。 */
+.md-body pre {
+  margin: 0.75em 0;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg);
+  overflow-x: auto;
+}
+.md-body pre code {
+  padding: 0;
+  background: transparent;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+/* shiki 替换进来的块沿用同一个外框，视觉上和未高亮时一致。 */
+.md-body .code-highlight {
+  margin: 0.75em 0;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg);
+  overflow-x: auto;
+}
+.md-body .code-highlight .shiki { white-space: pre; }
+.md-body table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  border-collapse: collapse;
+  overflow-x: auto;
+}
+.md-body th, .md-body td {
+  padding: 6px 10px;
+  border: 1px solid var(--color-border);
+  text-align: left;
+}
+.md-body th { background: var(--color-bg-hover); font-weight: 600; }
+.md-body img { max-width: 100%; height: auto; border-radius: 4px; }
+.md-body input[type="checkbox"] { margin-right: 0.4em; }
+
+.code-highlight .shiki {
+  margin: 0;
+  padding: 12px 14px;
+  background-color: transparent !important;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  border-radius: 0;
+}
+
+/* Terminal status exited: descendant selectors */
+.term-status-exited button {
+  padding: 4px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.term-status-exited button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+.term-status-exited [role="alert"] {
+  flex-basis: 100%;
+  overflow-wrap: anywhere;
+}
+
+/* 单色 logo（grok / codex）自身是黑色线稿，深色主题下要反色才看得见 */
+html[data-theme="dark"] .session-logo-mono {
+  filter: invert(1);
+}
+
+/* File tree list reset */
+.file-tree,
+.file-tree ul {
+  list-style: none;
+  margin: 0;
+  padding: 6px 4px;
+}
+.file-tree ul {
+  padding: 0;
+}
+
+/* Caret blink (legacy) */
+.caret {
+  display: inline-block;
+  width: 7px;
+  height: 13px;
+  background: var(--color-accent);
+  transform: translateY(2px);
+  animation: blink 1.1s steps(1) infinite;
+}
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+@layer base {
+  :where(button):not(:disabled) {
+    cursor: pointer;
+  }
+  :where(button, a, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 1px;
+  }
+  :where(.xterm, .cm-editor) :focus-visible {
+    outline: none;
+  }
+}
+/* Monochrome file-type icons under the light B/W theme. Presentation
+   attributes lose to real CSS rules, so fills/strokes follow the text
+   color; transparent parts (fill="none") are left alone. */
+html[data-theme="light"] .mono-icon svg [fill]:not([fill="none"]) {
+  fill: currentColor;
+}
+html[data-theme="light"] .mono-icon svg [stroke]:not([stroke="none"]) {
+  stroke: currentColor;
+}
+.bar-chrome :focus-visible {
+  outline-color: var(--color-bar-text);
+}
+
+
+/* Mouse focus is persistent; only keyboard-visible focus should reveal actions.
+   Keep transparent buttons in the tab order, but prevent invisible pointer hits. */
+.session-row .session-toolbar {
+  width: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.session-row:is(:hover, :focus-visible, :has(.session-toolbar :focus-visible), [data-toolbar-open="true"]) .session-toolbar {
+  width: 44px;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.session-row:is(:hover, :focus-visible, :has(.session-toolbar :focus-visible), [data-toolbar-open="true"]) .session-pin {
+  visibility: hidden;
+}
+
+/*
+ * 触屏适配。刻意按能力查询而不是按屏幕宽度：触屏笔记本、外接鼠标的平板都存在，
+ * 「屏幕小」和「用手指」是两件事。
+ */
+
+/* 没有悬停就没有「移上去才出现」这回事。会话行的操作入口（一个 ⋯ 菜单）
+   必须常驻，否则手机上重命名、结束会话这些动作根本够不着。 */
+@media (hover: none) {
+  .session-row .session-toolbar {
+    width: 44px;
+    opacity: 1;
+    pointer-events: auto;
+  }
+  /* 工具条常驻会占住右上角。置顶标记不能像悬停展开时那样直接藏掉——
+     那等于手机上永远看不到置顶状态，所以挪到工具条左边。 */
+  .session-row .session-pin {
+    right: 3.5rem;
+    visibility: visible;
+  }
+}
+
+/* 只在触屏上出现的入口。默认藏起来，避免在桌面上多一个没用的按钮。 */
+.touch-only {
+  display: none;
+}
+@media (pointer: coarse) {
+  .touch-only {
+    display: inline-flex;
+  }
+}
+
+/* 手指点不准 20px。只放大点击区域，图标本身不变：min-* 会盖过更小的 height/width，
+   不必和工具类打特异性官司。 */
+@media (pointer: coarse) {
+  .icon-button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* 卡片只用两个信号：背景填充 = 选中，logo 角上那一个点 = 会话状态（含未读）。
+   旧实现里未读画的是整卡描边 + 背景，和选中同属「面」且同为 accent 色；
+   呼吸动画又只在「未读且正在输出」时生效，输出一停就静止在 opacity .7，
+   边框比选中态还亮（#5e5e61 vs #3a3a3e），于是看起来像被选中了。 */
+
+/* Hand-written so the box-shadow reads the variable at use time and follows the theme. */
+@layer utilities {
+  .shadow-pop {
+    box-shadow: var(--shadow-pop);
+  }
+  .shadow-modal {
+    box-shadow: var(--shadow-modal);
+  }
+}

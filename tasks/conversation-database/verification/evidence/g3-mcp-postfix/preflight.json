@@ -1,0 +1,18 @@
+{
+  "sourceSha256": {
+    "backend/tests/peer-messages-mcp-live.test.ts": "9dac57020a0b97b5122ca4b20e1e0a0fd10c71691088e2c121981a8d0395a01a",
+    "packages/terminal-daemon/src/claude-launch.ts": "d217e3a1f536a75445a50878876f739afc19d6ff4ff7b36830c19f118578d55e",
+    "packages/terminal-daemon/src/claude-screen.ts": "5adae420992de325bf19c028838f2851b10f856cf2aa6d08ec4600ff921c48ac",
+    "/tmp/g3-mcp-postfix-run-live.py": "9ff5e0374c885eb397f2bdac02e7d629cfd627b7d7d2bc1dfbc5b8ef41abe317"
+  },
+  "claudeVersion": "2.1.266",
+  "launchAndScreen": {
+    "pass": 8,
+    "fail": 0
+  },
+  "defaultLiveEntry": {
+    "pass": 2,
+    "skip": 1,
+    "fail": 0
+  }
+}

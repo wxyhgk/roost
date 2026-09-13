@@ -1,0 +1,28 @@
+{
+  "sourceArtifact": "/tmp/g3-peer-live-attempt2-result.json",
+  "sourceSha256": "9ba0de410e6f6711b2cfafd552ba18a38a36f248a2bcc5fe9d7e82463eeca0d0",
+  "redaction": "temporary filesystem paths and shell identity; original status/UUID/hash values retained",
+  "result": {
+    "cli": "claude",
+    "version": "2.1.266",
+    "requestedModel": "CLI default",
+    "marker": "G3_09db48132081480b98db396197e20113",
+    "startedAt": "2026-09-09T11:11:41.004Z",
+    "scope": "real CLI backend protocol; no browser visual claim",
+    "startupA": {
+      "welcome": true,
+      "theme": false,
+      "trust": false,
+      "login": false,
+      "continue": false,
+      "outputBytes": 4246
+    },
+    "startupScreenA": "'claude' '--permission-mode' 'dontAsk' '--strict-mcp-config' '--mcp-config' '/var/folders/59/nlw8jr4n6dggwwmfw3mjzcjh000\n0gn/T/g3-peer-claude-9hja7E/work/empty-mcp.json' '--tools' 'Bash' '--settings' '/var/folders/59/nlw8jr4n6dggwwmfw3mjzcjh\n0000gn/T/g3-peer-claude-9hja7E/work/settings-A.json' '--allowedTools' 'Bash('\\''/opt/homebrew/Cellar/node/25.9.0_2/bin/n\node'\\'' '\\''[test-work]/work/agent-message-g3-a.mjs'\\'')'\n[test-shell] A % 'claude' '--permission-mode' 'dontAsk' '--strict-mcp-config' '--mcp-config' '/var/folders/59/nlw8\njr4n6dggwwmfw3mjzcjh0000gn/T/g3-peer-claude-9hja7E/work/empty-mcp.json' '--tools' 'Bash' '--settings' '/var/folders/59/n\nlw8jr4n6dggwwmfw3mjzcjh0000gn/T/g3-peer-claude-9hja7E/work/settings-A.json' '--allowedTools' 'Bash('\\''/opt/homebrew/Cel\nlar/node/25.9.0_2/bin/node'\\'' '\\''[test-work]/work/agent-mes\nsage-g3-a.mjs'\\'')'\nWelcome to Claude Code v2.1.266\n..........................................................\n\n     *                                       █████▓▓░\n                                 *         ███▓░     ░░\n            ░░░░░░                        ███▓░\n    ░░░   ░░░░░░░░░░                      ███▓░\n   ░░░░░░░░░░░░░░░░░░░    *                ██▓░░      ▓\n                                             ░▓▓███▓▓░\n *                                 ░░░░\n                                 ░░░░░░░░\n                               ░░░░░░░░░░░░░░░░\n       █████████                                        *\n      ██▄█████▄██                        *\n       █████████      *\n.......█ █   █ █..........................................\n\n Unable to connect to Anthropic services\n\n Failed to connect to api.anthropic.com: UNKNOWN_CERTIFICATE_VERIFICATION_ERROR\n\n Please check your internet connection and network settings.\n\n Note: Claude Code might not be available in your country. Check supported countries at\n https://anthropic.com/supported-countries\n[test-shell] A % \n\n\n\n\n",
+    "success": false,
+    "lastPhase": "start isolated owner and gateway",
+    "phases": [
+      "start isolated owner and gateway"
+    ],
+    "finishedAt": "2026-09-09T11:12:26.089Z"
+  }
+}

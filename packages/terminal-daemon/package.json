@@ -1,0 +1,28 @@
+{
+  "name": "@roost/terminal-daemon",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./client": "./src/client.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test --test-concurrency=2 tests/*.test.ts"
+  },
+  "dependencies": {
+    "@roost/terminal-protocol": "0.0.0",
+    "@roost/terminal-runtime": "0.0.0",
+    "@roost/workspace-store": "0.0.0",
+    "@xterm/headless": "6.0.0",
+    "ws": "^8.21.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.1",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2",
+    "@modelcontextprotocol/sdk": "1.30.0"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "@roost/i18n",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "types": "./src/index.ts",
+  "scripts": { "typecheck": "tsc --noEmit", "test": "node --import tsx --test tests/*.test.ts" },
+  "devDependencies": { "@types/node": "^26.4.1", "tsx": "^4.23.13", "typescript": "^7.0.2" }
+}

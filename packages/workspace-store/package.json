@@ -1,0 +1,25 @@
+{
+  "name": "@roost/workspace-store",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --experimental-test-module-mocks --test tests/*.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.1",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "@roost/cli-adapters": "0.0.0",
+    "@roost/ai-session-bridge": "0.0.0",
+    "@roost/terminal-protocol": "0.0.0"
+  }
+}

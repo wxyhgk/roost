@@ -1,0 +1,23 @@
+{
+  "name": "@roost/stable-workbench",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/*.test.ts"
+  },
+  "dependencies": {
+    "@xterm/xterm": "6.0.0",
+    "@xterm/addon-fit": "0.11.0"
+  },
+  "devDependencies": {
+    "vite": "7.3.6",
+    "tsx": "4.23.13",
+    "typescript": "5.8.3",
+    "@types/node": "26.4.1",
+    "ws": "8.21.3",
+    "@types/ws": "8.18.1"
+  }
+}

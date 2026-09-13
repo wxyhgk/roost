@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="58px" height="64px" viewBox="0 0 58 64" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>oh-my-pi</title>
+    <defs>
+        <linearGradient x1="22.603929%" y1="-1.16427432%" x2="78.169405%" y2="100.956938%" id="linearGradient-1">
+            <stop stop-color="#F13EA7" offset="0%"></stop>
+            <stop stop-color="#A14BFF" offset="49.73%"></stop>
+            <stop stop-color="#6EADF9" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="页面-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="oh-my-pi" transform="translate(0.8, 0.9)" fill="url(#linearGradient-1)" fill-rule="nonzero">
+            <polygon id="路径" points="0 7.10542736e-15 0 12.6 6.4 12.6 6.3 47.2 18.9 47.2 18.9 12.6 28.1 12.6 28.2 62.7 40.7 62.7 40.7 12.6 56.3 12.6 56.3 0"></polygon>
+        </g>
+    </g>
+</svg>

@@ -1,0 +1,23 @@
+/* Scope neutral colors to both portal locations, including the expanded header. */
+.server-monitor {
+  --color-bg: #141414;
+  --color-bg-panel: #202020;
+  --color-bg-raised: #282828;
+  --color-bg-hover: #363636;
+  --color-border: #444444;
+  --color-text: #f5f5f5;
+  --color-text-dim: #a0a0a0;
+  color: var(--color-text);
+  accent-color: var(--color-text);
+  scrollbar-color: #777777 transparent;
+}
+html[data-theme="light"] .server-monitor {
+  --color-bg: #f5f5f5;
+  --color-bg-panel: #ffffff;
+  --color-bg-raised: #ffffff;
+  --color-bg-hover: #eeeeee;
+  --color-border: #bdbdbd;
+  --color-text: #111111;
+  --color-text-dim: #666666;
+}
+.server-monitor :is(button,input,textarea):focus-visible { outline: 2px solid var(--color-text); outline-offset: 2px; }

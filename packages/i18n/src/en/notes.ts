@@ -1,0 +1,76 @@
+// notes 域的界面文案。形状约定见 workspace.ts 顶部。
+export const notes = {
+  editor: {
+    codeBody: "Code body",
+    codeEditor: "Code editor",
+    noteBody: "Note body",
+    notePlaceholder: "Jot something down… (autosave)",
+    snippetTitle: "Snippet title",
+    snippetLang: "Code language",
+  },
+
+  list: {
+    searchNotes: "Search notes…",
+    searchSnippets: "Search snippets…",
+    newNote: "New note",
+    newSnippet: "New snippet",
+    untitled: "Untitled",
+    unnamed: "Unnamed",
+    unnamedSnippet: "Unnamed snippet",
+    delete: "Delete",
+    loading: "Loading…",
+    retry: "Retry",
+    retryLoad: "Retry loading",
+    emptyQuery: "No matches",
+    empty: "Nothing here yet — click ＋ to create",
+    more: "Load more",
+    pendingDraft: (title: string, state: string) => `Draft · ${title} · ${state}`,
+  },
+
+  detail: {
+    switchHint: "Switch to the matching note/snippet panel to view",
+    deleteConfirm: "Delete this item?",
+    copied: "Copied",
+    copyFailed: "Copy failed",
+    noSession: "No open session",
+    emptySnippet: "Snippet is empty",
+    sentTo: (title: string) => `Sent to terminal connection: ${title}`,
+    queued: "Queued, waiting for the session to reconnect",
+    rejected: "Input not accepted; the session is not ready or the queue is full",
+    copy: "Copy content",
+    remoteDeleted: "Deleted on the remote; the local draft was kept",
+    retrySave: "Retry save",
+    saveNow: "Save now",
+    export: "Export",
+    exportFilename: "draft.json",
+    sendToSession: "Send to current session (no auto Enter)",
+    loading: "Loading body…",
+    empty: "Pick one from the list, or click ＋ to create",
+  },
+
+  conflict: {
+    deleted: "The original item can no longer be saved; you can save the draft as a copy.",
+    diverged: "The local draft differs from the server version; compare and choose.",
+    adopt: "Use remote",
+    fork: "Save draft as a copy",
+    summary: (revision: number) => `Compare local and server content (server version ${revision})`,
+    local: "Local draft",
+    remote: "Server content",
+    preview: (title: string | undefined, lang: string | undefined, code: string | undefined) =>
+      `${title}\nLanguage: ${lang}\n${code}`,
+  },
+
+  recovery: {
+    title: (n: number) => `Recoverable drafts (${n})`,
+    hint: "Recovery checks the server version; drafts from other windows keep their original backup.",
+    unnamed: "Unnamed draft",
+    restore: "Restore",
+    export: "Export",
+    exportFilename: "draft.json",
+    discardConfirm:
+      "Remove this local backup? Make sure it has been saved or exported; the server item will not be deleted.",
+    discard: "Remove backup",
+    unsavedFilename: "unsaved-draft.json",
+    exportUnsaved: "Export current draft",
+  },
+} as const;

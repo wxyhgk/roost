@@ -1,0 +1,33 @@
+{
+  "files": {
+    "backend/tests/peer-messages-mcp-live.test.ts": "9dac57020a0b97b5122ca4b20e1e0a0fd10c71691088e2c121981a8d0395a01a",
+    "packages/terminal-daemon/tests/claude-launch.test.ts": "c363bb431f943fdcd98bcde21b54d82bed99f246e4718bef6b3461723f652acb",
+    "packages/terminal-daemon/src/claude-launch.ts": "d217e3a1f536a75445a50878876f739afc19d6ff4ff7b36830c19f118578d55e",
+    "packages/terminal-daemon/tests/claude-screen.test.ts": "58c2e6c695a66e9a342554d1f98904d3c9e89e7a361551b9790da823d7874b0a"
+  },
+  "logs": {
+    "/tmp/g3-mcp-claude-launch.log": "fef51a7347d381d9a7029655cd323273118c101107b02d8fc235ac369ac0cb85",
+    "/tmp/g3-mcp-daemon-final.log": "f6f8506f0ea757fbdc636aff7184769a7d94e2edea5568f324816550c5670618",
+    "/tmp/g3-mcp-backend-final.log": "045497e2ae2a2fb6837d90cef4fd48fbf32bd54c9426fd88072937d9a93890ab"
+  },
+  "results": {
+    "claudeLaunch": {
+      "pass": 5,
+      "skip": 0,
+      "fail": 0
+    },
+    "daemonSerial": {
+      "pass": 50,
+      "skip": 2,
+      "fail": 0
+    },
+    "backendDefault": {
+      "pass": 169,
+      "skip": 7,
+      "fail": 0
+    }
+  },
+  "realAttempts": 2,
+  "realAttemptsPassed": 0,
+  "postFixModelRuns": 0
+}

@@ -1,0 +1,22 @@
+{
+  "sourceArtifact": "/tmp/g3-peer-live-attempt6-partial.json",
+  "sourceSha256": "9593befd5bfb8aeff96c610b9786c0e264c0ec91dc72df8998dd38a8fd03ccd1",
+  "redaction": "temporary filesystem paths and shell identity; original status/UUID/hash values retained",
+  "result": {
+    "source": "independent live readonly probe before test cleanup",
+    "messageId": "2253fe20-1408-4e65-9ff8-27a0adcb76a3",
+    "deliveryId": "38fc440e-1754-47bf-8ffb-f74ef51c9406",
+    "state": "accepted",
+    "revision": 3,
+    "targetSourceId": "8018b243-4cfe-4815-84ca-b602dab2706d",
+    "targetRunId": "3538f70a-f5f3-4a6e-a5ff-a580d6013048",
+    "targetOwnerEpoch": 1,
+    "nativeSessionId": "f7c24008-b1aa-4dd7-9d4b-2ace517f8b22",
+    "nativeMessageId": "34d8f10d-b720-4465-b3fb-c793f6585e24",
+    "exactSingleNativeBody": true,
+    "commandNativeUuidMatches": true,
+    "agentToolUseId": "toolu_01Br8agadjweG4ZSgUMp29aj",
+    "agentToolNativeUuid": "0267a6ba-9c99-429d-ad6a-4e885b2c7491",
+    "actualToolTraceMatchesMessageId": true
+  }
+}

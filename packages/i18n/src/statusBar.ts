@@ -1,0 +1,20 @@
+export const statusBar = {
+  title: '工作台状态', latency: '终端往返延迟', latencyHint: '最近一次终端心跳的往返时间', measuring: '等待延迟采样',
+  subscriptions: 'AI 订阅', platform: '订阅平台', unavailable: '尚未获取订阅信息', remaining: '剩余额度',
+  account: '账户', plan: '套餐', period: '额度周期', reset: '额度重置', renewal: '到期 / 续费', updated: '最近更新',
+  source: '数据来源', close: '关闭订阅详情', quotaUnavailable: '尚未获取额度',
+  refresh: '刷新额度', reading: '正在读取额度…', stale: '显示上次读数', failed: '连接失败，可稍后重试',
+  connectClaude: '连接 Claude 状态栏', connectedClaude: '已连接；Claude 报告额度后会自动显示',
+  configureKey: '设置 OpenCode Go API Key', key: 'API Key', saveKey: '保存并读取', useCliAccount: '使用 CLI 账户', cancel: '取消',
+  used: '已用', runtime: '服务器', unknownAccount: '接口未提供', sessionSource: '最近报告的 Claude 会话',
+  sources: { 'opencode-api': 'OpenCode Go API', 'codex-rpc': 'Codex App Server', 'claude-statusline': 'Claude Code 状态栏' },
+  windows: { rolling: '5 小时', weekly: '每周', monthly: '每月', five_hour: '5 小时', seven_day: '每周', spend_limit: '消费限额', primary: '主要额度', secondary: '附加额度' },
+  issues: {
+    not_configured: '未找到 OpenCode Go 凭据，可填写 Key 或登录这台服务器上的 OpenCode。',
+    login_required: '请重新登录这台服务器上的 CLI，或更新所用凭据。',
+    no_subscription: '当前凭据未提供此订阅的额度。', cli_missing: '这台服务器未找到对应 CLI。',
+    collector_not_connected: '连接状态栏后，Claude 的额度会在这里显示。', waiting_for_usage: '等待 Claude 报告额度；需要支持额度字段的版本与订阅。',
+    timeout: '额度查询超时，稍后自动重试。', network: '额度暂时不可用，稍后自动重试。', rate_limited: '查询暂时受限，稍后自动重试。',
+    invalid_response: '暂时无法识别额度数据。', unsupported: '当前账户或 CLI 未提供额度窗口。', account_changed: '账户已变化，请刷新额度。',
+  },
+} as const;

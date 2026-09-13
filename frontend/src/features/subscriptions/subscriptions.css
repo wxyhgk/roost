@@ -1,0 +1,15 @@
+.subscription-trigger { width: 92px; justify-content: space-between; }
+.subscription-stale { opacity: .65; }
+.subscription-meter { height: 4px; margin-top: 6px; border-radius: 2px; overflow: hidden; background: var(--color-border); }
+.subscription-meter > span { display: block; height: 100%; background: var(--color-text); }
+.subscription-action { padding: 6px 10px; border: 1px solid var(--color-border); border-radius: 5px; font-size: 11px; }
+.subscription-action:hover { background: var(--color-bg-hover); }
+.subscription-action:disabled { opacity: .4; }
+.subscription-logo { width: 16px; height: 16px; flex-shrink: 0; object-fit: contain; filter: brightness(0) invert(1); }
+html[data-theme="light"] .subscription-logo { filter: brightness(0); }
+.subscription-popover {
+  position: fixed; inset: auto 12px 44px auto; margin: 0;
+  width: min(320px, calc(100vw - 24px)); max-height: calc(100dvh - 70px); overflow-y: auto;
+  border: 1px solid var(--color-border); border-radius: 10px;
+  background: var(--color-bg-panel); color: var(--color-text); box-shadow: 0 8px 32px #0003;
+}

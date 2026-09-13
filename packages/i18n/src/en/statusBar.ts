@@ -1,0 +1,20 @@
+export const statusBar = {
+  title: 'Workbench status', latency: 'Terminal round-trip latency', latencyHint: 'Round-trip time of the latest terminal heartbeat', measuring: 'Waiting for a latency sample',
+  subscriptions: 'AI subscriptions', platform: 'Subscription provider', unavailable: 'Subscription information is not available yet', remaining: 'Remaining quota',
+  account: 'Account', plan: 'Plan', period: 'Quota period', reset: 'Quota resets', renewal: 'Expiry / renewal', updated: 'Last updated',
+  source: 'Data source', close: 'Close subscription details', quotaUnavailable: 'Quota is not available yet',
+  refresh: 'Refresh quota', reading: 'Reading quota…', stale: 'Showing last reading', failed: 'Connection failed; retry later',
+  connectClaude: 'Connect Claude status line', connectedClaude: 'Connected; quotas will appear when Claude reports them',
+  configureKey: 'Set OpenCode Go API key', key: 'API key', saveKey: 'Save and read', useCliAccount: 'Use CLI account', cancel: 'Cancel',
+  used: 'Used', runtime: 'Server', unknownAccount: 'Not provided by source', sessionSource: 'Latest reporting Claude session',
+  sources: { 'opencode-api': 'OpenCode Go API', 'codex-rpc': 'Codex App Server', 'claude-statusline': 'Claude Code status line' },
+  windows: { rolling: '5 hours', weekly: 'Weekly', monthly: 'Monthly', five_hour: '5 hours', seven_day: 'Weekly', spend_limit: 'Spend limit', primary: 'Primary quota', secondary: 'Additional quota' },
+  issues: {
+    not_configured: 'No OpenCode Go credential found. Add a key or sign in to OpenCode on this server.',
+    login_required: 'Sign in to the CLI on this server again, or update its credential.',
+    no_subscription: 'This credential does not provide the requested subscription quota.', cli_missing: 'The CLI was not found on this server.',
+    collector_not_connected: 'Connect the status line to see Claude quota here.', waiting_for_usage: 'Waiting for Claude quota. A compatible CLI and subscription are required.',
+    timeout: 'Quota query timed out. Retrying later.', network: 'Quota is temporarily unavailable. Retrying later.', rate_limited: 'Quota queries are temporarily limited. Retrying later.',
+    invalid_response: 'Quota data could not be recognized.', unsupported: 'This account or CLI does not provide quota windows.', account_changed: 'The account changed. Refresh quota.',
+  },
+} as const;

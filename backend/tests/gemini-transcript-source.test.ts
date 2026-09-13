@@ -1,0 +1,33 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtemp,writeFile,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {createWorkspaceStore} from '@roost/workspace-store';
+import {createAiSessionBridge} from '@roost/ai-session-bridge';
+import {createAiTranscriptSource} from '../src/ai-transcript-source.ts';
+
+test('Gemini explicit source persists message revisions and survives removal of the native file',async t=>{
+ const dir=await mkdtemp(join(tmpdir(),'gemini-source-'));
+ const store=createWorkspaceStore({dataDir:join(dir,'db')});
+ const bridge=createAiSessionBridge({storage:store.aiSessions});
+ const source=createAiTranscriptSource(bridge,[]);
+ t.after(async()=>{source.dispose();store.close();await rm(dir,{recursive:true,force:true});});
+ const path=join(dir,'session.json');
+ const data={sessionId:'native',projectHash:'project',startTime:'2026-09-09T00:00:00Z',messages:[{id:'answer',type:'gemini',content:'first',timestamp:'2026-09-09T00:00:01Z'}]};
+ await writeFile(path,JSON.stringify(data));
+ const binding=bridge.bind({webSessionId:'web',terminalInstanceId:'instance',cliId:'gemini',nativeSessionId:'native',transcriptPath:path});
+ await source.catchUp('web');
+ assert.equal(source.status('web').coverage,'bounded_snapshot');
+ assert.equal(bridge.read('web').events[0].event.content,'first');
+ data.messages[0].content='updated';await writeFile(path,JSON.stringify(data));
+ await source.catchUp('web');
+ assert.equal(bridge.read('web').events.length,1);
+ assert.equal(bridge.read('web').events[0].event.content,'updated');
+ await rm(path);
+ const page=store.aiSessions.history!.pageMessages('web',binding.generation);
+ assert.deepEqual(page.items.map(item=>item.event.content),['first','updated']);
+ await source.catchUp('web');
+ assert.equal(source.status('web').status,'unavailable');
+ assert.equal(store.aiSessions.history!.pageMessages('web',binding.generation).items.length,2);
+});

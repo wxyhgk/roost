@@ -1,0 +1,24 @@
+.status-bar {
+  display: flex; height: 30px; flex-shrink: 0; align-items: center; gap: 8px; padding: 0 10px;
+  background: var(--color-bg-panel); border-top: 1px solid var(--color-border); color: var(--color-text-dim);
+  font-size: 11px; font-variant-numeric: tabular-nums;
+}
+.status-button { display: flex; height: 26px; flex-shrink: 0; align-items: center; gap: 5px; border-radius: 4px; padding: 0 6px; white-space: nowrap; }
+.status-button:hover { background: var(--color-bg-hover); color: var(--color-text); }
+.status-connection { min-width: 0; flex: 1; display: flex; align-items: center; gap: 8px; }
+.status-host { min-width: 0; max-width: 160px; flex-shrink: 1; }
+.status-cpu { width: 72px; }
+.status-memory { width: 132px; }
+.status-rate { width: 90px; }
+.status-latency { display: flex; width: 80px; flex-shrink: 0; align-items: center; gap: 4px; }
+.status-resources { display: flex; align-items: center; gap: 2px; }
+.status-subscription { display: flex; flex-shrink: 0; border-left: 1px solid var(--color-border); padding-left: 5px; }
+@media (max-width: 900px) { .status-rate { display: none; } }
+@media (max-width: 640px) {
+  .status-bar { gap: 3px; padding-inline: 4px; }
+  .status-memory { width: 72px; } .status-memory-total { display: none; }
+  .status-cpu { width: 62px; } .status-host { max-width: 80px; }
+  .status-latency { width: 60px; } .status-latency svg { display: none; }
+}
+@media (max-width: 400px) { .status-host { max-width: 42px; } .status-connection { gap: 2px; } }
+@media (pointer: coarse) { .status-bar { height: 40px; } .status-button { height: 36px; } .subscription-popover { bottom: 50px; } }

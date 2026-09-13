@@ -1,0 +1,10 @@
+import { realpath } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { spawn } from 'node:child_process';
+const root=resolve(process.env.WORKBENCH_INSTALL_DIR??join(homedir(),'.roost','workbench'));
+const entry=await realpath(join(root,'current','server.mjs'));
+const child=spawn(process.execPath,[entry],{stdio:'inherit',env:process.env,cwd:root});
+process.once('SIGTERM',()=>child.kill('SIGTERM'));process.once('SIGINT',()=>child.kill('SIGINT'));
+child.once('error',error=>{console.error(error);process.exitCode=1});
+child.once('exit',code=>{process.exitCode=code??0});

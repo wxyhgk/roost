@@ -1,0 +1,27 @@
+{
+  "sourceArtifact": "/tmp/g3-peer-live-attempt1-result.json",
+  "sourceSha256": "e1f5407f372c27c31773ece48bb320fa3ac59fe4ceea9c09b51ea2c8bf14410a",
+  "redaction": "temporary filesystem paths and shell identity; original status/UUID/hash values retained",
+  "result": {
+    "cli": "claude",
+    "version": "2.1.266",
+    "requestedModel": "CLI default",
+    "marker": "G3_9867a762150d43799ea8e63660303670",
+    "startedAt": "2026-09-09T11:09:02.740Z",
+    "scope": "real CLI backend protocol; no browser visual claim",
+    "startupA": {
+      "welcome": true,
+      "theme": true,
+      "trust": false,
+      "login": false,
+      "continue": false,
+      "outputBytes": 4733
+    },
+    "success": false,
+    "lastPhase": "start isolated owner and gateway",
+    "phases": [
+      "start isolated owner and gateway"
+    ],
+    "finishedAt": "2026-09-09T11:09:47.829Z"
+  }
+}

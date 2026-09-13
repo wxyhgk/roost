@@ -1,0 +1,41 @@
+<!doctype html><meta charset="utf-8"><title>Terminal output lifecycle regression</title>
+<style>body{background:#181818;color:#eee;font:14px sans-serif}#host{position:relative;width:800px;height:320px}pre{white-space:pre-wrap}</style>
+<p>Isolated real xterm test; no PTY, WebSocket or user session.</p>
+<button id="run">Run output and layout stress</button><pre id="result">Ready</pre><div id="host"></div>
+<script type="module">
+import { mountXterm } from '/src/features/terminal/xtermEngine.ts';
+import { createResume } from '/src/features/terminal/resume.ts';
+const host=document.querySelector('#host'), result=document.querySelector('#result'), button=document.querySelector('#run');
+const errors=[];
+let previous;
+window.addEventListener('error',e=>errors.push(e.message));
+window.addEventListener('unhandledrejection',e=>errors.push(String(e.reason)));
+button.onclick=async()=>{
+ button.disabled=true;
+ previous?.dispose(); errors.length=0;
+ const term=mountXterm(host,{background:'#181818',foreground:'#eeeeee',cursor:'#ffffff',cursorAccent:'#000000',selectionBackground:'#444444'});
+ previous=term;
+ const resume=createResume(term);
+ let seq=0, notifications=0, changes=0, lastBottom;
+ const sub=term.onScrollPosition(bottom=>{notifications++;if(bottom!==lastBottom){changes++;lastBottom=bottom;}});
+ const started=performance.now();
+ const progress=setInterval(()=>{result.textContent=JSON.stringify({running:true,seq,...resume.inspect(),notifications,changes,errors},null,2)},500);
+ try {
+  await resume.prepare('fixture',null);
+  await resume.accept({type:'replay',instanceId:'fixture',seq:0,data:'start\r\n'}).done;
+  for(let turn=0;turn<600;turn++){
+   for(let chunk=0;chunk<40;chunk++){
+    const data=turn%3===0 ? '\x1b[?2026h\x1b[H\x1b[38;2;120;180;220m'+`frame ${turn}:${chunk} 中文 🙂 `+'x'.repeat(160)+'\x1b[0m\r\n\x1b[?2026l' : `output ${turn}:${chunk} `+'long '.repeat(60)+'\r\n';
+    resume.accept({type:'output',instanceId:'fixture',seq:++seq,data});
+   }
+   if(turn%8===0){host.style.width=(300+turn%7*90)+'px';host.style.height=(100+turn%9*40)+'px';term.fit();}
+   if(turn%20===0)host.style.visibility='hidden';
+   if(turn%20===2){host.style.visibility='';term.fit();}
+   await new Promise(resolve=>setTimeout(resolve,0));
+  }
+  await resume.accept({type:'output',instanceId:'fixture',seq:++seq,data:'\r\nLIFECYCLE_END\r\n'}).done;
+  host.style.visibility='';term.scrollToBottom();
+  result.textContent=JSON.stringify({pass:resume.inspect().applied===seq&&term.serializeText().includes('LIFECYCLE_END')&&errors.length===0,elapsedMs:Math.round(performance.now()-started),seq,...resume.inspect(),notifications,changes,renderer:term.inspect(),errors},null,2);
+ }catch(error){result.textContent=String(error)}finally{clearInterval(progress);sub.dispose();resume.dispose();button.disabled=false;}
+};
+</script>

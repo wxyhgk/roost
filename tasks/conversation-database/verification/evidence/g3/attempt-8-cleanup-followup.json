@@ -1,0 +1,43 @@
+{
+  "sourceArtifact": "/tmp/g3-peer-live-attempt8-cleanup-followup.json",
+  "sourceSha256": "66a8f7092107149d95e30d5c1a7d9a9e38bd4e74118443de236ce2bd35e665be",
+  "redaction": "temporary filesystem paths and shell identity; original status/UUID/hash values retained",
+  "result": [
+    {
+      "id": "A",
+      "kind": "ptyPid",
+      "pid": 19810,
+      "alive": false
+    },
+    {
+      "id": "A",
+      "kind": "nativePid",
+      "pid": 19815,
+      "alive": false
+    },
+    {
+      "id": "B",
+      "kind": "ptyPid",
+      "pid": 19913,
+      "alive": false
+    },
+    {
+      "id": "B",
+      "kind": "nativePid",
+      "pid": 19918,
+      "alive": false
+    },
+    {
+      "id": "C",
+      "kind": "ptyPid",
+      "pid": 20017,
+      "alive": false
+    },
+    {
+      "id": "C",
+      "kind": "nativePid",
+      "pid": 20022,
+      "alive": false
+    }
+  ]
+}

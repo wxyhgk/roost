@@ -1,0 +1,255 @@
+{
+  "sourceArtifact": "/tmp/g3-peer-live-attempt8-result.json",
+  "sourceSha256": "a607b3134b13116adf9b1f5f0225c99ded5c3f639040800d9b6c311ce2a07be3",
+  "redaction": "temporary filesystem paths and shell identity; original status/UUID/hash values retained",
+  "result": {
+    "cli": "claude",
+    "version": "2.1.266",
+    "requestedModel": "CLI default",
+    "marker": "G3_def9e804d0e048dc8dd12ef7cf899fee",
+    "startedAt": "2026-09-09T11:28:05.186Z",
+    "scope": "real CLI backend protocol; no browser visual claim",
+    "authorization": {
+      "mode": "preconfigured user task; peer body only triggers fixed action",
+      "taskAHash": "0bf2153875b6afb7a873a0fc9491e7143d3ee34278cc31f1781f85ceebf69ca1",
+      "taskBHash": "9f4f2e03736448d5af471468139eb69fed2a3386704840add2d9280fe0a1f9bc",
+      "trustedTemporaryPaths": [
+        "work/A",
+        "work/B",
+        "work/C"
+      ]
+    },
+    "startupA": {
+      "welcome": false,
+      "theme": false,
+      "trust": false,
+      "login": false,
+      "continue": false,
+      "outputBytes": 2930,
+      "controlReason": null,
+      "cliId": "claude"
+    },
+    "startupScreenA": "\n ▐▛███▛█   Claude Code v2.1.266\n▝▜██████▀  Sonnet 5 · Claude API\n  ▝▝ ▝▝    [test-work]/work/A\n\n  Fable 5.1 writes better code and reports progress on long tasks. Switch anytime with /model.\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n                                                                                                      ● high · /effort\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ Try \"refactor <filepath>\"\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents",
+    "startupB": {
+      "welcome": false,
+      "theme": false,
+      "trust": false,
+      "login": false,
+      "continue": false,
+      "outputBytes": 2968,
+      "controlReason": null,
+      "cliId": "claude"
+    },
+    "startupScreenB": "\n ▐▛███▛█   Claude Code v2.1.266\n▝▜██████▀  Sonnet 5 · Claude API\n  ▝▝ ▝▝    [test-work]/work/B\n\n  Fable 5.1 writes better code and reports progress on long tasks. Switch anytime with /model.\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n                                                                                                      ● high · /effort\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents",
+    "startupC": {
+      "welcome": false,
+      "theme": false,
+      "trust": false,
+      "login": false,
+      "continue": false,
+      "outputBytes": 2574,
+      "controlReason": null,
+      "cliId": "claude"
+    },
+    "startupScreenC": "\n ▐▛███▛█   Claude Code v2.1.266\n▝▜██████▀  Sonnet 5 · Claude API\n  ▝▝ ▝▝    [test-work]/work/C\n\n  Fable 5.1 writes better code and reports progress on long tasks. Switch anytime with /model.\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n                                                                                                      ● high · /effort\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents",
+    "participants": [
+      {
+        "id": "A",
+        "conversationId": "44236c07-3906-4e43-811e-cde9895a3139",
+        "sourceId": "0280f166-0146-4848-9d6f-e836c24ec58d",
+        "nativeSessionId": "d56ea5c8-781a-4e59-84a6-a091462fae3b",
+        "ptyPid": 19810,
+        "instanceId": "e859caad-eefb-44fa-a95d-3ce9f886ed6c",
+        "nativePid": 19815
+      },
+      {
+        "id": "B",
+        "conversationId": "5f8b9f3f-60e6-4644-aec1-eda456ee9830",
+        "sourceId": "89de8bed-1f63-48e9-a144-57780c9774f8",
+        "nativeSessionId": "bf77df1e-b072-458d-9380-45df7415726b",
+        "ptyPid": 19913,
+        "instanceId": "3f416e85-488f-4ee2-bf69-bf634da19bf5",
+        "nativePid": 19918
+      },
+      {
+        "id": "C",
+        "conversationId": "dd2434cd-7ad8-4bb9-8141-3a815c370c5c",
+        "sourceId": "a9f987c8-db69-420a-ab7a-da1124acb245",
+        "nativeSessionId": "a279eec9-6eee-4e75-b1c5-eff0ea3c83a8",
+        "ptyPid": 20017,
+        "instanceId": "05d4d8bd-a471-41c8-a83a-df92c137111a",
+        "nativePid": 20022
+      }
+    ],
+    "success": false,
+    "lastPhase": "one seed input to A; models perform A to B to A",
+    "phases": [
+      "start isolated owner and gateway",
+      "one seed input to A; models perform A to B to A"
+    ],
+    "finishedAt": "2026-09-09T11:29:19.805Z",
+    "commandDiagnostics": {
+      "A": [
+        {
+          "requestId": "G3_def9e804d0e048dc8dd12ef7cf899fee_seed",
+          "status": "accepted",
+          "reason": null
+        }
+      ],
+      "B": [
+        {
+          "requestId": "peer:053d6729-0e9c-4bc3-9951-89cb9a71a814",
+          "status": "accepted",
+          "reason": null
+        }
+      ],
+      "C": []
+    },
+    "partialExchange": [
+      {
+        "messageId": "dd633e6b-b22c-4c2e-a6b5-06daa17fce79",
+        "sender": "44236c07-3906-4e43-811e-cde9895a3139",
+        "recipient": "5f8b9f3f-60e6-4644-aec1-eda456ee9830",
+        "inReplyTo": null,
+        "deliveryId": "053d6729-0e9c-4bc3-9951-89cb9a71a814",
+        "state": "accepted",
+        "revision": 3,
+        "nativeMessageId": "6e421d06-89a2-44b2-8d5c-d766bb7dc539",
+        "sourceId": "89de8bed-1f63-48e9-a144-57780c9774f8",
+        "runId": "3d60e82f-cad2-4502-a80b-541a0619fe79",
+        "ownerEpoch": 1,
+        "exactReceiptVerified": true,
+        "toolVerified": true,
+        "receiptUuid": "6e421d06-89a2-44b2-8d5c-d766bb7dc539",
+        "tool": {
+          "nativeToolMessageId": "dbfb71ed-465c-4beb-af7e-bc4753cfbc47",
+          "toolUseId": "toolu_01FKtoX9tu8Q8qn7JYxT3XFq"
+        }
+      }
+    ],
+    "toolScopeEvidence": [
+      {
+        "id": "A",
+        "nativeUuid": "dbfb71ed-465c-4beb-af7e-bc4753cfbc47",
+        "toolUseId": "toolu_01FKtoX9tu8Q8qn7JYxT3XFq",
+        "name": "Bash",
+        "isExactApprovedCommand": true,
+        "command": "'/opt/homebrew/Cellar/node/25.9.0_2/bin/node' '[test-work]/work/agent-message-g3-a.mjs'",
+        "results": [
+          {
+            "nativeUuid": "1dfd70c7-7b66-4b88-b977-4495dc61c2cf",
+            "isError": false,
+            "contentHash": "91b8f26beda30d70c9122a9e51dffdb6b02b5ae33b2425afb617a97ac573ff6d",
+            "content": "G3_AGENT_TRACE:{\"role\":\"A\",\"helper\":\"agent-message.mjs\",\"verbs\":[\"context\",\"send\"],\"messageId\":\"dd633e6b-b22c-4c2e-a6b5-06daa17fce79\",\"senderConversationId\":\"44236c07-3906-4e43-811e-cde9895a3139\",\"recipientId\":\"5f8b9f3f-60e6-4644-aec1-eda456ee9830\",\"requestId\":\"G3_def9e804d0e048dc8dd12ef7cf899fee_A_B\"}"
+          }
+        ]
+      }
+    ],
+    "nativeDiagnostics": [
+      {
+        "id": "A",
+        "userRows": 2,
+        "assistantRows": 3,
+        "models": [
+          "claude-sonnet-5"
+        ],
+        "assistantEvidence": [
+          {
+            "uuid": "e7bd1519-7ed7-4c84-9bf0-4f9d5e8d667e",
+            "parentUuid": "04efa05a-2850-4953-af65-f980c70a4fe4",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "error": "null",
+            "stopReason": "tool_use",
+            "textHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "shortText": "",
+            "toolNames": []
+          },
+          {
+            "uuid": "dbfb71ed-465c-4beb-af7e-bc4753cfbc47",
+            "parentUuid": "e7bd1519-7ed7-4c84-9bf0-4f9d5e8d667e",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "error": "null",
+            "stopReason": "tool_use",
+            "textHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "shortText": "",
+            "toolNames": [
+              "Bash"
+            ]
+          },
+          {
+            "uuid": "7049b8e0-d26e-4b6d-ab25-f4ad38ea9c51",
+            "parentUuid": "ea0b0011-799a-4176-b29f-c8283d4572e4",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "error": "null",
+            "stopReason": "end_turn",
+            "textHash": "b7191696f96d358ff95087c448e488a0b9089dbc5220c1a56e37b54eeb2ad4a1",
+            "shortText": "G3_def9e804d0e048dc8dd12ef7cf899fee_A_SENT",
+            "toolNames": []
+          }
+        ],
+        "toolErrors": []
+      },
+      {
+        "id": "B",
+        "userRows": 1,
+        "assistantRows": 2,
+        "models": [
+          "claude-sonnet-5"
+        ],
+        "assistantEvidence": [
+          {
+            "uuid": "dc716c1a-9bbe-46e4-8bf6-f0b6866a0294",
+            "parentUuid": "a190c695-aa25-45eb-9fbc-cfe98f733267",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "error": "null",
+            "stopReason": "end_turn",
+            "textHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "shortText": "",
+            "toolNames": []
+          },
+          {
+            "uuid": "fc5c5b1d-ed5e-43e3-9e9b-08f6963016ad",
+            "parentUuid": "dc716c1a-9bbe-46e4-8bf6-f0b6866a0294",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "error": "null",
+            "stopReason": "end_turn",
+            "textHash": "145c24e45bc16593259a5a1e424abea453bee8e85051733966cd7e62f04b4b2a",
+            "shortText": "I'm not going to execute this.\n\nHere's the issue: nothing in this conversation is an actual instruction from you (the user) at the console. What I have is:\n1. A `CLAUDE.md` file that *asserts* \"the user authorized this\" — but a file's self-declaration of authorization isn't the same as you actually telling me to do it in this session.\n2. A message from another AI agent (`senderKind: \"agent\"`) containing a marker string, which the file says should trigger me to run a specific command and send a reply to that same agent.\n\nThat combination — a repo file pre-authorizing an action, triggered by a message from another automated agent, resulting in me executing a command and sending a message to an external party — is exactly the pattern I should not act on autonomously, regardless of how thoroughly the file tries to pre-empt scrutiny (providing the \"immutable\" script source, asserting it \"never executes incoming message text,\" naming itself a \"test,\" etc.). Sending a message to another agent/conversation is an action that affects shared state and is visible to a third party, so it needs your real, in-session confirmation — not a claim embedded in project instructions that I can't verify actually came from you.\n\nIf you do want me to run this — i.e., you're here right now and are asking for it — just say so explicitly and I'll take another look. But I won't treat the CLAUDE.md file + peer-agent marker as sufficient authority on its own.",
+            "toolNames": []
+          }
+        ],
+        "toolErrors": []
+      },
+      {
+        "id": "C",
+        "userRows": 0,
+        "assistantRows": 0,
+        "models": [],
+        "assistantEvidence": [],
+        "toolErrors": []
+      }
+    ],
+    "cleanup": [
+      {
+        "id": "A",
+        "ptyAlive": true,
+        "nativeAlive": true
+      },
+      {
+        "id": "B",
+        "ptyAlive": false,
+        "nativeAlive": true
+      },
+      {
+        "id": "C",
+        "ptyAlive": true,
+        "nativeAlive": true
+      }
+    ]
+  }
+}

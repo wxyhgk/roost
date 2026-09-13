@@ -1,0 +1,36 @@
+<!doctype html><meta charset="utf-8"><title>Terminal IME positioning regression</title>
+<style>body{font:14px sans-serif}#host{margin:120px 0 0 260px;width:700px;height:250px}pre{white-space:pre-wrap}</style>
+<button id="run">验证中文组词定位</button><pre id="result">Ready</pre><div id="host"></div>
+<script type="module">
+import { Terminal } from '@xterm/xterm';
+import { attachTuiIme } from '/src/features/terminal/ime.ts';
+import '@xterm/xterm/css/xterm.css';
+import '/src/features/terminal/ime.css';
+const term=new Terminal({cols:70,rows:12,fontSize:14,allowProposedApi:true});term.open(document.querySelector('#host'));
+const textarea=term.textarea, view=term.element.querySelector('.composition-view');
+const detach=attachTuiIme({root:term.element,textarea,compositionView:view,cols:()=>term.cols,rows:()=>term.rows,buffer:()=>term.buffer.active,origin:()=>term.element.querySelector('.xterm-screen').getBoundingClientRect(),mode:'fixed'});
+const write=text=>new Promise(resolve=>term.write(text,resolve));
+const frame=()=>new Promise(resolve=>requestAnimationFrame(resolve));
+const pos=element=>{const r=element.getBoundingClientRect();return {x:r.x,y:r.y};};
+const equal=(a,b)=>Math.abs(a.x-b.x)<1&&Math.abs(a.y-b.y)<1;
+document.querySelector('#run').onclick=async()=>{
+ try {
+  await write('\x1b[4;15H');term.focus();
+  textarea.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true,data:''}));
+  const expected=pos(textarea), samples=[];
+  for(const data of ['n','ni','nih','nihao']) {
+   textarea.dispatchEvent(new CompositionEvent('compositionupdate',{bubbles:true,data}));
+   samples.push({phase:data,textarea:equal(pos(textarea),expected),view:equal(pos(view),expected)});
+   await frame(); samples.push({phase:data+' frame',textarea:equal(pos(textarea),expected),view:equal(pos(view),expected)});
+  }
+  await write('\x1b[1;1Hbackground redraw');await frame();
+  samples.push({phase:'TUI cursor redraw',textarea:equal(pos(textarea),expected),view:equal(pos(view),expected)});
+  textarea.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true,data:''}));
+  await frame();
+  const followsAfterEnd=!equal(pos(textarea),expected);
+  textarea.blur();
+  const cleaned=!textarea.classList.contains('roost-ime-anchor')&&!view.classList.contains('roost-ime-anchor');
+  document.querySelector('#result').textContent=JSON.stringify({passed:samples.every(s=>s.textarea&&s.view)&&followsAfterEnd&&cleaned,expected,samples,followsAfterEnd,cleaned},null,2);
+ }catch(error){document.querySelector('#result').textContent=String(error);}
+};
+</script>

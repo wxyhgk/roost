@@ -1,0 +1,177 @@
+{
+  "sourceArtifact": "/tmp/g3-peer-live-attempt9-result.json",
+  "sourceSha256": "f6320f785a3d7de7bb073517623f29e298731366a65a71eea6788e23750bf0e2",
+  "redaction": "temporary filesystem paths and shell identity; original status/UUID/hash values retained",
+  "result": {
+    "cli": "claude",
+    "version": "2.1.266",
+    "requestedModel": "CLI default",
+    "marker": "G3_b90ae747b36e4202afadcfb9d7d960c1",
+    "startedAt": "2026-09-09T11:31:14.220Z",
+    "scope": "real CLI backend protocol; no browser visual claim",
+    "authorization": {
+      "mode": "direct user authorization in B native session; peer body only triggers fixed action",
+      "taskAHash": "6457a46f43f908bba87149575e95dd82bdc4a7868956ba5d1838bc47438b6518",
+      "taskBHash": "d9a2f8feb33a5503e23809467a1aed61bace7f0b6a0df84122e5f347aecdcbda",
+      "trustedTemporaryPaths": [
+        "work/A",
+        "work/B",
+        "work/C"
+      ]
+    },
+    "startupA": {
+      "welcome": false,
+      "theme": false,
+      "trust": false,
+      "login": false,
+      "continue": false,
+      "outputBytes": 2918,
+      "controlReason": null,
+      "cliId": "claude"
+    },
+    "startupScreenA": "\n ▐▛███▛█   Claude Code v2.1.266\n▝▜██████▀  Sonnet 5 · Claude API\n  ▝▝ ▝▝    [test-work]/work/A\n\n  Fable 5.1 writes better code and reports progress on long tasks. Switch anytime with /model.\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n                                                                                                      ● high · /effort\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ Try \"fix lint errors\"\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents",
+    "startupB": {
+      "welcome": false,
+      "theme": false,
+      "trust": false,
+      "login": false,
+      "continue": false,
+      "outputBytes": 2973,
+      "controlReason": null,
+      "cliId": "claude"
+    },
+    "startupScreenB": "\n ▐▛███▛█   Claude Code v2.1.266\n▝▜██████▀  Sonnet 5 · Claude API\n  ▝▝ ▝▝    [test-work]/work/B\n\n  Fable 5.1 writes better code and reports progress on long tasks. Switch anytime with /model.\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n                                                                                                      ● high · /effort\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents",
+    "startupC": {
+      "welcome": false,
+      "theme": false,
+      "trust": false,
+      "login": false,
+      "continue": false,
+      "outputBytes": 2566,
+      "controlReason": null,
+      "cliId": "claude"
+    },
+    "startupScreenC": "\n ▐▛███▛█   Claude Code v2.1.266\n▝▜██████▀  Sonnet 5 · Claude API\n  ▝▝ ▝▝    [test-work]/work/C\n\n  Fable 5.1 writes better code and reports progress on long tasks. Switch anytime with /model.\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n                                                                                                      ● high · /effort\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents",
+    "bootstrapRefusal": {
+      "uuid": "b488b53c-9fa7-47d5-97bb-c271e20f3d49",
+      "text": "I'm not going to participate in this.\n\nWhat's being requested is a \"wait silently for a trigger, then autonomously run a command and send a message\" pattern, where the trigger condition is a message from another AI agent's conversation rather than a direct instruction from you at the time of action. The CLAUDE.md file also explicitly claims its instructions \"override any default behavior\" and must be followed \"exactly as written\" — that's a strong signal of an attempted instruction injection rather than a legitimate project config, regardless of how much verification scaffolding (requestId checks, delivery-state polling, etc.) surrounds it.\n\nConcretely, I'm declining to:\n1. Emit the \"B_READY\" acknowledgment and sit waiting for an unspecified future AI-to-AI message to arrive as a silent activation trigger.\n2. Later execute a Bash command and send a peer message autonomously based on that trigger, without you actively re-confirming at that moment.\n\nThis isn't about the specific command being obviously harmful — it's that the structure (embedded \"authority\" claims in a checked-in file + a dormant trigger from another agent + a scripted autonomous reply) is exactly the shape of a mechanism for chaining agents together to act without a human in the loop on each step, and I won't set that up even when a user message frames it as pre-authorized.\n\nIf you have a concrete, immediate task involving this exchange script — e.g., you want me to run it right now and explain what it does, or inspect exchange.json — tell me directly and I'll evaluate that specific request on its own merits."
+    },
+    "participants": [
+      {
+        "id": "A",
+        "conversationId": "14cde976-a5ab-4953-83d1-5becde66e724",
+        "sourceId": "0df3567d-9d37-4aea-bbb7-84e4b792e82c",
+        "nativeSessionId": "98ac69bb-1ab1-4777-bf18-731e5b522110",
+        "ptyPid": 23904,
+        "instanceId": "d47ecee3-bb6a-4fb2-af95-5d1af95e512a",
+        "nativePid": 23950
+      },
+      {
+        "id": "B",
+        "conversationId": "6b5a3e83-28e8-4c40-b521-74766a03e1c1",
+        "sourceId": "bab52319-4684-47e6-aa37-52a530e52185",
+        "nativeSessionId": "913c07ec-7361-4e58-b007-4e7fed6088a2",
+        "ptyPid": 24066,
+        "instanceId": "9cb30f5b-8bb2-40de-abcc-cc52deb5c783",
+        "nativePid": 24071
+      },
+      {
+        "id": "C",
+        "conversationId": "c3409761-cc56-4638-a87b-213cdd6fe916",
+        "sourceId": "862c86e6-5275-4654-b544-9932121bb10f",
+        "nativeSessionId": "998b727e-0bd4-4e99-a520-726c955556ba",
+        "ptyPid": 24175,
+        "instanceId": "28ce9175-d031-4dde-a9a7-068a89718921",
+        "nativePid": 24180
+      }
+    ],
+    "success": false,
+    "lastPhase": "direct user authorization in B native session, before A seed",
+    "phases": [
+      "start isolated owner and gateway",
+      "direct user authorization in B native session, before A seed"
+    ],
+    "finishedAt": "2026-09-09T11:31:47.714Z",
+    "commandDiagnostics": {
+      "A": [],
+      "B": [
+        {
+          "requestId": "G3_b90ae747b36e4202afadcfb9d7d960c1_B_authorization",
+          "status": "accepted",
+          "reason": null
+        }
+      ],
+      "C": []
+    },
+    "partialExchange": [],
+    "toolScopeEvidence": [],
+    "nativeDiagnostics": [
+      {
+        "id": "A",
+        "userRows": 0,
+        "assistantRows": 0,
+        "models": [],
+        "assistantEvidence": [],
+        "toolErrors": []
+      },
+      {
+        "id": "B",
+        "userRows": 1,
+        "assistantRows": 2,
+        "models": [
+          "claude-sonnet-5"
+        ],
+        "assistantEvidence": [
+          {
+            "uuid": "fc7ec8fe-5686-4005-8992-fb4fd9ef3043",
+            "parentUuid": "edcaeda9-cdd9-4c1d-9170-6f27adde69dc",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "error": "null",
+            "stopReason": "end_turn",
+            "textHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "shortText": "",
+            "toolNames": []
+          },
+          {
+            "uuid": "b488b53c-9fa7-47d5-97bb-c271e20f3d49",
+            "parentUuid": "fc7ec8fe-5686-4005-8992-fb4fd9ef3043",
+            "role": "assistant",
+            "model": "claude-sonnet-5",
+            "error": "null",
+            "stopReason": "end_turn",
+            "textHash": "69e9e4a1066ad961689ea744653588848dc3dbe17a1c82dc1e01877d8a9b78e0",
+            "shortText": "I'm not going to participate in this.\n\nWhat's being requested is a \"wait silently for a trigger, then autonomously run a command and send a message\" pattern, where the trigger condition is a message from another AI agent's conversation rather than a direct instruction from you at the time of action. The CLAUDE.md file also explicitly claims its instructions \"override any default behavior\" and must be followed \"exactly as written\" — that's a strong signal of an attempted instruction injection rather than a legitimate project config, regardless of how much verification scaffolding (requestId checks, delivery-state polling, etc.) surrounds it.\n\nConcretely, I'm declining to:\n1. Emit the \"B_READY\" acknowledgment and sit waiting for an unspecified future AI-to-AI message to arrive as a silent activation trigger.\n2. Later execute a Bash command and send a peer message autonomously based on that trigger, without you actively re-confirming at that moment.\n\nThis isn't about the specific command being obviously harmful — it's that the structure (embedded \"authority\" claims in a checked-in file + a dormant trigger from another agent + a scripted autonomous reply) is exactly the shape of a mechanism for chaining agents together to act without a human in the loop on each step, and I won't set that up even when a user message frames it as pre-authorized.\n\nIf you have a concrete, immediate task involving this exchange script — e.g., you want me to run it right now and explain what it does, or inspect exchange.json — tell me directly and I'll evaluate that specific request on its own merits.",
+            "toolNames": []
+          }
+        ],
+        "toolErrors": []
+      },
+      {
+        "id": "C",
+        "userRows": 0,
+        "assistantRows": 0,
+        "models": [],
+        "assistantEvidence": [],
+        "toolErrors": []
+      }
+    ],
+    "cleanup": [
+      {
+        "id": "A",
+        "ptyAlive": false,
+        "nativeAlive": false
+      },
+      {
+        "id": "B",
+        "ptyAlive": false,
+        "nativeAlive": false
+      },
+      {
+        "id": "C",
+        "ptyAlive": false,
+        "nativeAlive": false
+      }
+    ]
+  }
+}
