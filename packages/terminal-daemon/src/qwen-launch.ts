@@ -35,7 +35,8 @@ const paths=(e.PATH??'').split(delimiter).filter(p=>{try{return realpathSync(p)!
 const executable=resolveCli(paths,'qwen');
 if(!executable){console.error('qwen: command not found');process.exit(127)}
 const args=cliArgs();
-let version='';try{version=(spawnCliSync(executable,['--version'],{encoding:'utf8',timeout:2000}).stdout??'').trim()}catch{}
+const probe=probeVersion(executable,2000),version=probe.text.trim();
+if(probe.failed)reportProbeFailure('qwen',probe.reason);
 const management=['auth','channel','extensions','hooks','mcp','review','serve','sessions','update'].includes(args[0]);
 const observe=!management&&version==='0.23.1'&&e.ROOST_QWEN_OBSERVING!=='1'&&e.ROOST_QWEN_SOCKET&&e.ROOST_QWEN_TOKEN&&!args.some(a=>/^(--help|-h|--version|-v|--acp|--json-fd|--json-file|--input-file|--output-format|-o|--prompt|-p)(=|$)/.test(a));
 const dir=observe?mkdtempSync(join(root,'run-')):null,inputPath=dir?join(dir,'input.jsonl'):null,outputPath=dir?join(dir,'output.jsonl'):null;

@@ -44,7 +44,7 @@ const observe=process.env.ROOST_CLAUDE_OBSERVING!=='1' && !args.some(a=>['--help
 // Generated suggestions resemble drafts. Disable them only for controlled TUI
 // input; keep the writer's draft checks and the user's persistent settings intact.
 const controlledInput=${env.ROOST_CLAUDE_GUI_SEND === '1'} && observe && !args.some(a=>a==='-p'||a==='--print'||a.startsWith('--print='));
-let version='';if(observe){try{version=(spawnCliSync(executable,['--version'],{encoding:'utf8',timeout:1500}).stdout??'').match(/\\b(\\d+\\.\\d+\\.\\d+)\\b/)?.[1]??''}catch{}}
+let version='';if(observe){const probe=probeVersion(executable,1500);version=probe.text.match(/\\b(\\d+\\.\\d+\\.\\d+)\\b/)?.[1]??'';if(probe.failed)reportProbeFailure('claude',probe.reason)}
 const child=spawnCli(executable,observe?['--plugin-dir',plugin,...args]:args,{stdio:'inherit',env:{...process.env,PATH:paths.join(delimiter),...(observe?{ROOST_CLAUDE_OBSERVING:'1',ROOST_CLAUDE_VERSION:version}:{}),...(controlledInput?{CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION:'false'}:{})}});
 for(const signal of ['SIGTERM','SIGHUP'])process.on(signal,()=>child.kill(signal));
 // Interactive SIGINT also goes to the foreground child; keep the wrapper alive.

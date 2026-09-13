@@ -21,4 +21,36 @@ function resolveCli(paths,name) {
 }
 const spawnCli=(command,args,options)=>spawn(command.file,[...command.args,...args],options);
 const spawnCliSync=(command,args,options)=>spawnSync(command.file,[...command.args,...args],options);
+/*
+  Probe the CLI version. A failed probe and a version that simply does not match must stay
+  distinguishable.
+
+  Both leave the version empty, but they mean opposite things. A mismatch is intent: we only
+  wire the observer into versions we have verified, and anything else degrades silently on
+  purpose. A timeout is an accident, and the old code funnelled it into the same branch — the
+  observer quietly never installed, the CLI ran fine, and nothing told the user the app had
+  stopped following the conversation.
+
+  A timeout is retried once with a wider budget. The thing being probed is usually a Node CLI,
+  so process startup alone costs hundreds of milliseconds and a busy machine crosses the line;
+  this is exactly how the bug was found, by a test going red under a full parallel test run.
+  Only timeouts retry — a missing executable returns immediately, so nothing gets slower.
+
+  Deliberately not cached: a launcher runs once per CLI start, and a disk cache would need a
+  directory it can rely on, invalidation, concurrent-write safety and cleanup.
+*/
+function probeVersion(command,timeout){
+ for(const budget of [timeout,timeout*3]){
+  const result=spawnCliSync(command,['--version'],{encoding:'utf8',timeout:budget});
+  if(!result.error)return {text:String(result.stdout??''),failed:false};
+  // spawnSync reports a timeout as an error plus the signal it used to kill the child.
+  const timedOut=result.error.code==='ETIMEDOUT'||!!result.signal;
+  if(!timedOut)return {text:'',failed:true,reason:result.error.code||result.error.message};
+ }
+ return {text:'',failed:true,reason:'ETIMEDOUT'};
+}
+/* One line, on the session's own stderr: silence is what made this bug invisible. */
+function reportProbeFailure(name,reason){
+ try{process.stderr.write('[roost] '+name+': version probe failed ('+reason+'); conversation tracking is off for this session.\n')}catch{}
+}
 `;
