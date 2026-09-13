@@ -1,12 +1,38 @@
 // Drive the installed WebView2 application with the runner's Microsoft Edge WebDriver.
 // No test server, Tauri plugin or automation API is compiled into the application.
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 import { createServer } from 'node:net';
-import { mkdir, mkdtemp, realpath, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, rm, readdir, access, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+
+async function matchingDriver(temporary) {
+  // The runner's Edge browser and WebView2 Runtime may be years apart in version.
+  // Inspect the installed WebView2, then download its matching official driver.
+  const candidates = [];
+  for (const base of [process.env['ProgramFiles(x86)'], process.env.ProgramFiles, process.env.LOCALAPPDATA].filter(Boolean)) {
+    const root = join(base, 'Microsoft/EdgeWebView/Application');
+    for (const version of await readdir(root).catch(() => [])) {
+      if (!/^\d+\.\d+\.\d+\.\d+$/.test(version)) continue;
+      const folder = join(root, version);
+      if (await access(join(folder, 'msedgewebview2.exe')).then(() => true, () => false)) candidates.push({ version, folder });
+    }
+  }
+  candidates.sort((a, b) => b.version.localeCompare(a.version, undefined, { numeric: true }));
+  const runtime = candidates[0];
+  if (!runtime) throw Error('No installed WebView2 Runtime found');
+  const response = await fetch(`https://msedgedriver.microsoft.com/${runtime.version}/edgedriver_win64.zip`, { signal: AbortSignal.timeout(60000) });
+  if (!response.ok) throw Error('Matching Edge WebDriver download failed: ' + response.status);
+  const archive = join(temporary, 'edgedriver.zip');
+  await writeFile(archive, Buffer.from(await response.arrayBuffer()));
+  execFileSync(join(process.env.SystemRoot, 'System32/tar.exe'), ['-xf', archive, '-C', temporary, 'msedgedriver.exe']);
+  const executable = join(temporary, 'msedgedriver.exe');
+  const version = execFileSync(executable, ['--version'], { encoding: 'utf8' });
+  assert.ok(version.includes(runtime.version.split('.').slice(0, 3).join('.') + '.'));
+  return { executable, folder: runtime.folder };
+}
 
 export async function testWindowsUi(installed) {
   const temporary = await mkdtemp(join(tmpdir(), 'roost-webview-'));
@@ -16,9 +42,10 @@ export async function testWindowsUi(installed) {
     const server = createServer(); server.on('error', reject);
     server.listen(0, '127.0.0.1', () => { const port = server.address().port; server.close(() => resolve(port)); });
   });
-  if (!process.env.EDGEWEBDRIVER) throw Error('The Windows UI check requires EDGEWEBDRIVER');
-  const driver = spawn(join(process.env.EDGEWEBDRIVER, 'msedgedriver.exe'), ['--port=' + port, '--host=127.0.0.1'], {
-    windowsHide: true, stdio: 'ignore', env: { ...process.env, TAURI_WEBVIEW_AUTOMATION: 'true', ROOST_DESKTOP_DATA_DIR: data },
+  const matched = await matchingDriver(temporary);
+  const driver = spawn(matched.executable, ['--port=' + port, '--host=127.0.0.1'], {
+    windowsHide: true, stdio: 'ignore', env: { ...process.env, TAURI_WEBVIEW_AUTOMATION: 'true', ROOST_DESKTOP_DATA_DIR: data,
+      WEBVIEW2_BROWSER_EXECUTABLE_FOLDER: matched.folder },
   });
   let launchError, session;
   driver.on('error', error => { launchError = error; });
