@@ -31,5 +31,8 @@
     "frontend",
     "stable-workbench"
   ],
-  "version": "0.0.3"
+  "version": "0.0.3",
+  "engines": {
+    "node": ">=22.13.0"
+  }
 }
