@@ -120,7 +120,7 @@ function SessionFiles({ session }: { session: Session }) {
             <ArrowUpIcon className="size-4" />
           </button>
           <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto text-xs">
-            {[{ name: session.cwd.split("/").filter(Boolean).at(-1) || "/", path: "" },
+            {[{ name: session.cwd.replaceAll('\\', '/').split("/").filter(Boolean).at(-1) || "/", path: "" },
               ...directory.split("/").filter(Boolean).map((name, i, parts) => ({ name, path: parts.slice(0, i + 1).join("/") }))].map((crumb, i) => (
               <span key={crumb.path} className="flex shrink-0 items-center gap-1">
                 {i > 0 && <span className="text-text-dim">/</span>}

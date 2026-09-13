@@ -40,7 +40,7 @@ switch (process.argv[2]) {
       if (installed.includes(' ')) throw Error('NSIS smoke install requires a temp directory without spaces');
       run(await installer(), ['/S', '/D=' + installed]);
     }
-    run(process.execPath, ['--test', 'desktop/tests/runtime.test.mjs', 'desktop/tests/windows.test.mjs'], { env: { ...process.env, ROOST_DESKTOP_BUNDLE: installed } });
+    run(process.execPath, ['--test', '--test-concurrency=1', 'desktop/tests/runtime.test.mjs', 'desktop/tests/windows.test.mjs'], { env: { ...process.env, ROOST_DESKTOP_BUNDLE: installed } });
     break;
   }
   case 'package': {

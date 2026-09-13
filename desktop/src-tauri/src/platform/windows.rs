@@ -31,7 +31,7 @@ $acl = [Security.AccessControl.DirectorySecurity]::new()
 $acl.SetOwner($sid)
 $acl.SetAccessRuleProtection($true, $false)
 $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($sid, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow'))
-Set-Acl -LiteralPath $env:ROOST_ACL_PATH -AclObject $acl
+[IO.Directory]::SetAccessControl($env:ROOST_ACL_PATH, $acl)
 "#])
             .env("ROOST_ACL_PATH", path)
             .stdin(Stdio::null())
@@ -66,5 +66,37 @@ Set-Acl -LiteralPath $env:ROOST_ACL_PATH -AclObject $acl
         command.env("PATH", std::env::join_paths(paths)?);
         command.creation_flags(CREATE_NO_WINDOW);
         Ok(command)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn windows_host_protects_data_and_runs_the_pinned_node_without_a_console() {
+        let host = Windows;
+        let temporary =
+            std::env::temp_dir().join(format!("roost-host-test-{}", std::process::id()));
+        host.create_private_directory(&temporary).unwrap();
+        let binary = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("binaries/roost-node-x86_64-pc-windows-msvc.exe");
+        host.verify_node(&binary).unwrap();
+        fs::create_dir_all(temporary.join("bin")).unwrap();
+        fs::copy(&binary, temporary.join("bin/node.exe")).unwrap();
+        let result = host
+            .backend_command(&temporary, "node.exe")
+            .unwrap()
+            .arg("--version")
+            .output()
+            .unwrap();
+        assert!(result.status.success());
+        let manifest: serde_json::Value = serde_json::from_str(crate::runtime::MANIFEST).unwrap();
+        assert_eq!(
+            String::from_utf8(result.stdout).unwrap().trim(),
+            manifest["nodeVersion"].as_str().unwrap()
+        );
+        fs::write(temporary.join("invalid.exe"), b"invalid").unwrap();
+        assert!(host.verify_node(&temporary.join("invalid.exe")).is_err());
+        fs::remove_dir_all(temporary).unwrap();
     }
 }

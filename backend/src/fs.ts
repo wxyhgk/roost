@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { open, readdir, realpath, rename, unlink, stat, mkdir, rm } from "node:fs/promises";
-import { basename, dirname, relative, resolve, sep } from "node:path";
+import { basename, dirname, relative, resolve, sep, isAbsolute, win32 } from "node:path";
 
 /**
  * 列目录时跳过的条目。监听器也用同一份：列目录看不见的东西，
@@ -20,9 +20,10 @@ export type FileNode = {
   path: string;
 };
 
-export function assertInside(root: string, target: string) {
-  const rel = relative(resolve(root), resolve(target));
-  if (rel === ".." || rel.startsWith(`..${sep}`)) {
+export function assertInside(root: string, target: string, platform = process.platform) {
+  const paths = platform === 'win32' ? win32 : { relative, resolve, sep, isAbsolute };
+  const rel = paths.relative(paths.resolve(root), paths.resolve(target));
+  if (paths.isAbsolute(rel) || rel === ".." || rel.startsWith(`..${paths.sep}`)) {
     throw new Error("path escapes workspace");
   }
 }

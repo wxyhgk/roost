@@ -41,7 +41,7 @@ export async function openTerminalDaemon(options:{dataDir:string;shell?:string;d
       const compiled = import.meta.url.endsWith('.js');
       const child=spawn(process.execPath,[fileURLToPath(new URL('./launch.mjs',import.meta.url)),...(compiled?[]:['--import','tsx']),fileURLToPath(new URL(compiled?'./main.js':'./main.ts',import.meta.url)),socketPath,dataDir,options.shell??defaultShell(),options.defaultCwd??homedir()],{detached:true,windowsHide:true,stdio:['ignore',log.fd,log.fd],cwd:fileURLToPath(new URL('..',import.meta.url)),env:process.env});
       let spawnError:Error|undefined;child.on('error',error=>{spawnError=error});child.unref();await log.close();
-      for(let wait=0;wait<100;wait++){
+      for(let wait=0;wait<(process.platform === 'win32' ? 400 : 100);wait++){
         if(spawnError)throw spawnError;
         const ready=await probe();if(ready)return ready;
         await new Promise(resolve=>setTimeout(resolve,100));

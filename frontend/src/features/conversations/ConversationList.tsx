@@ -158,7 +158,7 @@ function Row({ conversation, onOpen }: { conversation: Conversation; onOpen: (c:
   const gap = conversation.source.coverage?.hasGap === true;
   // 标题大量重复（真实数据里 17 条有 10 条叫「前端」），工作目录的最后一段
   // 是现有字段里唯一还能区分它们的东西，所以补上。
-  const folder = conversation.source.cwd?.split("/").filter(Boolean).at(-1) ?? null;
+  const folder = conversation.source.cwd?.replaceAll('\\', '/').split("/").filter(Boolean).at(-1) ?? null;
   // 只放一个图标是分不出来的：真实数据里 11/17 是同一个 CLI，图标全长一样。
   const identity = useCliIdentity(null, conversation.source.cliId);
   return (

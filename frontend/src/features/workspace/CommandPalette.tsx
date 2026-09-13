@@ -127,7 +127,7 @@ export function CommandPalette({ open, onClose, onShowView }: Props) {
 
     return [
       { label: t.palette.sections.sessions, items: sessionItems },
-      { label: cwd ? t.palette.sections.filesIn(cwd.split("/").pop() ?? cwd) : t.palette.sections.files, items: fileItems, loading: filesLoading, hint: !cwd ? t.palette.hints.needSession : !q ? t.palette.hints.typeToSearch : undefined },
+      { label: cwd ? t.palette.sections.filesIn(cwd.replaceAll('\\', '/').split("/").pop() ?? cwd) : t.palette.sections.files, items: fileItems, loading: filesLoading, hint: !cwd ? t.palette.hints.needSession : !q ? t.palette.hints.typeToSearch : undefined },
       { label: t.palette.sections.notes, items: noteItems, loading: notes.loading, hint: notes.error, more: notes.nextCursor ? notes.more : undefined, retry: notes.error ? notes.refresh : undefined },
       { label: t.palette.sections.snippets, items: snippetItems, loading: snippets.loading, hint: snippets.error, more: snippets.nextCursor ? snippets.more : undefined, retry: snippets.error ? snippets.refresh : undefined },
     ];

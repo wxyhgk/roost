@@ -81,7 +81,7 @@ pub fn start(app: &tauri::AppHandle, origin: Arc<Mutex<Option<String>>>) -> Resu
         let _ = tx.send(line);
     });
     let line = rx
-        .recv_timeout(Duration::from_secs(25))
+        .recv_timeout(Duration::from_secs(if cfg!(windows) { 60 } else { 25 }))
         .map_err(|_| "Backend startup timed out; see desktop.log")?;
     let ready: Ready =
         serde_json::from_str(&line).map_err(|_| "Backend startup failed; see desktop.log")?;

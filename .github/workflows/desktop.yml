@@ -58,6 +58,7 @@ jobs:
         run: |
           node --test desktop/tests/targets.test.mjs
           node --import tsx --test packages/terminal-runtime/tests/windows.test.ts
+          node --import tsx --test backend/tests/windows-paths.test.ts frontend/tests/file-links.test.ts
       - name: Build desktop
         run: npm run desktop:build -- --target "${{ matrix.target }}"
       - name: Test Rust host and manifest

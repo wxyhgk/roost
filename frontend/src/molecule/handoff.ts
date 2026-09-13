@@ -6,7 +6,7 @@ const sameTarget = (a: AttachmentTarget, b: AttachmentTarget | null) => b !== nu
   a.sessionId === b.sessionId && a.instanceId === b.instanceId && a.epoch === b.epoch;
 
 export function moleculeReference(sourcePath: string, imageData: string) {
-  if (!sourcePath.startsWith('/') || /[\x00-\x1f\x7f-\x9f]/.test(sourcePath)) throw new Error(t.files.molecule.pathUnsupported);
+  if (!/^(?:\/|[a-z]:[\\/])/i.test(sourcePath) || /[\x00-\x1f\x7f-\x9f]/.test(sourcePath)) throw new Error(t.files.molecule.pathUnsupported);
   // 括号粘贴的控制码属于协议，不进 i18n；文案只负责中间那句话。
   return `\x1b[200~${t.files.molecule.reference(JSON.stringify(sourcePath))}\x1b[201~${imageData}`;
 }

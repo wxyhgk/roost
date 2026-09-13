@@ -25,7 +25,7 @@ const TRACEBACK = /File "([^"]+)", line (\d+)/g;
 const QUOTED = /(["'`])([^"'`\r\n]+)\1(?::(\d+))?(?::\d+)?/g;
 const EXTENSION = new RegExp(`\\.(?:${EXTS})$`, "i");
 const GENERIC = new RegExp(
-  `(?<![\\p{L}\\p{N}_/~.-])((?:~\\/|\\/|\\.\\/|\\.\\./)?[\\p{L}\\p{N}_.][\\p{L}\\p{N}\\p{M}_.~\\/\\-]*\\.(?:${EXTS}))(?![\\p{L}\\p{N}_.-])(?::(\\d+))?(?::(\\d+))?`,
+  `(?<![\\p{L}\\p{N}_/~.-])((?:[a-z]:\\/|~\\/|\\/\\/|\\/|\\.\\/|\\.\\./)?[\\p{L}\\p{N}_.][\\p{L}\\p{N}\\p{M}_.~\\/\\-]*\\.(?:${EXTS}))(?![\\p{L}\\p{N}_.-])(?::(\\d+))?(?::(\\d+))?`,
   "giu",
 );
 
@@ -45,11 +45,11 @@ export function matchFileLinks(text: string): FileLinkMatch[] {
     out.push({ path: m[2], line: m[3] ? Number(m[3]) : undefined, start, end: start + m[2].length });
     covered.push([m.index!, m.index! + m[0].length]);
   }
-  for (const m of text.matchAll(GENERIC)) {
+  for (const m of text.replaceAll('\\', '/').matchAll(GENERIC)) {
     const start = m.index ?? 0;
     if (covered.some(([s, e]) => start >= s && start < e)) continue;
     out.push({
-      path: m[1],
+      path: text.slice(start, start + m[1].length),
       line: m[2] !== undefined ? Number(m[2]) : undefined,
       start,
       end: start + m[0].length,
@@ -79,12 +79,16 @@ export function buildFileLinks(text: string): BuiltFileLink[] {
 // 把链接文本归属到会话根目录：返回传给后端 readPreview 的相对路径；
 // 跨出根目录、根自己、空串一律拒绝（后端同样会 403，由调用方展示无法打开的原因）。
 export function resolveLinkTarget(cwd: string, raw: string): string | null {
-  const text = raw.trim();
+  const windows = /^(?:[a-z]:[\\/]|\\\\)/i.test(cwd);
+  const text = windows ? raw.trim().replaceAll('\\', '/') : raw.trim();
+  const root = (windows ? cwd.replaceAll('\\', '/') : cwd).replace(/\/$/, '');
   if (!text || text.includes("\0")) return null;
-  const rel = text.startsWith("/")
-    ? text === cwd || !text.startsWith(`${cwd}/`)
+  const absolute = text.startsWith('/') || /^[a-z]:/i.test(text);
+  const sameRoot = windows ? text.toLowerCase().startsWith(root.toLowerCase() + '/') : text.startsWith(root + '/');
+  const rel = absolute
+    ? !sameRoot
       ? null
-      : text.slice(cwd.length + 1)
+      : text.slice(root.length + 1)
     : text.replace(/^\.\//, "");
   if (rel == null) return null;
   const parts = rel.split("/");

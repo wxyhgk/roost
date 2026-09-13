@@ -39,7 +39,7 @@ async function fetchCoreWorkspace(signal?: AbortSignal): Promise<WorkspaceSnapsh
   const sessions: Session[] = live.map(item => {
     const saved = metadata?.sessions.find(s => s.id === item.id);
     return { ...saved, id: item.id, cwd: item.cwd, cli: item.cli, cliId: item.cliId, closed: false,
-      title: saved?.title ?? item.cwd.split('/').filter(Boolean).at(-1) ?? item.id, projectId: saved?.projectId ?? null };
+      title: saved?.title ?? item.cwd.replaceAll('\\', '/').split('/').filter(Boolean).at(-1) ?? item.id, projectId: saved?.projectId ?? null };
   });
   return { sessions, projects: metadata?.projects ?? [], selectedId: sessions.find(s => s.id === metadata?.selectedId)?.id ?? sessions[0]?.id ?? null,
     expandedProjectIds: metadata?.expandedProjectIds ?? [], pinnedSessionIds: metadata?.pinnedSessionIds ?? [],

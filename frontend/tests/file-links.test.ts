@@ -79,3 +79,13 @@ test('Chinese paths, quoted spaces and frontend/image extensions are recognized 
   assert.deepEqual(matchFileLinks('https://host/a-b/src/组件.tsx?q=foo.py'), []);
   assert.deepEqual(matchFileLinks('image.png.backup'), []);
 });
+test('Windows links stay within the same drive and session root', () => {
+  const link = matchFileLinks('error at C:\\Code\\中文\\test.ts:12')[0];
+  assert.equal(link.path, 'C:\\Code\\中文\\test.ts');
+  assert.equal(link.line, 12);
+  assert.equal(resolveLinkTarget('C:\\Code', 'c:\\code\\中文\\test.ts'), '中文/test.ts');
+  assert.equal(resolveLinkTarget('C:\\Code', '.\\src\\test.ts'), 'src/test.ts');
+  assert.equal(resolveLinkTarget('C:\\Code', 'D:\\private.txt'), null);
+  assert.equal(resolveLinkTarget('C:\\Code', 'C:\\Code2\\private.txt'), null);
+  assert.equal(resolveLinkTarget('C:\\Code', '..\\private.txt'), null);
+});

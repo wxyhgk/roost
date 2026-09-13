@@ -90,7 +90,7 @@ export async function connectTerminalDaemon(socketPath:string):Promise<TerminalS
     supportsAgentReplay:()=>connected&&agentReplay,
     readAgentEvents:(id,instance,after)=>agentReplay?call("readAgentEvents",[id,instance,after]):Promise.reject(new Error("agent replay unsupported")),
     listSessions(){if(!connected||disposed)throw unavailable();return [...sessions.values()].map(session=>({...session}))},
-    resolveCwd(cwd?:string){const path=cwd?.replace(/^~(?=\/|$)/,homedir())??homedir();try{if(statSync(path).isDirectory())return path}catch{}return homedir()},
+    resolveCwd(cwd?:string){const path=cwd?.replace(/^~(?=[\\/]|$)/,homedir())??homedir();try{if(statSync(path).isDirectory())return path}catch{}return homedir()},
     getSession(id){if(!connected)throw unavailable();return sessions.get(id)},
     ensureSession:(id,cwd,command)=>call('ensureSession',[id,cwd,command]),
     killSession:id=>call('killSession',[id]),

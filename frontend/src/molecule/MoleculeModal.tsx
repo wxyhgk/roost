@@ -176,7 +176,7 @@ export function MoleculeModal({ open, root, path, sessionId, onClose, onDirtyCha
     try {
       const content = await api()!.save();
       const url = URL.createObjectURL(new Blob([content], { type: format === 'sdf' ? 'chemical/x-mdl-sdfile' : 'chemical/x-mdl-molfile' }));
-      const link = document.createElement('a'); link.href = url; link.download = path.split('/').at(-1)!.replace(format === 'sdf' ? /\.sdf$/i : /\.mol$/i, `${t.files.molecule.draftSuffix}.${format}`); link.click();
+      const link = document.createElement('a'); link.href = url; link.download = path.replaceAll('\\', '/').split('/').at(-1)!.replace(format === 'sdf' ? /\.sdf$/i : /\.mol$/i, `${t.files.molecule.draftSuffix}.${format}`); link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (err) { setError(String(err)); }
   }

@@ -19,6 +19,8 @@ const binary = bundle ? join(bundle, windows ? 'roost-node.exe' : 'Contents/MacO
 const cleanEnv = windows ? {
   HOME: homedir(), USERPROFILE: homedir(), SystemRoot: process.env.SystemRoot, WINDIR: process.env.WINDIR,
   LOCALAPPDATA: process.env.LOCALAPPDATA, APPDATA: process.env.APPDATA, TEMP: tmpdir(), TMP: tmpdir(),
+  ProgramFiles: process.env.ProgramFiles, 'ProgramFiles(x86)': process.env['ProgramFiles(x86)'],
+  ProgramData: process.env.ProgramData, ComSpec: process.env.ComSpec, PATHEXT: process.env.PATHEXT,
   PATH: join(process.env.SystemRoot, 'System32') + ';' + join(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0'),
 } : { HOME: homedir(), PATH: '/usr/bin:/bin', SHELL: '/bin/sh', LANG: 'en_US.UTF-8' };
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -71,7 +73,7 @@ test('relocated production runtime authenticates, serves assets and preserves a 
     const ready = await Promise.race([
       once(lines, 'line').then(([line]) => JSON.parse(line)),
       once(child, 'exit').then(() => { throw Error('Runtime exited before readiness: ' + errors); }),
-      new Promise((_, reject) => { const timer = setTimeout(() => reject(Error('Readiness timeout: ' + errors)), 35000); timer.unref(); }),
+      new Promise((_, reject) => { const timer = setTimeout(() => reject(Error('Readiness timeout: ' + errors)), windows ? 60000 : 18000); timer.unref(); }),
     ]);
     assert.equal(ready.pid, child.pid);
     return { child, ...ready, cookie: ready.cookie.split(';')[0], errors: () => errors };

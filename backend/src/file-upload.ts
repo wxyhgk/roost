@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { link, lstat, open, realpath, rename, unlink } from "node:fs/promises";
-import { basename, dirname, extname, relative, resolve } from "node:path";
+import { basename, dirname, extname, relative, resolve, sep } from "node:path";
 import { assertInside, MAX_RAW_BYTES } from "./fs";
 import { sendError, type ApiErrorCode } from "./http";
 
@@ -59,7 +59,7 @@ export async function uploadFile(root: string, path: string, source: AsyncIterab
     if(conflict === "overwrite" && original) {
       if(!sameFile(original,await inspect(file))) fail(409,"conflict","file changed during transfer");
       await rename(temporary,file);
-      return {name:basename(file),path:relative(canonicalRoot,file),size,mtime,overwritten:true};
+      return {name:basename(file),path:relative(canonicalRoot,file).split(sep).join('/'),size,mtime,overwritten:true};
     }
     const extension = extname(file), stem = basename(file,extension);
     for(let index = 0; index < (conflict === "rename" ? 1000 : 1); index++) {
@@ -68,7 +68,7 @@ export async function uploadFile(root: string, path: string, source: AsyncIterab
       try {
         // link is atomic and fails EEXIST even if another uploader wins after the initial check.
         await link(temporary,destination);
-        return {name:basename(destination),path:relative(canonicalRoot,destination),size,mtime,overwritten:false};
+        return {name:basename(destination),path:relative(canonicalRoot,destination).split(sep).join('/'),size,mtime,overwritten:false};
       } catch(error) {
         if((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
         if(conflict !== "rename") fail(409,"conflict","file already exists");

@@ -6,7 +6,7 @@ const run = promisify(execFile);
 async function powershell(script: string, path: string) {
   await run(join(process.env.SystemRoot || 'C:\\Windows', 'System32/WindowsPowerShell/v1.0/powershell.exe'),
     ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from("$ErrorActionPreference='Stop';" + script, 'utf16le').toString('base64')],
-    { windowsHide: true, timeout: 12000, env: { ...process.env, ROOST_ACL_PATH: path } });
+    { windowsHide: true, timeout: 20000, env: { ...process.env, ROOST_ACL_PATH: path } });
 }
 
 export async function protectWindowsDirectory(path: string) {
@@ -16,7 +16,7 @@ $acl = [Security.AccessControl.DirectorySecurity]::new()
 $acl.SetOwner($sid)
 $acl.SetAccessRuleProtection($true, $false)
 $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($sid, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow'))
-Set-Acl -LiteralPath $env:ROOST_ACL_PATH -AclObject $acl
+[IO.Directory]::SetAccessControl($env:ROOST_ACL_PATH, $acl)
 `, path);
 }
 
