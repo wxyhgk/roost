@@ -156,10 +156,47 @@ npm run typecheck --workspace @roost/terminal-runtime
 
 ## 部署
 
-`npm start` 是开发入口。要让它常驻，需要三样东西各跑各的：持有 PTY 的
-`deploy/terminal-owner.mts`、HTTP 后端 `backend/src/index.ts`，以及前面挡着的反向
-代理（提供 `frontend/dist`、反代 `/api` 含 WebSocket）。用 launchd 还是 systemd
-随意。容器方案见 [`deploy/README.md`](deploy/README.md)。
+`npm start` 是开发入口：关掉它，终端也就停了。
+
+### macOS：装成登录期服务
+
+```sh
+npm ci
+npm run build --workspace frontend
+brew install caddy          # 已经有了就跳过
+npm run service:install
+```
+
+装完登录即自动启动，异常退出自动拉起，关掉 SSH 或终端窗口都不影响。入口
+`http://localhost:8080`，密码在 `~/.roost/auth-password`。
+
+```sh
+npm run service:status      # 三个服务各自什么状态
+npm run service:uninstall   # 卸载，不动数据目录
+node scripts/install-service.mjs --dry-run   # 只打印将要写的东西，不动系统
+```
+
+常用开关：`--port` `--backend-port` `--origins` `--data-dir` `--caddy`
+`--secure-cookies`。
+
+**为什么是三个服务而不是一个。** PTY 必须活在一个不会因为改代码而重启的进程里：
+后端崩了、重启了、你改了一行代码，正在跑的 CLI 都不该跟着死。所以
+
+| 服务 | 跑什么 |
+| --- | --- |
+| `com.roost.terminal` | `deploy/terminal-owner.mts`，**PTY 都在这个进程里** |
+| `com.roost.backend` | 先等 owner 就绪，再起 `backend/src/index.ts` |
+| `com.roost.web` | Caddy：提供 `frontend/dist`，把 `/api` 反代给后端 |
+
+`backend` 和 `web` 随便重启，终端不受影响；**重启 `terminal` 会结束所有会话**。
+日志在 `~/.roost/logs/`。
+
+改完前端要重新发布静态资源，见下。
+
+### 其他
+
+Linux 用 systemd 是同样三件事。群晖 NAS 的容器方案见
+[`deploy/README.md`](deploy/README.md)。
 
 发布静态资源用 `deploy/publish-assets.mjs` 而不是 `cp`：哈希资源只增不删，旧页面
 还在加载的懒加载块不能被覆盖，它会检查同名不同内容并拒绝。
