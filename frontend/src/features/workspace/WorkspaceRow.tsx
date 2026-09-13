@@ -6,7 +6,7 @@ import { IconChevron, IconEdit, IconPlus, IconTrash } from "../../shared/icons";
 import { useGroupActivity } from "../session-status/useGroupActivity";
 import { useWorkspace } from "../../shared/store";
 import type { Session } from "../../shared/types";
-import { InlineRename, renameOnDoubleClick } from "../../shared/ui/InlineRename";
+import { InlineRename } from "../../shared/ui/InlineRename";
 import { WorkspaceSessionRow } from "./WorkspaceSessionRow";
 import { IconButton } from "../../shared/ui/IconButton";
 import { t } from "@roost/i18n";
@@ -51,8 +51,6 @@ export function WorkspaceRow({
   onDelete?: () => void;
 }) {
   const [renaming, setRenaming] = useState(false);
-  // 「全部终端」「未分组」没有 onRename，双击它们不该有反应。
-  const rename = onRename ? renameOnDoubleClick(() => setRenaming(true)) : null;
   const activity = useGroupActivity(sessions.map(s => s.id));
   const projectId = id?.startsWith("project:") ? id.slice("project:".length) : null;
 
@@ -125,13 +123,6 @@ export function WorkspaceRow({
           第一下照常生效——单击的主动作不该为了等一个可能到来的双击而延迟。
         */
         onClick={event => { if (event.detail > 1) return; toggle(); }}
-        /*
-          **不能直接 spread。** dnd-kit 的 MouseSensor 激活器就叫 onMouseDown，和
-          上面那行 `{...drag.listeners}` 落在同一个元素上；覆盖掉它这一行就再也拖不动了。
-          所以手动串起来：先让拖拽拿到这次按下，再做防选词。
-        */
-        onMouseDown={event => { drag.listeners?.onMouseDown?.(event); rename?.onMouseDown(event); }}
-        onDoubleClick={rename?.onDoubleClick}
         onKeyDown={event => {
           if (event.key !== "Enter" && event.key !== " ") return;
           event.preventDefault();
@@ -166,6 +157,7 @@ export function WorkspaceRow({
         </span>
 
         <span className="flex min-w-0 flex-1 flex-col gap-px">
+          {/* 只有真分组有 onRename，所以只有它能双击改名；「全部终端」「未分组」走纯文本分支。 */}
           {onRename ? (
             <InlineRename
               className={`truncate ${selected ? "font-semibold text-text" : "font-medium text-text/90"}`}
@@ -173,6 +165,7 @@ export function WorkspaceRow({
               editing={renaming}
               onEditingChange={setRenaming}
               onCommit={onRename}
+              editOnDoubleClick
             />
           ) : (
             <span className={`truncate ${selected ? "font-semibold text-text" : "font-medium text-text/90"}`}>{name}</span>

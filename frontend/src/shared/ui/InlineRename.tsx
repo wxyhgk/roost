@@ -5,7 +5,7 @@ const interactive = (target: EventTarget | null) =>
   !!(target as HTMLElement | null)?.closest("button, input, textarea, a, select");
 
 /**
- * 双击卡片改名，摊到要响应的那个容器上。
+ * 双击标题改名。
  *
  * **必须同时挡住 mousedown。** 选中文字是浏览器在「第二次 mousedown」上做的事，
  * 而 dblclick 在那之后才触发——只在 dblclick 里 preventDefault 是来不及的，
@@ -13,8 +13,12 @@ const interactive = (target: EventTarget | null) =>
  *
  * 只挡双击的那一下，所以正常的按住拖选仍然可用；也不用 `select-none` 整片关掉，
  * 那样标题和路径就再也复制不了了。
+ *
+ * 挂在标题这个 span 上、而不是外面那张卡上，有个额外的好处：卡片外层往往挂着
+ * dnd-kit 的 `drag.listeners`，而它的激活器恰好也叫 `onMouseDown`——同元素上会互相
+ * 覆盖。挂在子元素上则两边都能收到（冒泡），不用手工串联。
  */
-export function renameOnDoubleClick(start: () => void) {
+function doubleClickToEdit(start: () => void) {
   return {
     onMouseDown(event: MouseEvent<HTMLElement>) {
       if (event.detail > 1 && !interactive(event.target)) event.preventDefault();
@@ -35,6 +39,13 @@ type Props = {
   onCommit: (value: string) => void;
   onEditingChange: (editing: boolean) => void;
   onDisplayClick?: () => void;
+  /**
+   * 双击标题进入编辑。
+   *
+   * 默认关着：TopBar 的标题是**单击**就改名（onDisplayClick），再叠一层双击没有意义；
+   * 文件树只在编辑态才挂这个组件，展示态是它自己的按钮。
+   */
+  editOnDoubleClick?: boolean;
 };
 
 export function InlineRename({
@@ -45,6 +56,7 @@ export function InlineRename({
   onCommit,
   onEditingChange,
   onDisplayClick,
+  editOnDoubleClick,
 }: Props) {
   const [draft, setDraft] = useState(value);
   const [wasEditing, setWasEditing] = useState(editing);
@@ -71,7 +83,16 @@ export function InlineRename({
   }
 
   if (!editing) {
-    return <span className={className} title={value} onClick={onDisplayClick}>{displayValue ?? value}</span>;
+    return (
+      <span
+        className={className}
+        title={value}
+        onClick={onDisplayClick}
+        {...(editOnDoubleClick ? doubleClickToEdit(() => onEditingChange(true)) : {})}
+      >
+        {displayValue ?? value}
+      </span>
+    );
   }
 
   function close(commit: boolean) {
