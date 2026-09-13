@@ -1,6 +1,6 @@
 # Warp 移植建议的核对记录
 
-`muse_suggeest.md` 是一份「从 Warp 移植」的建议清单。核对下来它**有翻译错误，也有
+`muse_suggest.md` 是一份「从 Warp 移植」的建议清单。核对下来它**有翻译错误，也有
 我们早就具备的条目**，因此每条动手前都需要对着源码验证，不能照单执行。
 
 Warp 源码在 `research/third-party/warp`（浅克隆，已在 .gitignore 中）。
