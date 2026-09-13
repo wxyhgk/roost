@@ -17,7 +17,7 @@ export async function openTerminalDaemon(options:{dataDir:string;shell?:string;d
   const dataDir=await realpath(options.dataDir),socketPath=daemonSocketPath(dataDir),lockPath=process.platform === 'win32' ? join(dataDir, 'terminal-daemon.lock') : socketPath+'.lock';
   async function probe() {
     try{return await connectTerminalDaemon(socketPath)}catch(error){
-      if(!['ENOENT','ECONNREFUSED', ...(process.platform === 'win32' ? ['EPROTO', 'EBUSY'] : [])].includes((error as NodeJS.ErrnoException).code??''))throw error;
+      if(!['ENOENT','ECONNREFUSED', ...(process.platform === 'win32' ? ['EPROTO', 'EBUSY', 'ETIMEDOUT'] : [])].includes((error as NodeJS.ErrnoException).code??''))throw error;
       return null;
     }
   }
@@ -41,7 +41,8 @@ export async function openTerminalDaemon(options:{dataDir:string;shell?:string;d
       const compiled = import.meta.url.endsWith('.js');
       const child=spawn(process.execPath,[fileURLToPath(new URL('./launch.mjs',import.meta.url)),...(compiled?[]:['--import','tsx']),fileURLToPath(new URL(compiled?'./main.js':'./main.ts',import.meta.url)),socketPath,dataDir,options.shell??defaultShell(),options.defaultCwd??homedir()],{detached:true,windowsHide:true,stdio:['ignore',log.fd,log.fd],cwd:fileURLToPath(new URL('..',import.meta.url)),env:process.env});
       let spawnError:Error|undefined;child.on('error',error=>{spawnError=error});child.unref();await log.close();
-      for(let wait=0;wait<(process.platform === 'win32' ? 400 : 100);wait++){
+      const deadline = Date.now() + (process.platform === 'win32' ? 40000 : 10000);
+      while(Date.now() < deadline){
         if(spawnError)throw spawnError;
         const ready=await probe();if(ready)return ready;
         await new Promise(resolve=>setTimeout(resolve,100));
