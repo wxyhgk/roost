@@ -1,4 +1,4 @@
-// Drive the installed WebView2 application with the runner's Microsoft Edge WebDriver.
+// Drive the installed WebView2 application with its matching Microsoft Edge WebDriver.
 // No test server, Tauri plugin or automation API is compiled into the application.
 import assert from 'node:assert/strict';
 import { spawn, execFileSync } from 'node:child_process';
@@ -55,7 +55,9 @@ export async function testWindowsUi(installed) {
     const response = await fetch(base + path, { method, headers: { 'content-type': 'application/json' },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(90000) });
     const result = await response.json();
-    if (!response.ok || result.value?.error) throw Error('WebView2 check: ' + (result.value?.message ?? response.status));
+    // Successful execute responses may contain any application value, including an
+    // `error` property. WebDriver protocol errors use a non-success HTTP status.
+    if (!response.ok) throw Error('WebView2 check: ' + (result.value?.message ?? response.status));
     return result.value;
   }
   async function until(read, timeout = 75000) {
@@ -79,9 +81,9 @@ export async function testWindowsUi(installed) {
           origin: location.origin,
           mounted: !!document.querySelector('button[aria-label="New"], button[aria-label="新建"]'),
           password: !!document.querySelector('input[type="password"]'),
-          error: document.querySelector('#status')?.textContent
+          bootstrapStatus: document.querySelector('#status')?.textContent
         }`, args: [] });
-        if (/未能启动/.test(state.error ?? '')) throw Error(state.error);
+        if (/未能启动/.test(state.bootstrapStatus ?? '')) throw Error(state.bootstrapStatus);
         return /^http:\/\/127\.0\.0\.1:\d+$/.test(state.origin) && state.mounted && !state.password;
       });
       const auth = await request('POST', endpoint + '/execute/async', {
