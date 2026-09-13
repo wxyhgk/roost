@@ -61,7 +61,12 @@ export function App() {
       return;
     }
 
-    const sessionId = activeId;
+    /*
+      拖的可能是画布上那张卡（id 就是 session.id），也可能是侧栏那一行
+      （`sessionrow:` 前缀——两者会同时在册，id 必须错开）。落点那边没有这个问题：
+      droppable 登记的一律是裸的 session.id。
+    */
+    const sessionId = activeId.startsWith("sessionrow:") ? activeId.slice("sessionrow:".length) : activeId;
     if (pinnedSessionIds.includes(sessionId)) return;
     const overId = String(over.id);
     const open = allSessions.filter(isOpen).filter((s) => !pinnedSessionIds.includes(s.id));

@@ -1,3 +1,5 @@
+import { useDraggable, useDroppable } from "@dnd-kit/core";
+import { CSS } from "@dnd-kit/utilities";
 import { useState } from "react";
 import { IconPin } from "../../shared/icons";
 import { sessionBadge } from "../session-status/badge";
@@ -36,17 +38,54 @@ export function WorkspaceSessionRow({ session, current, onOpen }: {
   const [renaming, setRenaming] = useState(false);
   const [toolbarOpen, setToolbarOpen] = useState(false);
 
+  /*
+    侧栏里直接拖这一行换顺序、换分组。
+
+    `App.tsx` 的 onDragEnd 早就写好了同组排序和跨组插入，它一直在等一个 `over.id`
+    是会话 id 的落点——缺的只是这里的两个 hook。
+
+    **draggable 的 id 必须和画布卡片的错开。** 画布上的 SessionCard 用的就是
+    `session.id`，而侧栏一直挂着、画布在「全部终端」视图下也挂着，两者会同时在册；
+    dnd-kit 里 id 重复会让拖拽指向错的那个。droppable 则可以直接用 `session.id`：
+    它和 draggable 是两本独立的登记簿，而且 onDragEnd 认的正是这个裸 id。
+
+    置顶的不给拖：onDragEnd 对置顶会话本来就直接返回，能拖起来却落不下去比不能拖更糟。
+  */
+  const drag = useDraggable({
+    id: `sessionrow:${session.id}`,
+    data: { title, cli: session.cli, cliId: session.cliId },
+    disabled: pinned || renaming,
+  });
+  const drop = useDroppable({ id: session.id });
+  /*
+    落点始终挂着，但**能不能落**要看在拖什么、落在谁身上——画一条落不下去的线比不画更糟。
+
+      - 拖的是分组：onDragEnd 只认 `project:` 开头的落点，落在会话行上什么也不会发生。
+      - 落点是置顶的行：置顶会话不参与排序（onDragEnd 里被 listOf 过滤掉了），
+        插在它前面这件事本身没有意义。
+      - 落在自己身上：那不是一次移动。
+  */
+  const draggingProject = String(drop.active?.id ?? "").startsWith("projectdrag:");
+  const over = drop.isOver && !draggingProject && !pinned && drop.active?.id !== `sessionrow:${session.id}`;
+
   return (
     /*
       session-row / session-toolbar 是 index.css 里那套「悬停才显形、触屏上常驻」
       规则的钩子。**触屏没有悬停**，少了它们手机上就够不着这些操作。
     */
     <div
+      ref={drop.setNodeRef}
       className="session-row relative select-none py-0.5"
       data-toolbar-open={toolbarOpen}
       onClick={() => { if (!renaming) onOpen(); }}
     >
+      {/* 落点在这一行「之前」——和分组行那条线同一套视觉语言。 */}
+      {over && <span className="absolute inset-x-0 -top-px z-10 h-[3px] rounded-full bg-accent/60" />}
       <div
+        ref={drag.setNodeRef}
+        {...drag.listeners}
+        {...drag.attributes}
+        style={{ transform: CSS.Translate.toString(drag.transform), opacity: drag.isDragging ? 0.35 : 1 }}
         className={`session-card relative flex w-full cursor-pointer items-center gap-2.5 rounded-lg border px-2.5 py-2 min-h-12 text-text transition-colors ${
           current ? "border-border bg-bg-active/70" : "border-transparent bg-bg-panel hover:bg-bg-hover/60"
         }`}
