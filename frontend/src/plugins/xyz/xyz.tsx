@@ -114,6 +114,13 @@ function XyzPreview({ content }: { content: string }) {
         const viewer = viewerHost.acquire(el, owner, bg);
         viewerRef.current = viewer;
         viewer.clear();
+        /*
+          这里显式量一次就够，**不要再自己挂 ResizeObserver**。3Dmol 的 GLViewer 构造时
+          已经有一个 divwatcher 观察同一个 host（还有一个 window resize 监听和一个
+          IntersectionObserver），我们再挂一个只是让同一件事每帧干两遍——而 resize() 里是
+          `renderer.setSize()` 加整帧 render()，setSize 会重新分配绘制缓冲，缩放弹窗时这
+          不便宜。宿主被搬到尺寸不同的落点时 divwatcher 同样会响，覆盖得到。
+        */
         viewer.resize();
         viewer.addModel(parsed?.model ?? content, "xyz");
         viewer.setStyle({}, {
@@ -151,15 +158,10 @@ function XyzPreview({ content }: { content: string }) {
     el.addEventListener("touchstart", onTouchStart, { passive: true });
     el.addEventListener("dblclick", onDoubleClick);
 
-    const ro = new ResizeObserver(() => {
-      viewerRef.current?.resize();
-    });
-    ro.observe(el);
 
     return () => {
       disposed = true;
       cancelAnimationFrame(raf);
-      ro.disconnect();
       el.removeEventListener("contextmenu", onContextMenu);
       el.removeEventListener("mousedown", onMouseDown);
       el.removeEventListener("touchstart", onTouchStart);
