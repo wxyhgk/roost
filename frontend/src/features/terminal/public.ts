@@ -30,7 +30,6 @@ export {
   getTerminalLatency,
 } from "./status";
 
-export { forgetSession, onQuietSession, reportOutput } from "./activity";
 export { ROOST_PATH_MIME, quoteShellPath } from "./paths";
 export { emitFileLink, resolveLinkTarget, subscribeFileLink, subscribeFileLinkOpen, type FileOpenRequest } from "./fileLinks";
 export { uploadSessionImage } from "./imagePaste";

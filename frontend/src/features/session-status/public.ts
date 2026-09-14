@@ -23,4 +23,3 @@ export { useAgentNotify } from './quietNotify';
 export { useSessionActivity } from './useSessionActivity';
 export { useGroupActivity } from './useGroupActivity';
 export { useQuietFor } from './useQuietFor';
-export { QUIET_NOTIFY_AFTER_MS } from './quietThresholds';

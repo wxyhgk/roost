@@ -215,6 +215,65 @@ for (const owner of owners) {
   }
 }
 /*
+  **可达性检查。**
+
+  上面那些规则都是逐条边判断的：「这一条 import 允许吗」。它们从不问「A 经过任意路径能
+  不能到达 B」，于是任何禁令都能靠一个中转模块洗掉——实测过，`shared/reactShim.ts` 里只写
+  一行 `export { useState } from "react"`，再让状态内核 import 它，每条边单独看都合法，
+  而「状态内核必须能脱离 React 跑」这条约束整个作废。那个文件看起来还完全像个正当的兼容层。
+
+  这里只对**没有例外**的两条做传递检查。其余几条（特性不许依赖 app、共享层不许依赖特性、
+  公开入口）都带着有意的例外——比如 `app/` 按约定可以直接引 `view/` 下的组件——全量闭包
+  会把正当写法一起判红，那不是收紧而是添乱。
+
+  报错要带路径。一条「A 不该到达 B」而不说经过了谁，读的人只能自己再走一遍图。
+*/
+const frontendSrc = resolve(root, 'frontend/src');
+if (existsSync(frontendSrc)) {
+  const localEdges = new Map(), externalEdges = new Map();
+  for (const path of allFiles(frontendSrc, /\.tsx?$/)) {
+    const key = relative(frontendSrc, path).split(sep).join('/');
+    const local = [], external = [];
+    for (const [, spec] of readFileSync(path, 'utf8').matchAll(/(?:\bfrom\s*|(?<![\w"'-])import\s*(?:\(\s*)?|\brequire\s*\(\s*)["'`]([^"'`]+)["'`]/g)) {
+      if (!spec.startsWith('.')) { external.push(spec); continue; }
+      const target = resolve(dirname(path), spec);
+      const swapped = target.replace(/\.(js|jsx|mjs|cjs)$/, m => ({ '.js': '.ts', '.jsx': '.tsx', '.mjs': '.mts', '.cjs': '.cts' })[m]);
+      for (const base of [target, swapped]) {
+        for (const ext of ['.ts', '.tsx', '/index.ts', '/index.tsx']) {
+          if (existsSync(base + ext)) { local.push(relative(frontendSrc, base + ext).split(sep).join('/')); }
+        }
+      }
+    }
+    localEdges.set(key, local); externalEdges.set(key, external);
+  }
+  /** 从 start 出发找第一条到达「命中 hit」的路径；hit 判的是外部依赖或本地文件。 */
+  const findPath = (start, hitExternal, hitLocal) => {
+    const queue = [[start, [start]]], seen = new Set([start]);
+    while (queue.length) {
+      const [node, trail] = queue.shift();
+      for (const spec of externalEdges.get(node) ?? []) if (hitExternal(spec)) return [...trail, spec];
+      for (const next of localEdges.get(node) ?? []) {
+        if (seen.has(next)) continue;
+        if (hitLocal?.(next)) return [...trail, next];
+        seen.add(next); queue.push([next, [...trail, next]]);
+      }
+    }
+    return null;
+  };
+  const STATE_CORE = /^(?:features\/library\/(?:client|query|api)|shared\/store\/(?:state|observable)|features\/terminal\/sessionController)\.ts$/;
+  for (const key of localEdges.keys()) {
+    if (STATE_CORE.test(key)) {
+      const trail = findPath(key, spec => /^react(?:-dom)?(?:\/|$)/.test(spec));
+      if (trail) errors.push(`frontend/src/${key}: state core must remain independent of React (经由 ${trail.join(' -> ')})`);
+    }
+    if (key === 'features/terminal/public.ts') {
+      const trail = findPath(key, () => false, next => /features\/terminal\/(?:xtermEngine|useTerminal|index)\.tsx?$/.test(next));
+      if (trail) errors.push(`frontend/src/${key}: light terminal entry must not load the engine (经由 ${trail.join(' -> ')})`);
+    }
+  }
+}
+
+/*
   **规则锚点。** 上面有三条规则的生效条件是「某个文件叫这个名字」——public.ts 的
   existsSync、以及轻量入口那条写死的 xtermEngine。把文件改个名、连同所有引用一起改掉，
   是一次看起来完全正常的提交，而规则会**静默地整条消失**，此后随便谁都能深引进去。

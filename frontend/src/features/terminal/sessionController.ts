@@ -2,7 +2,6 @@ import type { CliKind, ServerMessage } from "@roost/terminal-protocol";
 import { afterExplicitJump, afterGesture, afterScroll, initialFollowIntent, isViewportScrollKey } from "../../shared/followBottom";
 import type { SendResult, TermHandle, TermStatus, TermTheme } from "./types";
 import { claimTerminalSession } from "./handles";
-import { reportOutput, forgetSession } from "./activity";
 import { createResume, type ResumeFrame, type ResumeSnapshot } from "./resume";
 import type { ConnectionHandle, ConnectionOptions } from "./connection";
 import { createImagePaste, type ImagePasteState } from "./imagePaste";
@@ -147,7 +146,6 @@ export function createTerminalSessionController(options: {
       lastFrameAt = Date.now();
       const seq = 'seq' in msg ? msg.seq : undefined;
       if (msg.type !== 'output') { phase = 'replay'; trace.record(msg.type, seq); }
-      if (msg.type === "output") reportOutput(sessionId);
       if (result.kind === "invalid") { trace.record('invalid-frame', seq); return false; }
       if (msg.type !== "output") {
         setHistoryTruncated(!!(msg as { truncated?: boolean }).truncated);
@@ -323,7 +321,6 @@ export function createTerminalSessionController(options: {
     const dispose = () => {
       if (cancelled) return;
       storeSnapshot(resume?.snapshotNow() ?? null);
-      const owned = lease.current();
       cancelled = true;
       abort.abort();
       images.dispose();
@@ -348,7 +345,6 @@ export function createTerminalSessionController(options: {
       clearInterval(watchdog);
       conn?.dispose();
       lease.dispose();
-      if (owned) forgetSession(sessionId);
       term?.dispose();
     };
     function send(data: string): SendResult {

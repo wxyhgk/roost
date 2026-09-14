@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { quietForLabel } from "../src/features/session-status/quietFor.ts";
-import { QUIET_LABEL_AFTER_MS, QUIET_NOTIFY_AFTER_MS, QUIET_STATE_AFTER_MS } from "../src/features/session-status/quietThresholds.ts";
+import { QUIET_LABEL_AFTER_MS, QUIET_STATE_AFTER_MS } from "../src/features/session-status/quietThresholds.ts";
 
 test("short pauses stay silent; longer ones read at the right granularity", () => {
   // A few seconds without output is normal mid-answer, so it must not be labelled.
@@ -24,9 +24,12 @@ test("an unobserved session reports nothing rather than a made-up duration", () 
   assert.equal(quietForLabel(null), null);
 });
 
-test("the three quiet thresholds stay in the order the UI depends on", () => {
-  // Dot (backend, 3s) < label < notify. Reordering these silently makes the row claim a
-  // session is idle before the dot goes grey, or fires the notification before the label appears.
+test("the two quiet thresholds stay in the order the UI depends on", () => {
+  // Dot (backend, 3s) < label. Reordering these silently makes the row claim a session is
+  // idle before the dot goes grey.
+  //
+  // 这里原来还有第三个门槛（30 秒的通知），连同那条「旧版静默回调」一起删掉了：它的出口
+  // onQuietSession 从来没有消费者，完成提示走的是 quietNotify.ts 那条，认的是 AI 的 done
+  // 状态而不是输出静默。
   assert.ok(QUIET_LABEL_AFTER_MS > QUIET_STATE_AFTER_MS, "the label must not appear before the dot goes grey");
-  assert.ok(QUIET_LABEL_AFTER_MS < QUIET_NOTIFY_AFTER_MS, "the label must appear before the notification interrupts");
 });
