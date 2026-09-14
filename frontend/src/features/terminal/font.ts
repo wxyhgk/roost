@@ -4,7 +4,23 @@
  * 单独一个模块，是因为它**不能把 xterm 拖进来**——它守的那条规则值得有测试，
  * 而测试不该为了这几十行去加载一个浏览器渲染器。
  */
-export const TERMINAL_FONT_FAMILY = '"IBM Plex Mono", ui-monospace, monospace';
+/*
+  终端的字体栈。
+
+  拉丁字形来自 IBM Plex Mono（index.html 里真的下载了的那一份），这部分跨平台一致。
+  后面几个**只为中日韩字形**：IBM Plex Mono 没有 CJK，取不到就会落到浏览器默认的等宽
+  字体——Windows 上那常常是宋体/新宋体，在终端里看着很旧。
+
+  为什么放在栈尾是安全的：字体回退**按字形**发生，Latin 仍然走第一位；而 PingFang SC
+  和微软雅黑的 CJK 字形本身就是全宽方块，和 xterm 给宽字符分配的两格对得上，不会错位。
+  （Latin 部分它们是比例字体，但轮不到它们画。）
+
+  **不会影响格子测量的时序。** 那条规则见下面 waitForFont 的说明：出事的是 Web 字体
+  晚到导致行高变化。这里加的都是系统本地字体，`fonts.load` 对它们立即落定，
+  IBM Plex Mono 什么时候到也没有变。
+*/
+export const TERMINAL_FONT_FAMILY =
+  '"IBM Plex Mono", ui-monospace, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", monospace';
 export const TERMINAL_FONT_SIZE = 13;
 
 function waitForBox(el: HTMLElement, signal?: AbortSignal) {
