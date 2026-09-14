@@ -32,8 +32,11 @@ function cliArgs() {
 function shimTarget(file,dir,depth) {
  if(depth>4)return;
  let shim;try{shim=readFileSync(file,'utf8')}catch{return}
- // 可选的 call 前缀；路径要么是 %~dp0 相对的，要么是绝对的。
- const match=shim.match(/^[^\S\r\n]*(?:call[^\S\r\n]+)?"([^"\r\n]+)"[^\S\r\n]+%\*/im);
+ // 取 %* 前面紧挨着的那个引号串。**不要锚定行首**：npm 生成的垫片长成
+ // \`"%~dp0\\node.exe" "%~dp0\\cli.js" %*\`，目标是行内第二个引号串；锚了行首就只能
+ // 看到 node.exe，整条垫片被判成解析不出来。这一条是被 desktop/tests/windows.test.mjs
+ // 在 CI 上抓出来的，本机测不到——那个测试只在 win32 上跑。
+ const match=shim.match(/"([^"\r\n]+)"[^\S\r\n]*%\*/);
  if(!match)return;
  const relative=match[1].match(/^%~?dp0%?[/\\]?(.*)$/i);
  const target=resolve(dir,relative?relative[1]:match[1]);

@@ -180,3 +180,25 @@ test('互相指向的垫片会在有限步内放弃', () => {
   });
   assert.deepEqual(resolveCli(['C:\\a'], 'loop'), { unusable: 'C:\\a\\loop.cmd' });
 });
+
+/*
+  npm 真正生成的垫片形状：目标是行内**第二个**引号串，前面还有一个 node.exe。
+
+  这一条是补上来的。我为了支持 qwen 的 call 链给正则加了行首锚点，于是只看得到
+  node.exe，整条垫片被判成解析不出来——CI 上 desktop/tests/windows.test.mjs 直接红了，
+  而本机跑不到那个测试（它 skip 掉非 win32）。形状本身跟宿主没关系，就该在这儿钉住。
+*/
+test('目标不是行内第一个引号串时同样认得出来', () => {
+  const { resolveCli } = loadResolver({
+    'C:\\npm\\claude.cmd': '@echo off\r\n"node.exe" "%~dp0\\cli.cjs" %*\r\n',
+    'C:\\npm\\cli.cjs': '// entry',
+  });
+  assert.deepEqual(resolveCli(['C:\\npm'], 'claude'), { file: 'C:\\roost\\node.exe', args: ['C:\\npm\\cli.cjs'] });
+
+  // npm 的真实垫片还带 IF EXIST 分支，目标仍是 %* 前面那个。
+  const { resolveCli: withBranch } = loadResolver({
+    'C:\\npm\\tool.cmd': '@IF EXIST "%~dp0\\node.exe" (\r\n  "%~dp0\\node.exe"  "%~dp0\\lib\\run.js" %*\r\n) ELSE (\r\n  node  "%~dp0\\lib\\run.js" %*\r\n)\r\n',
+    'C:\\npm\\lib\\run.js': '// entry',
+  });
+  assert.deepEqual(withBranch(['C:\\npm'], 'tool'), { file: 'C:\\roost\\node.exe', args: ['C:\\npm\\lib\\run.js'] });
+});
