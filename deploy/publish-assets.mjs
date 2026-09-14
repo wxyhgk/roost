@@ -2,6 +2,9 @@
 // Publish only additive, immutable assets. Run after builds, before switching
 // current. Never hard-link release files themselves: future rebuilds may edit them.
 import { createHash } from 'node:crypto';
+import { brotliCompress, constants as zlib } from 'node:zlib';
+import { readFile } from 'node:fs/promises';
+import { promisify } from 'node:util';
 import { constants } from 'node:fs';
 import { chmod, link, lstat, mkdir, mkdtemp, open, opendir, rm } from 'node:fs/promises';
 import { dirname, join, parse, relative, resolve, sep } from 'node:path';
@@ -9,6 +12,36 @@ import { fileURLToPath } from 'node:url';
 
 const absent = error => error?.code === 'ENOENT';
 const conflict = path => new Error(`asset content conflict: ${path}`);
+
+const compress = promisify(brotliCompress);
+
+/*
+  预压缩。Caddy 那边是 `file_server { precompressed br gzip }`：请求带 br 时它直接发
+  同名的 .br，发不到才回落到即时 gzip。
+
+  为什么值得：实测 main chunk 246 KB(gzip) → 188 KB(br)，省 24%；ketcher 的 wasm
+  3712 KB → 2492 KB，省 33%。对跨太平洋访问的人这是实打实的秒。
+
+  **只对新哈希算一次。** 资产是按内容哈希命名的，所以 .br 一旦存在就永远有效，重复
+  发布直接跳过——真正付钱的只有每次构建新出来的那几个块。
+
+  质量按大小分档：q11 在 main chunk 上是 1.1 秒，在 11 MB 的 wasm 上要 19.5 秒，而 q9
+  只要 0.6 秒、仍能省 24%（对 q11 的 33% 少 320 KB）。大文件换掉那 19 秒不值。
+*/
+const BROTLI_MAX_QUALITY_BYTES = 4 * 1024 * 1024;
+// 已经压过的格式再压是白费力气；太小的文件省不出什么，还多一次文件查找。
+const COMPRESSIBLE = /\.(?:js|mjs|cjs|css|html|json|svg|map|wasm|txt)$/i;
+const COMPRESS_MIN_BYTES = 1024;
+const worthCompressing = (path, bytes) => COMPRESSIBLE.test(path) && bytes >= COMPRESS_MIN_BYTES;
+
+async function brotli(source, bytes) {
+  return compress(await readFile(source), {
+    params: {
+      [zlib.BROTLI_PARAM_QUALITY]: bytes > BROTLI_MAX_QUALITY_BYTES ? 9 : 11,
+      [zlib.BROTLI_PARAM_SIZE_HINT]: bytes,
+    },
+  });
+}
 
 async function info(path) {
   try { return await lstat(path); }
@@ -93,18 +126,27 @@ export async function publishAssets({ target, sources }) {
     if ((await digest(targetPath)).hash !== asset.hash) throw conflict(targetPath);
     reused++;
   }
-  if (!additions.length) return { published: 0, reused, bytes: 0 };
+  /*
+    缺哪些 .br。新发布的和早就在的都要看——这个特性是后加的，已经躺在共享目录里的那批
+    资产同样需要补上，否则它们永远只有 gzip 可发。
+  */
+  const compressible = [];
+  for (const [path, asset] of assets) {
+    if (!worthCompressing(path, asset.bytes)) continue;
+    if (!(await info(join(destination, path + '.br')))) compressible.push([path, asset]);
+  }
+  if (!additions.length && !compressible.length) return { published: 0, reused, bytes: 0, compressed: 0 };
 
   // Private staging beside the shared directory stays outside Caddy's root.
   // The deployment layout puts both on the same filesystem for atomic link().
   const staging = await mkdtemp(join(dirname(destination), '.publish-assets-'));
-  let published = 0, bytes = 0;
+  let published = 0, bytes = 0, compressed = 0, slot = 0;
   try {
     for (const [path, asset] of additions) {
       const targetPath = join(destination, path);
       await directory(dirname(asset.source));
       await directory(dirname(targetPath), true);
-      const temporary = join(staging, String(published + reused));
+      const temporary = join(staging, String(slot++));
       const output = await open(temporary, 'wx', 0o600);
       try {
         const content = await digest(asset.source, output);
@@ -125,8 +167,26 @@ export async function publishAssets({ target, sources }) {
         reused++;
       }
     }
+    /*
+      .br 和正文走同一套发布方式：写进私有暂存区，再用 link() 原子地挂上去。link 不覆盖，
+      所以和别的发布者抢同一个名字时是 EEXIST 而不是互相踩——内容由哈希文件名保证一致，
+      撞上了直接当已存在。
+    */
+    for (const [path, asset] of compressible) {
+      const targetPath = join(destination, path + '.br');
+      await directory(dirname(targetPath), true);
+      const temporary = join(staging, String(slot++));
+      const output = await open(temporary, 'wx', 0o600);
+      try {
+        await output.writeFile(await brotli(asset.source, asset.bytes));
+        await output.sync();
+      } finally { await output.close(); }
+      await chmod(temporary, 0o644);
+      try { await link(temporary, targetPath); compressed++; }
+      catch (error) { if (error?.code !== 'EEXIST') throw error; }
+    }
   } finally { await rm(staging, { recursive: true, force: true }); }
-  return { published, reused, bytes };
+  return { published, reused, bytes, compressed };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

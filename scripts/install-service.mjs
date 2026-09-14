@@ -97,7 +97,12 @@ http://:${port} {
         }
         handle @assetFile {
             header Cache-Control "public, max-age=31536000, immutable"
-            file_server
+            # 预压缩优先：deploy/publish-assets.mjs 会给每个够大的资产生成同名 .br，
+            # 请求带 br 时直接发它，没有才回落到站点级 encode 的即时 gzip。
+            # 实测 main chunk 246 KB(gzip) → 188 KB(br)，wasm 3712 → 2492 KB。
+            file_server {
+                precompressed br gzip
+            }
         }
         handle {
             header Cache-Control no-store

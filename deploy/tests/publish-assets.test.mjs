@@ -147,3 +147,57 @@ test('the CLI rejects invalid invocation and reports a successful source publica
   assert.equal(JSON.parse(result.stdout).published, 1);
   assert.equal(await readFile(join(target, 'main.js'), 'utf8'), 'main');
 });
+
+/*
+  预压缩。Caddy 那边是 `file_server { precompressed br gzip }`，请求带 br 时直接发同名的
+  .br。这里钉的是「哪些该有、哪些不该有，以及不重复干活」——实测 main chunk
+  246 KB(gzip) → 188 KB(br)，首屏整体省 25%，所以它值得有测试看着。
+*/
+const big = size => 'x'.repeat(size);
+
+test('够大的可压缩资产会生成 .br，且内容解出来和原文一致', async t => {
+  const { target, release } = await fixture(t);
+  const source = await release('one', { 'app-abc.js': big(4096), 'style-abc.css': big(2048) });
+  const result = await publishAssets({ target, sources: [source] });
+  assert.equal(result.compressed, 2);
+  const { brotliDecompressSync } = await import('node:zlib');
+  for (const [name, size] of [['app-abc.js', 4096], ['style-abc.css', 2048]]) {
+    const packed = await readFile(join(target, name + '.br'));
+    assert.ok(packed.length < size, `${name}.br 应该比原文小`);
+    assert.equal(brotliDecompressSync(packed).toString(), big(size), `${name}.br 解出来要和原文逐字一致`);
+  }
+});
+
+test('已经压过的格式和太小的文件不生成 .br', async t => {
+  const { target, release } = await fixture(t);
+  const source = await release('one', {
+    'font-abc.woff2': Buffer.alloc(8192, 7),
+    'pic-abc.png': Buffer.alloc(8192, 7),
+    'tiny-abc.js': 'x',
+  });
+  const result = await publishAssets({ target, sources: [source] });
+  assert.equal(result.compressed, 0, 'woff2/png 再压是白费力气，小文件省不出什么');
+  for (const name of ['font-abc.woff2.br', 'pic-abc.png.br', 'tiny-abc.js.br']) await doesNotExist(join(target, name));
+});
+
+/* 资产按内容哈希命名，所以 .br 一旦存在就永远有效——重复发布不该再算一遍。 */
+test('再发布一次不会重复压缩已有的 .br', async t => {
+  const { target, release } = await fixture(t);
+  const source = await release('one', { 'app-abc.js': big(4096) });
+  assert.equal((await publishAssets({ target, sources: [source] })).compressed, 1);
+  const again = await publishAssets({ target, sources: [source] });
+  assert.equal(again.compressed, 0);
+  assert.equal(again.published, 0);
+  assert.equal(again.reused, 1);
+});
+
+/* 这个特性是后加的：早就躺在共享目录里的资产也得补上，否则它们永远只有 gzip 可发。 */
+test('给已经发布过、但还没有 .br 的老资产补上', async t => {
+  const { target, release } = await fixture(t);
+  const source = await release('one', { 'app-abc.js': big(4096) });
+  await publishAssets({ target, sources: [source] });
+  await rm(join(target, 'app-abc.js.br'));
+  const result = await publishAssets({ target, sources: [source] });
+  assert.equal(result.published, 0, '正文已经在了');
+  assert.equal(result.compressed, 1, '缺的 .br 要补回来');
+});

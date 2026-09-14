@@ -4,7 +4,7 @@
   "scripts": {
     "start": "concurrently --kill-others -n backend,frontend -c cyan,green \"npm run start --prefix backend\" \"npm run dev --prefix frontend\"",
     "start:tunnel": "ROOST_ALLOWED_ORIGINS=${TUNNEL_ORIGIN:?设置为你的隧道入口，例如 http://example:15173} ROOST_AUTH_INSECURE_HTTP=1 VITE_HMR_CLIENT_PORT=${TUNNEL_PORT:-15173} npm start",
-    "verify": "npm run typecheck --workspaces --if-present && npm test --workspaces --if-present && npm run build --workspace frontend && node scripts/check-boundaries.mjs",
+    "verify": "npm run typecheck --workspaces --if-present && npm test --workspaces --if-present && node --test deploy/tests/*.test.mjs && npm run build --workspace frontend && node scripts/check-boundaries.mjs",
     "dev": "concurrently -n backend,frontend -c cyan,green \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
     "dev:backend": "npm run dev --prefix backend",
     "dev:frontend": "npm run dev --prefix frontend",
