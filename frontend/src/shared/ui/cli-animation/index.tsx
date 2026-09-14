@@ -134,10 +134,18 @@ export function CliAnimation({ builtin, className, label, children }: {
 
   if (reduced) return <>{children}</>;
   return (
-    <span role="img" aria-label={label} title={label} className={className}>
-      {/* 就位之前把静态图标摆在原地，避免先空一块再跳出来。 */}
-      {!ready && children}
-      <span ref={host} className={ready ? 'block h-full w-full' : 'hidden'} />
+    /*
+      两层都绝对定位，**宿主任何时候都不能是 display:none**。
+
+      上一版宿主在就位前是 `hidden`，而测量恰恰发生在那之前（loadAnimation 之后同步做）
+      ——`getBBox()` 对不渲染的元素返回全零或直接抛，于是整个裁剪一次都没生效，动画照旧
+      只占画布的三分之一。这种 bug 不会报错，只会「看起来没改」。
+
+      所以宿主始终 inset-0（有真实尺寸可量），静态图标盖在上面直到动画就位。
+    */
+    <span role="img" aria-label={label} title={label} className={`relative ${className ?? ''}`}>
+      <span ref={host} className="absolute inset-0" />
+      {!ready && <span className="absolute inset-0">{children}</span>}
     </span>
   );
 }
