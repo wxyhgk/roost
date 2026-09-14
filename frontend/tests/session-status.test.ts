@@ -89,3 +89,39 @@ test('identity-only changes notify consumers without requiring output or activit
   s.accept(frame(3, [entry(10, { instanceId: 'replacement', agent: { ...agent, agentSessionId: 'second' } })]));
   assert.equal(s.read('s').instanceId, 'replacement'); assert.equal(updates, 3);
 });
+
+/*
+  版本错位必须降级，不能整帧作废。
+
+  这条帧走的是一条很长的静默链：parseStatusFrame 返回 null → store.accept 返回 false
+  → connection.ts 里只有 accept 为 true 才 arm()，于是 45 秒的 deadline 不再续命
+  → lost() → 退避重连 → 下一帧照样被拒。结果是**所有会话的徽标一起卡死、永久重连，
+  而且一句报错都没有**，起因只是后端多了一个枚举值。
+
+  区分的原则：认不出的枚举值 = 后端比这个页面新（常态），降级；结构不对 = 载荷坏了，拒绝。
+*/
+test('后端多一个 state 时降级那一条，不丢整帧', () => {
+  const ok = entry(10, { id: 'good' });
+  const future = { ...entry(11, { id: 'future' }), state: 'starting' as StatusEntry['state'] };
+  const parsed = parseStatusFrame(frame(1, [ok, future]));
+  assert.ok(parsed, '整帧作废会让所有徽标卡死，而不只是这一条');
+  assert.equal(parsed!.sessions.length, 2, '其余会话不该受牵连');
+  assert.equal(parsed!.sessions[1].state, 'unavailable', '认不出的状态降级成「说不准」');
+  assert.equal(parsed!.sessions[0].state, 'active', '认得出的原样保留');
+});
+
+test('agent 的 state 和 waitingFor 同样降级，不丢整帧', () => {
+  const agent = { state: 'compacting', name: null, agentSessionId: null, since: 1, waitingFor: 'captcha' };
+  const parsed = parseStatusFrame(frame(1, [{ ...entry(), agent } as StatusEntry]));
+  assert.ok(parsed, 'agent 的新枚举值不该废掉整帧');
+  const got = parsed!.sessions[0].agent!;
+  assert.equal(got.state, 'idle', '认不出的 agent 状态退回 idle');
+  assert.equal(got.waitingFor, null, '认不出的等待原因当成「没在等」');
+});
+
+/* 结构坏了是另一回事：那不是版本错位，拒绝是对的。 */
+test('结构损坏仍然整帧拒绝', () => {
+  const broken = { state: 'working', name: null, agentSessionId: null, since: 'soon', waitingFor: null };
+  assert.equal(parseStatusFrame(frame(1, [{ ...entry(), agent: broken } as unknown as StatusEntry])), null);
+  assert.equal(parseStatusFrame(frame(1, [{ ...entry(), id: 42 } as unknown as StatusEntry])), null);
+});

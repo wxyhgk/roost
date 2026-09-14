@@ -56,6 +56,18 @@ export function viewOf(delivery: Delivery): OutgoingView {
       // 保留原文供查看和重试；重试沿用原 requestId。
       return { ...base, pending: true, retryable: true };
   }
+  /*
+    **兜底不能省，哪怕 TypeScript 认为上面已经穷尽。**
+
+    它认为穷尽，是因为 DeliveryState 这个联合此刻是六个成员。后端加第七个投递状态时，
+    这个函数会返回 undefined，而调用方直接读 `view.pending`——抛在 render 里，被 Shell
+    的 ErrorBoundary 接住，于是**整个右侧面板**（文件、笔记、对话、监控）一起变成降级
+    文案，而不是只坏掉那一条消息。
+
+    降级成 pending 是最安全的假设：不认识的状态一律当成「还在路上」——不隐藏、不让重试、
+    不声称已送达。宁可多显示一条待发，也不要凭空宣布成功或失败。
+  */
+  return { ...base, pending: true };
 }
 
 /** 待发区该显示哪些：已被原生历史接手的不再重复显示。 */

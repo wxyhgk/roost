@@ -69,3 +69,20 @@ test("正文上限按字节算，不是字符数", () => {
   assert.ok(textBytes(chinese) > MAX_PEER_TEXT_BYTES, "6000 个汉字已经超限");
   assert.equal(textBytes("abc"), 3);
 });
+
+/*
+  后端加一个投递状态时，这个 switch 会走空。
+
+  TypeScript 认为它穷尽，是因为 DeliveryState 此刻是六个成员——而那个联合在前端曾经是
+  手抄的。走空之后 viewOf 返回 undefined，调用方直接读 view.pending，抛在 render 里被
+  Shell 的 ErrorBoundary 接住，于是**整个右侧面板**一起变成降级文案，而不是只坏那一条。
+
+  降级成 pending 是最安全的假设：不隐藏、不让重试、不声称已送达。
+*/
+test("认不出的投递状态当成「还在路上」，不是返回 undefined", () => {
+  const view = viewOf(d("expired" as Delivery["state"]));
+  assert.ok(view, "返回 undefined 会让整个右侧面板炸掉");
+  assert.equal(view.pending, true, "宁可多显示一条待发");
+  assert.equal(view.hideFromPending, false, "不能凭空宣布送达");
+  assert.equal(view.retryable, false, "也不该鼓励对一个我们不懂的状态重试");
+});

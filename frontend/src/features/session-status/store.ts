@@ -27,15 +27,31 @@ function sameAgent(a: SessionAgent | null, b: SessionAgent | null): boolean {
     && a.summary === b.summary && a.toolName === b.toolName && a.toolInputPreview === b.toolInputPreview;
 }
 const optionalText = (value: unknown) => value === null || value === undefined || typeof value === 'string';
+const AGENT_STATES = ['idle', 'working', 'blocked', 'done', 'failed'];
+const WAITING_FOR = ['permission', 'question'];
+
+/**
+ * 校验并**就地降级**一个 agent。返回 false 表示这一条结构坏了，不是「版本比我新」。
+ *
+ * 这两件事必须分开处理：
+ *
+ * - **版本错位**（后端比这个页面新，送来一个我不认识的枚举值）→ 降级。用户开着的页面
+ *   可能比后端老一个版本，这是常态不是异常。
+ * - **结构损坏**（since 不是数、name 不是字符串）→ 拒绝。那说明载荷不是它声称的东西。
+ *
+ * 原来两者都走「整帧作废」，于是后端往 state 里加一个值，就会让**所有**会话的徽标一起
+ * 卡死——见 parseStatusFrame 上面那段。下面那三行注释早就写明了同样的道理，只是当时只
+ * 覆盖了「新增字段」那一半。
+ */
 function validAgent(value: unknown): boolean {
   if (value === null || value === undefined) return true;
   if (typeof value !== 'object') return false;
   const a = value as SessionAgent;
-  return ['idle', 'working', 'blocked', 'done', 'failed'].includes(a.state)
-    && (a.name === null || typeof a.name === 'string')
+  if (!AGENT_STATES.includes(a.state)) a.state = 'idle';
+  if (a.waitingFor !== null && a.waitingFor !== undefined && !WAITING_FOR.includes(a.waitingFor)) a.waitingFor = null;
+  return (a.name === null || typeof a.name === 'string')
     && (a.agentSessionId === null || typeof a.agentSessionId === 'string')
     && seq(a.since)
-    && (a.waitingFor === null || a.waitingFor === 'permission' || a.waitingFor === 'question')
     // 这三项是后加的：老后端根本不发，缺省必须当合法，否则一升级前端就整帧作废。
     && optionalText(a.summary) && optionalText(a.toolName) && optionalText(a.toolInputPreview);
 }
@@ -50,10 +66,9 @@ export function parseStatusFrame(value: unknown): StatusFrame | null {
   for (const s of f.sessions) {
     if (!s || typeof s.id !== 'string' || ids.has(s.id) ||
       !(s.instanceId === null || typeof s.instanceId === 'string') || !(s.cliId === null || typeof s.cliId === 'string') ||
-      // 枚举值也要前向兼容，理由和上面那三个字段一模一样：后端加一个 state，
-      // 整帧作废 → accept 返回 false → connection.ts 不 arm()，45 秒 deadline 到期就
-      // 判成 lost，于是**永久重连**，所有会话徽标卡死，而且一句报错都没有。
-      // 认不出来的按 unavailable 处理：降级到「这一条我说不准」，而不是丢掉整帧。
+      // 枚举值也要前向兼容，理由和 validAgent 上面那段一样：后端加一个 state，整帧作废
+      // → accept 返回 false → connection.ts 不 arm() → 45 秒 deadline 到期判成 lost
+      // → 无限重连。所有徽标卡死，而且一句报错都没有。认不出的按 unavailable 处理。
       !(typeof s.state === 'string') ||
       !(s.outputSeq === null || seq(s.outputSeq)) || !(s.lastOutputAt === null || seq(s.lastOutputAt)) ||
       !validAgent(s.agent)) return null;
