@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import "./3dmol-setup";
 import * as $3Dmol from "3dmol";
+import { parseXyz } from "./parse";
 import type { EditorPlugin } from "../../shared/editor";
 import { t } from "@roost/i18n";
 
@@ -31,24 +32,6 @@ const CPK: Record<string, string> = {
   Al: "#bfa6a6", Si: "#f0c8a0",
 };
 
-function parseXyz(content: string): { comment: string; atoms: { el: string }[] } | null {
-  const lines = content.split("\n");
-  if (lines.length < 3) return null;
-  const count = parseInt(lines[0].trim(), 10);
-  if (isNaN(count) || count <= 0) return null;
-  const comment = lines[1]?.trim() ?? "";
-  const atoms: { el: string }[] = [];
-  for (let i = 0; i < count; i++) {
-    const line = lines[2 + i];
-    if (!line) break;
-    const parts = line.trim().split(/\s+/);
-    if (parts.length < 4) break;
-    atoms.push({ el: parts[0] });
-  }
-  if (atoms.length === 0) return null;
-  return { comment, atoms };
-}
-
 // 单位四元数旋转向量: v' = v + 2*cross(q.xyz, cross(q.xyz, v) + w*v)
 function applyQuat(
   q: [number, number, number, number],
@@ -72,6 +55,9 @@ function applyQuat(
 }
 
 function XyzPreview({ content }: { content: string }) {
+  // 解析一次，两处共用：表头用 atoms/comment，3Dmol 吃归一化后的 model。
+  // 两边看同一份判断，就不会再出现「表头好好的、视图却炸了」。
+  const parsed = useMemo(() => parseXyz(content), [content]);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<MolViewer | null>(null);
   // center()/zoomTo() 之后 modelGroup 的基准位置(分子质心在原点),
@@ -137,7 +123,7 @@ function XyzPreview({ content }: { content: string }) {
           "#000000";
         const viewer = mol.createViewer(el, { backgroundColor: bg });
         viewerRef.current = viewer;
-        viewer.addModel(content, "xyz");
+        viewer.addModel(parsed?.model ?? content, "xyz");
         viewer.setStyle({}, {
           sphere: { colorscheme: "element", radius: 0.25 },
           stick: { colorscheme: "element", radius: 0.08 },
@@ -191,9 +177,8 @@ function XyzPreview({ content }: { content: string }) {
       basePosRef.current = null;
       panRef.current = { x: 0, y: 0 };
     };
-  }, [content]);
+  }, [parsed, content]);
 
-  const parsed = parseXyz(content);
   if (!parsed) {
     return (
       <pre className="m-0 whitespace-pre-wrap break-words p-3 font-mono text-body leading-[1.55]">
