@@ -1,8 +1,15 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { closeMolecule, getMolecule, openMolecule, subscribeMolecule } from "../../embeds/molecule/editorTarget";
+import { moleculeFormats } from "../../embeds/molecule/bridge";
+import { formatFor } from "../../shared/chemistry/editor";
 
-/** 走分子编辑器而不是文本预览的扩展名。 */
-export const MOLECULE_FILE = /\.(mol|sdf)$/i;
+/**
+ * 走分子编辑器而不是文本预览的文件。
+ *
+ * 问的是编辑器声明的那张格式表，而不是在这儿再写一遍 `/\.(mol|sdf)$/i`：换编辑器时
+ * 「它能编什么」只有一个地方说了算，这里不会漏改。
+ */
+export const isMoleculeFile = (name: string) => formatFor(name, moleculeFormats) !== null;
 
 /**
  * 关掉编辑器。
@@ -42,7 +49,7 @@ export function useMoleculeBridge({ sessionId, selected, root, isMolecule, onClo
   /*
     由调用方算好传进来，不在这里算。
 
-    它只是对路径做一次 MOLECULE_FILE 正则，和编辑器状态无关；而调用方**必须**先有
+    它只是对路径做一次 isMoleculeFile，和编辑器状态无关；而调用方**必须**先有
     这个答案才能决定文本预览要不要让路，也就是说它一定在建这座桥之前就已经算出来
     了。让桥再算一遍并返回，会逼着调用方等桥建完才知道答案，凭空造出一个依赖环。
   */

@@ -3,14 +3,14 @@ import { Editor } from 'ketcher-react';
 import { StandaloneStructServiceProvider } from 'ketcher-standalone/dist/binaryWasm';
 import 'ketcher-react/dist/index.css';
 import { ErrorBoundary } from '../../shared/ui/ErrorBoundary';
-import { moleculeChannel, type MoleculeFormat, type MoleculeWindow } from './bridge';
+import { moleculeChannel, type MoleculeWindow } from './bridge';
 import './frame.css';
 import { t } from '@roost/i18n';
 
 const notify = (type: string, message?: string) => parent.postMessage({ channel: moleculeChannel, type, message }, location.origin);
 const provider = new StandaloneStructServiceProvider();
 let loading = false;
-let format: MoleculeFormat = 'mol';
+let format = 'mol';
 window.addEventListener('keydown', event => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
     event.preventDefault(); event.stopImmediatePropagation(); notify('save');
@@ -33,8 +33,9 @@ createRoot(document.getElementById('root')!).render(
           save() {
             return format === 'sdf' ? ketcher.getSdf() : ketcher.getMolfile('v2000');
           },
-          molfile: () => ketcher.getMolfile('v2000'),
-          png: content => ketcher.generateImage(content, { outputFormat: 'png' }),
+          // 「画布的一张图」在 Ketcher 这儿要先过一道 molfile——那是它的实现细节，
+          // 所以这道转换留在 iframe 里，调用方只说要图。
+          image: async () => ketcher.generateImage(await ketcher.getMolfile('v2000'), { outputFormat: 'png' }),
         };
         ketcher.editor.subscribe('change', () => { if (!loading) notify('change'); });
         notify('ready');

@@ -304,5 +304,6 @@ export const misc = {
     loading: "Loading molecule preview…",
     resetTitle: "Reset view (double-click canvas too)",
     reset: "Reset",
+    viewerError: "Molecule view error",
   },
 } as const;

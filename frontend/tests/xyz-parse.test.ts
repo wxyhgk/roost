@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseXyz } from '../src/plugins/xyz/parse.ts';
+import { toXyz } from '../src/shared/chemistry/structure.ts';
 
 /*
   这些用例钉的是一个真实报错：`3Dmol error: Cannot read properties of undefined
@@ -23,41 +24,57 @@ const tinker =
   '    2  C   -0.771809   -1.158927   -0.566125    2    1    3   79\r\n' +
   '    3  H    0.216439   -0.530070   -1.220141    2    2    4    9\r\n';
 
-test('标准布局原样通过，位移向量那几列留着', () => {
+test('标准布局解析成结构；每原子矢量是数据不是文本', () => {
   const r = parseXyz(plain)!;
-  assert.equal(r.comment, 'water');
-  assert.deepEqual(r.atoms.map(a => a.el), ['O', 'H', 'H']);
-  assert.equal(r.model, plain);
+  assert.equal(r.title, 'water');
+  // 断言的是数值和结构，不是逐字文本——坐标现在按数值重新输出（`0.0` 写成 `0`），
+  // 格式不是契约的一部分。
+  assert.deepEqual(r.atoms.map(a => [a.element, a.x, a.y, a.z]),
+    [['O', 0, 0, 0], ['H', 0.76, 0.59, 0], ['H', -0.76, 0.59, 0]]);
+  assert.equal(r.bondsKnown, false, '标准 XYZ 没给键，查看器只能按距离猜');
+
+  /*
+    第 5~7 列是每原子矢量（位移 / 简正振动模式 / 受力）。建模成 Atom.vector 而不是
+    「原样保留那几列文本」——那是数据，下一个查看器可以拿它画振动动画，文本只能转发。
+  */
   const vec = parseXyz('1\nvec\nO 0.0 0.0 0.0 0.1 0.2 0.3\n')!;
-  assert.equal(vec.model.split('\n')[2], 'O 0.0 0.0 0.0 0.1 0.2 0.3', '重建会丢掉第 5~7 列');
+  assert.deepEqual(vec.atoms[0].vector, { x: 0.1, y: 0.2, z: 0.3 });
+  assert.equal(toXyz(vec).split('\n')[2], 'O 0 0 0 0.1 0.2 0.3', '带矢量时写七列');
 });
 
 test('Tinker 布局：元素取第二列，不是序号', () => {
   const r = parseXyz(tinker)!;
-  assert.deepEqual(r.atoms.map(a => a.el), ['C', 'C', 'H'], '取成 1/2/3 就说明按标准布局读了');
+  assert.deepEqual(r.atoms.map(a => a.element), ['C', 'C', 'H'], '取成 1/2/3 就说明按标准布局读了');
   assert.equal(r.atoms.length, 3, '没有注释行，原子从第 2 行就开始');
 });
 
-test('Tinker 行必须重建成四列：序号、类型、成键表都不能漏给 3Dmol', () => {
-  const body = parseXyz(tinker)!.model.split('\n').slice(2).filter(l => l !== '');
-  assert.deepEqual(body, [
-    'C -1.302935 -0.499940 0.472705',
-    'C -0.771809 -1.158927 -0.566125',
-    'H 0.216439 -0.530070 -1.220141',
-  ]);
+test('Tinker 的成键表被读进来，而不是丢掉让查看器按距离猜', () => {
+  const r = parseXyz(tinker)!;
+  assert.equal(r.bondsKnown, true, '文件写明了键，这件事必须传下去');
+  /*
+    坐标后面第一个数是原子类型，再往后才是成键表：1-C 连 2/6/8，2-C 连 1/3/79，
+    3-H 连 2/4/9。只读进来三个原子，所以指向 6/8/79/4/9 的都丢掉；1-2 和 2-3 两端
+    各写了一次，各自只留一条，序号换成 0-based。
+  */
+  assert.deepEqual(r.bonds, [{ a: 0, b: 1, order: 1 }, { a: 1, b: 2, order: 1 }]);
+});
+
+test('交给只吃 XYZ 文本的查看器时，序号和类型不会漏过去', () => {
+  const body = toXyz(parseXyz(tinker)!).split('\n').slice(2).filter(l => l !== '');
+  assert.equal(body[0].split(/\s+/)[0], 'C', '第一列必须是元素，不是序号');
   for (const line of body) {
     assert.equal(line.split(/\s+/).length, 4,
-      '超过 6 列时 3Dmol 会把第 5~7 列当成位移向量 dx/dy/dz');
+      'Tinker 行不带矢量；多出来的列会被 3Dmol 当成 dx/dy/dz 读进去');
   }
 });
 
 test('交给 3Dmol 的那份永远没有空行，原子数是实际数到的', () => {
   for (const src of [tinker, plain, '5\npadded\nO 0 0 0\nH 0.7 0.6 0\n\n\n']) {
     const r = parseXyz(src)!;
-    const rows = r.model.split('\n').slice(2, -1);
+    const rows = toXyz(r).split('\n').slice(2, -1);
     assert.ok(rows.every(l => l.trim()), '空行就是那个 toUpperCase 崩溃的直接原因');
-    assert.equal(r.model.split('\n')[0], String(r.atoms.length), '数目虚高会让 3Dmol 读过界');
-    assert.ok(!r.model.includes('\r'), '\\r 不该带给 3Dmol');
+    assert.equal(toXyz(r).split('\n')[0], String(r.atoms.length), '数目虚高会让 3Dmol 读过界');
+    assert.ok(!toXyz(r).includes('\r'), '\\r 不该带给 3Dmol');
   }
 });
 

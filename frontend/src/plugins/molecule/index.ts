@@ -9,7 +9,7 @@ import type { ExternalEditor, ExternalEditorContext } from "../../shared/editor"
 */
 const MoleculeModal = lazy(() => import("../../embeds/molecule/MoleculeModal").then(m => ({ default: m.MoleculeModal })));
 import { closeMolecule, getMolecule, noteMoleculeSaved, setMoleculeDirty, subscribeMolecule } from "../../embeds/molecule/editorTarget";
-import { MOLECULE_FILE, useMoleculeBridge } from "./bridge";
+import { isMoleculeFile, useMoleculeBridge } from "./bridge";
 import { t } from "@roost/i18n";
 
 /**
@@ -41,7 +41,7 @@ function Host() {
 }
 
 export const moleculeEditor: ExternalEditor = {
-  match: name => MOLECULE_FILE.test(name),
+  match: isMoleculeFile,
   get region() { return t.misc.shell.regionMolecule; },
   Host,
   use(context: ExternalEditorContext) {

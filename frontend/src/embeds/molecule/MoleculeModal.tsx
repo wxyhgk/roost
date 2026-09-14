@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowDownTrayIcon, PaperAirplaneIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { readFilePreview, writeFile, FileWriteError } from '../../shared/api/files';
-import { moleculeChannel, type MoleculeFormat, type MoleculeWindow } from './bridge';
+import { moleculeChannel, moleculeFormats, type MoleculeWindow } from './bridge';
+import { formatFor } from '../../shared/chemistry/editor';
 import { handoffMolecule } from './handoff';
 import { replaceFirstSdfRecord, splitSdfRecords } from './sdf';
 import { t } from '@roost/i18n';
@@ -55,7 +56,12 @@ export function MoleculeModal({ open, root, path, sessionId, onClose, onDirtyCha
   // frameEpoch 作为 iframe 的 key 把整个编辑器文档换掉——那是编辑器压根没起来时唯一的退路。
   const [reload, setReload] = useState(0);
   const [frameEpoch, setFrameEpoch] = useState(0);
-  const format: MoleculeFormat = /\.sdf$/i.test(path) ? 'sdf' : 'mol';
+  /*
+    格式由编辑器声明的那张表认，不在这里按扩展名硬判。走到这一步 path 一定是编辑器
+    认领过的（`match` 用的是同一张表），认不出来只可能是表和 match 不同步，那时按第一种
+    格式兜底也总比崩掉强。
+  */
+  const format = formatFor(path, moleculeFormats) ?? moleculeFormats[0];
   const actions = useRef({ save: () => {}, close: () => {} });
   const api = () => (frame.current?.contentWindow as MoleculeWindow | null)?.moleculeEditor;
 
@@ -119,11 +125,11 @@ export function MoleculeModal({ open, root, path, sessionId, onClose, onDirtyCha
     initialized.current = false; setReady(false); setError('');
     void readFilePreview(root, path).then(async file => {
       if (cancelled) return;
-      if (file.binary || file.truncated) throw new Error(t.files.molecule.notPlainText(format));
+      if (file.binary || file.truncated) throw new Error(t.files.molecule.notPlainText(format.id));
       source.current = file.content;
-      const records = format === 'sdf' ? splitSdfRecords(file.content) : [];
-      setNotice(format === 'sdf' && records.length > 1 ? t.files.molecule.multiRecord(records.length) : '');
-      await api()!.load(records.length > 1 ? records[0] : file.content, format);
+      const records = format.id === 'sdf' ? splitSdfRecords(file.content) : [];
+      setNotice(format.id === 'sdf' && records.length > 1 ? t.files.molecule.multiRecord(records.length) : '');
+      await api()!.load(records.length > 1 ? records[0] : file.content, format.id);
       if (cancelled) return;
       mtime.current = file.mtime;
       revision.current = savedRevision.current = 0;
@@ -144,7 +150,7 @@ export function MoleculeModal({ open, root, path, sessionId, onClose, onDirtyCha
     const version = revision.current;
     try {
       const edited = await api()!.save();
-      const content = format === 'sdf' ? replaceFirstSdfRecord(source.current, edited) : edited;
+      const content = format.id === 'sdf' ? replaceFirstSdfRecord(source.current, edited) : edited;
       const result = await writeFile(root, path, content, mtime.current);
       mtime.current = result.mtime;
       savedRevision.current = version;
@@ -152,7 +158,7 @@ export function MoleculeModal({ open, root, path, sessionId, onClose, onDirtyCha
       setDirty(revision.current !== version); setConflict(false); setMessage(t.files.molecule.saved); onSaved();
       if (toAI) {
         setMessage(t.files.molecule.savingPreview);
-        const png = await api()!.png(await api()!.molfile());
+        const png = await api()!.image();
         const controller = new AbortController(); request.current = controller;
         const timeout = setTimeout(() => controller.abort(), 30_000);
         try { await handoffMolecule(sessionId, `${root.replace(/\/$/, '')}/${path}`, png, controller.signal); }
@@ -175,8 +181,13 @@ export function MoleculeModal({ open, root, path, sessionId, onClose, onDirtyCha
   async function download() {
     try {
       const content = await api()!.save();
-      const url = URL.createObjectURL(new Blob([content], { type: format === 'sdf' ? 'chemical/x-mdl-sdfile' : 'chemical/x-mdl-molfile' }));
-      const link = document.createElement('a'); link.href = url; link.download = path.replaceAll('\\', '/').split('/').at(-1)!.replace(format === 'sdf' ? /\.sdf$/i : /\.mol$/i, `${t.files.molecule.draftSuffix}.${format}`); link.click();
+      const url = URL.createObjectURL(new Blob([content], { type: format.mediaType }));
+      const ext = format.extensions[0];
+      const name = path.replaceAll('\\', '/').split('/').at(-1)!;
+      const link = document.createElement('a'); link.href = url;
+      // 换掉原扩展名再加后缀；扩展名从声明里来，不再为每种格式各写一条正则。
+      link.download = `${name.replace(/\.[^.]*$/, '')}${t.files.molecule.draftSuffix}.${ext}`;
+      link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (err) { setError(String(err)); }
   }

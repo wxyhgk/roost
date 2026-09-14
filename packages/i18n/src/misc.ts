@@ -309,5 +309,7 @@ export const misc = {
     loading: "正在加载分子预览…",
     resetTitle: "重置视角(双击画布也可)",
     reset: "复位",
+    // 不写「3Dmol error」：查看器是要换的，用户可见的文案不该点它的名。
+    viewerError: "分子视图出错",
   },
 } as const;
