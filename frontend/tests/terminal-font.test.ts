@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { observeFonts, waitForMeasurable } from '../src/features/terminal/font.ts';
+import { TERMINAL_FONT_FAMILY, observeFonts, waitForMeasurable } from '../src/features/terminal/font.ts';
 
 const tick = () => new Promise<void>(r => setImmediate(r));
 const sized = { clientWidth: 1066, clientHeight: 842 } as HTMLElement;
@@ -98,4 +98,28 @@ test('a host without a font registry degrades instead of throwing', async () => 
     await waitForMeasurable(sized);
     assert.doesNotThrow(() => observeFonts(() => {})());
   } finally { (globalThis as { document?: unknown }).document = previous; }
+});
+
+/*
+  Windows 上「每个字母之间空一大格」的那次回归：栈是
+  `"IBM Plex Mono", ui-monospace, "PingFang SC", "Microsoft YaHei", …`，而这三个在
+  Windows 上**一个都拿不到**——IBM Plex Mono 走 Google Fonts（桌面版 CSP 直接挡掉），
+  ui-monospace 只有 macOS 认，PingFang SC 是 macOS 独有。于是第一个能用的是微软雅黑，
+  一个比例字体，拉丁字形比 xterm 的格子窄。
+
+  钉的是**顺序**不是具体字体：CJK 家族之前必须先有一个该平台真正的等宽字体。
+*/
+test('every CJK fallback sits behind a real monospace family', () => {
+  const families = TERMINAL_FONT_FAMILY.split(',').map(f => f.trim().replaceAll('"', ''));
+  const cjk = ['PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC'];
+  // 各平台至少一个自带等宽字体，必须排在所有 CJK 家族之前。
+  for (const [platform, mono] of [['Windows', 'Consolas'], ['macOS', 'ui-monospace'], ['Linux', 'DejaVu Sans Mono']]) {
+    const at = families.indexOf(mono);
+    assert.ok(at >= 0, `${platform} 没有等宽字体兜底：栈里找不到 ${mono}`);
+    for (const name of cjk) {
+      const cjkAt = families.indexOf(name);
+      if (cjkAt >= 0) assert.ok(at < cjkAt, `${mono} 必须排在 ${name} 前面，否则 ${platform} 上拉丁字形会用比例字体画`);
+    }
+  }
+  assert.equal(families.at(-1), 'monospace', '通用 monospace 收尾');
 });
