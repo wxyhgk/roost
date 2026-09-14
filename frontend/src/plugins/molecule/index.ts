@@ -1,7 +1,7 @@
 import { createElement, useSyncExternalStore } from "react";
 import type { ExternalEditor, ExternalEditorContext } from "../../shared/editor";
-import { MoleculeModal } from "../../molecule/MoleculeModal";
-import { closeMolecule, getMolecule, noteMoleculeSaved, setMoleculeDirty, subscribeMolecule } from "../../molecule/editorTarget";
+import { MoleculeModal } from "../../embeds/molecule/MoleculeModal";
+import { closeMolecule, getMolecule, noteMoleculeSaved, setMoleculeDirty, subscribeMolecule } from "../../embeds/molecule/editorTarget";
 import { MOLECULE_FILE, useMoleculeBridge } from "./bridge";
 import { t } from "@roost/i18n";
 
@@ -10,11 +10,11 @@ import { t } from "@roost/i18n";
  *
  * 它不能做成普通的 `preview` 插件：那是渲染在 `FilePreviewModal` 里的，而那个弹窗
  * `key={selected}`，每换一个文件就重挂一次。这个编辑器住在 iframe 里，销毁一次就是
- * 9 MB 代码加 wasm 的完整冷启动（理由写在 molecule/editorTarget.ts 顶部）。
+ * 9 MB 代码加 wasm 的完整冷启动（理由写在 embeds/molecule/editorTarget.ts 顶部）。
  *
  * 所以它走 `ExternalEditor` 这条路：`Host` 由 Shell 渲染一次、活在整棵树唯一稳定的
  * 落点上，`use` 让文件树隔空告诉它该编辑谁。这样 Shell 和 features/files 都不必再
- * import 任何分子相关的东西——在此之前两边都直接 import 了 molecule/，于是「有哪些
+ * import 任何分子相关的东西——在此之前两边都直接 import 了 embeds/molecule/，于是「有哪些
  * 类型走弹窗外的编辑器」这个问题散在三处。
  */
 function Host() {

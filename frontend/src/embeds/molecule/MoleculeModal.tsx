@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowDownTrayIcon, PaperAirplaneIcon, XMarkIcon } from '@heroicons/react/24/outline';
-import { readFilePreview, writeFile, FileWriteError } from '../shared/api/files';
+import { readFilePreview, writeFile, FileWriteError } from '../../shared/api/files';
 import { moleculeChannel, type MoleculeFormat, type MoleculeWindow } from './bridge';
 import { handoffMolecule } from './handoff';
 import { replaceFirstSdfRecord, splitSdfRecords } from './sdf';

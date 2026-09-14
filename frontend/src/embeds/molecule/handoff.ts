@@ -1,5 +1,5 @@
 import { planImageInsertion } from '@roost/cli-adapters';
-import { getAttachmentTarget, sendToSession, uploadSessionImage, type AttachmentTarget } from '../features/terminal/public';
+import { getAttachmentTarget, sendToSession, uploadSessionImage, type AttachmentTarget } from '../../features/terminal/public';
 import { t } from '@roost/i18n';
 
 const sameTarget = (a: AttachmentTarget, b: AttachmentTarget | null) => b !== null &&

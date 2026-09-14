@@ -94,6 +94,7 @@ umask 022 && env -u ROOST_CLAUDE_OBSERVING npm test --workspaces --if-present
 | `scripts/install-service.mjs` | 生成并装载三个 launchd plist（`npm run service:install`） |
 | `scripts/check-boundaries.mjs` | 依赖边界检查，见下一节 |
 | `desktop/` | Tauri 桌面预览版，**不在 npm workspaces 里**，独立构建 |
+| `frontend/src/embeds/` | 跑在 iframe 里、有自己 html 入口的子应用（分子编辑器）。新增一个要同时改 vite.config 和 stable-workbench/build.mjs 的 input，见该目录的 README |
 
 ---
 
@@ -104,7 +105,10 @@ umask 022 && env -u ROOST_CLAUDE_OBSERVING npm test --workspaces --if-present
 - `packages/*` 之间只能走公开入口，不许跨目录读别人的内部文件
 - 前端、`terminal-protocol`、`cli-adapters`、`stable-workbench` 里**不许出现 Node 依赖**
 - `shared/` 不许依赖 `features/`；`shared/store/state|observable` 不许依赖 React
-- 只有 `plugins/index` 能认识具体插件；插件之间不许互相 import
+- 只有**注册表**能认识具体插件（两张：`plugins/index` 是渲染在预览弹窗里的，
+  `plugins/external` 是活在弹窗之外、由 Shell 挂载的）；插件之间不许互相 import。
+  分成两张不是为了好看——`Shell` 是首屏，合成一张会把 markdown/code/media 那串
+  本该懒加载的东西拖进首屏，实测 gzip 386.3 → 560.8 KB
 - `features/terminal/public.ts` 是轻量入口，不许加载终端引擎
 
 它提取 import 用的是**启发式正则**，所以注释里写 `from "……"` 这种散文会被误判成

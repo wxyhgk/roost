@@ -1,7 +1,7 @@
-import { ensureSdfRecord, replaceFirstSdfRecord, splitSdfRecords } from '../src/molecule/sdf.ts';
+import { ensureSdfRecord, replaceFirstSdfRecord, splitSdfRecords } from '../src/embeds/molecule/sdf.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { handoffMolecule, moleculeReference } from '../src/molecule/handoff.ts';
+import { handoffMolecule, moleculeReference } from '../src/embeds/molecule/handoff.ts';
 import { claimTerminalSession, getAttachmentTarget } from '../src/features/terminal/handles.ts';
 import type { TermHandle } from '../src/features/terminal/types.ts';
 import { planImageInsertion } from '@roost/cli-adapters';

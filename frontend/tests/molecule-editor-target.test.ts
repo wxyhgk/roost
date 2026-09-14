@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import {
   closeMolecule, getMolecule, noteMoleculeSaved, openMolecule,
   resetMolecule, setMoleculeDirty, subscribeMolecule,
-} from '../src/molecule/editorTarget.ts';
+} from '../src/embeds/molecule/editorTarget.ts';
 
 const target = (path: string, sessionId = 's1', root = '/repo') => ({ sessionId, root, path });
 

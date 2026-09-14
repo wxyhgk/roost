@@ -2,7 +2,7 @@ import { createRoot } from 'react-dom/client';
 import { Editor } from 'ketcher-react';
 import { StandaloneStructServiceProvider } from 'ketcher-standalone/dist/binaryWasm';
 import 'ketcher-react/dist/index.css';
-import { ErrorBoundary } from '../app/ErrorBoundary';
+import { ErrorBoundary } from '../../app/ErrorBoundary';
 import { moleculeChannel, type MoleculeFormat, type MoleculeWindow } from './bridge';
 import './frame.css';
 import { t } from '@roost/i18n';

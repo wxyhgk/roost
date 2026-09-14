@@ -1,5 +1,5 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
-import { closeMolecule, getMolecule, openMolecule, subscribeMolecule } from "../../molecule/editorTarget";
+import { closeMolecule, getMolecule, openMolecule, subscribeMolecule } from "../../embeds/molecule/editorTarget";
 
 /** 走分子编辑器而不是文本预览的扩展名。 */
 export const MOLECULE_FILE = /\.(mol|sdf)$/i;
