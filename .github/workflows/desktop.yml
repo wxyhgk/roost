@@ -1,13 +1,15 @@
 name: Desktop
 
+# 只在打标签时跑。平时往 main 推不触发——想手动查一次用 workflow_dispatch。
+#
+# 这里**不要加 paths-ignore**。它原本是给往 main 的日常推送省 runner 的，而现在唯一的
+# 触发源是 tag：tag 推送的路径过滤按那次推送里的提交算，一旦标签落在一个只改了文档的
+# 提交上，整个 workflow 会**静默不跑**——而 release job 就挂在它下面，等于这次发布无声
+# 消失，连个红叉都没有。省下的那点 runner 不值这个风险。
 on:
   workflow_dispatch:
   push:
-    branches: [main, desktop/windows-ci]
     tags: ['v*']
-    paths-ignore: ['research/**', 'tasks/**', '**/*.md']
-  pull_request:
-    paths-ignore: ['research/**', 'tasks/**', '**/*.md']
 
 permissions:
   contents: read
