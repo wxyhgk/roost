@@ -19,6 +19,9 @@ export { closeMolecule as closeMoleculeEditor };
 /**
  * 文件面板和分子编辑器之间的那座桥。
  *
+ * 从 `features/files/` 搬到这里：文件树不该认识「分子」这件具体的事，它只该问注册表
+ * 「这个文件归谁管」。见同目录的 index.ts 和 shared/editor 里的 ExternalEditor。
+ *
  * 编辑器**不由文件面板渲染**——它挂在 `Shell` 上，因为这棵树自己会被整棵重建
  * （右面板换视图、换终端各有一个 key），而编辑器的 iframe 一销毁，那 9 MB 代码的
  * 顶层执行、wasm 实例、indigo worker 就全没了，重开就是一次冷启动。

@@ -209,8 +209,8 @@ export function Tree({
           <MenuItem label={t.files.menu.refresh} onClick={() => { closeBlankMenu(); onMutated(); }} />
         </Menu>
       )}
-      {/* 分子文件交给 Shell 上那个长命的编辑器，这里只渲染轻量的文本预览。 */}
-      {selected && !viewer.isMolecule && (
+      {/* 归外部编辑器管的文件交给 Shell 上那个长命的宿主，这里只渲染轻量的文本预览。 */}
+      {selected && !viewer.handledExternally && (
         <FilePreviewModal
           key={selected}
           preview={viewer.preview}

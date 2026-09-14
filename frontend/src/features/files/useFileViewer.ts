@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useOpenFile } from "./useOpenFile";
 import { useExternalOpen } from "./useExternalOpen";
 import { useFilePreview } from "./useFilePreview";
-import { MOLECULE_FILE, closeMoleculeEditor, useMoleculeBridge } from "./useMoleculeBridge";
+import { EXTERNAL_EDITORS } from "../../plugins/external";
+import { closeExternalEditors, handledExternally, useExternalEditor } from "../../shared/editor";
 
 /**
  * 「正在看的那个文件」的全部状态。
@@ -53,16 +54,16 @@ export function useFileViewer({ cwd, sessionId, initialFile, onFileChange, onSav
   /*
     顺序。
 
-    「是不是分子文件」只是对路径做一次正则，和编辑器的状态无关——所以在这里自己
-    算，不问那座桥。这一下把依赖捋直了：正则 → 预览（分子文件让给编辑器读）→
-    `close` → 桥。
+    「归不归外部编辑器管」只是拿注册表对路径做一次匹配，和那些编辑器的状态无关——所以
+    在这里先算出来，不问它们。这一下把依赖捋直了：匹配 → 预览（归外部管的让给它读）→
+    `close` → 通知外部编辑器。
 
-    原来是反过来的：`isMolecule` 从桥的返回值拿，于是桥必须先建，而桥又要 `close`
-    做参数，`close` 又要等预览——一个真实的环，当时是拿一层
-    `closeRef = useRef<() => void>` 把调用推迟过去绕开的。那层 ref 现在没有了。
+    原来是反过来的：那个答案从桥的返回值拿，于是桥必须先建，而桥又要 `close` 做参数，
+    `close` 又要等预览——一个真实的环，当时是拿一层 `useRef<() => void>` 把调用推迟过去
+    绕开的。同理 `closeExternalEditors` 是模块级函数而不是 hook 的返回值。
   */
-  const isMolecule = !!selected && MOLECULE_FILE.test(selected);
-  const { preview, error: previewError, clear: clearPreview } = useFilePreview(root, selected, isMolecule);
+  const external = handledExternally(EXTERNAL_EDITORS, selected);
+  const { preview, error: previewError, clear: clearPreview } = useFilePreview(root, selected, external);
 
   const close = useCallback(() => {
     closeSelection();
@@ -70,30 +71,29 @@ export function useFileViewer({ cwd, sessionId, initialFile, onFileChange, onSav
     // 行号跟着这次打开作废：否则之后用点击重新打开同一个文件，会莫名其妙跳到上次
     // 从终端链接进来时的那一行。
     consumeLinkLine();
-    closeMoleculeEditor();
+    closeExternalEditors(EXTERNAL_EDITORS);
   }, [closeSelection, clearPreview, consumeLinkLine]);
 
-  const { dirty: moleculeDirty } = useMoleculeBridge({
+  const { dirty: externalDirty } = useExternalEditor(EXTERNAL_EDITORS, {
     sessionId,
-    selected,
     root,
-    isMolecule,
+    path: selected,
     onClosedItself: close,
     onSaved,
   });
-  unsavedRef.current = previewDirty || moleculeDirty;
+  unsavedRef.current = previewDirty || externalDirty;
 
   return {
     /** 树上该高亮哪一行。 */
     selected,
     /** 打开一个文件。点行、终端链接、命令面板、新建后自动选中，四条路都汇到这里。 */
     open,
-    /** 关掉当前打开的东西（文本预览或分子编辑器）。 */
+    /** 关掉当前打开的东西（文本预览，或弹窗之外的编辑器）。 */
     close,
     /** 改名了，把选中跟着挪。 */
     rename,
-    /** 这个文件交给了分子编辑器，`Tree` 就不该再渲染文本预览。 */
-    isMolecule,
+    /** 这个文件归弹窗之外的编辑器管，`Tree` 就不该再渲染文本预览。 */
+    handledExternally: external,
     /** 终端链接指到根目录外面了。给人看的提示，不是异常。 */
     linkError,
     dismissLinkError,

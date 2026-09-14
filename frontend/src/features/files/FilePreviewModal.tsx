@@ -94,7 +94,7 @@ export function FilePreviewModal({
   /*
     未保存的改动只在 CodeMirror 的缓冲里，关标签页或刷新就没了。这里有 dirty 标记、
     关闭确认和 mtime 冲突检测，唯独漏了这一条路——CLI 设置（CliSettings）和分子
-    编辑器（MoleculeModal）都已经守住了，这里的标准要和它们一致。
+    编辑器（plugins/molecule）都已经守住了，这里的标准要和它们一致。
 
     只 preventDefault，不设 returnValue：现代浏览器只认前者，而且提示语一律由浏览器
     自己决定，写什么都不会显示。

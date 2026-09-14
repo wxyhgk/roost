@@ -20,3 +20,4 @@ export const EDITOR_PLUGINS: readonly EditorPlugin[] = [
   markdownPlugin,
   ...codePlugins,
 ];
+

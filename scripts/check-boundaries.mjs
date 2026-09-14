@@ -141,15 +141,25 @@ for (const owner of owners) {
             如果还允许别处直接 import 某个插件，那张表就会重新长出第二份、第三份。
 
             插件之间也不许互相 import：一个插件被另一个插件依赖，就不再是可插拔的了。
+
+            **注册表不止一个。** 目前两张：`index` 是渲染在预览弹窗里的插件，`external` 是
+            活在弹窗之外、由 Shell 挂载的编辑器。分开不是为了好看——`Shell` 是首屏，而
+            `index` 牵着 markdown / code / media 那一串本该跟着懒加载进来的东西；合成一张
+            实测让首屏 gzip 从 386.3 KB 涨到 560.8 KB。谁 import 一张注册表，就决定了它牵着
+            的东西落在哪个 chunk 里。
+
+            要加第三张注册表，先问清楚它对应的是哪一种契约——只是想绕开这条检查的话，
+            那正是这条检查要拦的事。
           */
           // `to` 可能不带扩展名也不带尾斜杠（`../../plugins/xyz`），所以两种形态都要认；
-          // 注册表自己（plugins/index）不是插件。
+          // 注册表自己不是插件。
+          const REGISTRY = /^plugins\/(index|external)(\.ts)?$/;
           const pluginOf = (path) => {
             const name = path.match(/^plugins\/([^/]+)(?:\/|$)/)?.[1];
-            return !name || name === 'index' || name === 'index.ts' ? null : name;
+            return !name || REGISTRY.test('plugins/' + name.replace(/\.ts$/, '')) ? null : name;
           };
-          if (pluginOf(to) && pluginOf(to) !== pluginOf(from) && !/^plugins\/index(\.ts)?$/.test(from))
-            reason = 'only the registry may name a specific plugin';
+          if (pluginOf(to) && pluginOf(to) !== pluginOf(from) && !REGISTRY.test(from))
+            reason = 'only a registry may name a specific plugin';
         }
       } else {
         const node = spec.startsWith('node:') || builtinModules.includes(spec);

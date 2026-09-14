@@ -1,5 +1,5 @@
 import { subscribeFileLinkOpen } from '../features/terminal/public';
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelHandle, type ImperativePanelGroupHandle } from "react-resizable-panels";
 import { CommandPalette } from "../features/workspace/CommandPalette";
 import { LeftRail } from "./LeftRail";
@@ -12,8 +12,7 @@ import { TerminalPane } from "../features/terminal/view/TerminalPane";
 import { TopBar } from "./TopBar";
 import { ErrorBoundary } from './ErrorBoundary';
 import { SettingsDialog } from './SettingsDialog';
-import { MoleculeModal } from '../molecule/MoleculeModal';
-import { closeMolecule, getMolecule, noteMoleculeSaved, setMoleculeDirty, subscribeMolecule } from '../molecule/editorTarget';
+import { EXTERNAL_EDITORS } from '../plugins/external';
 import type { Mode, Scope } from "../shared/view";
 import { t } from "@roost/i18n";
 
@@ -63,7 +62,6 @@ export function Shell() {
   const rightRef = useRef<ImperativePanelHandle>(null);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
-  const molecule = useSyncExternalStore(subscribeMolecule, getMolecule);
   const [rightView, setRightView] = useState<RightView>("files");
   const [monitorTarget, setMonitorTarget] = useState<MonitorTarget>({ tab: 'overview', revision: 0 });
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -223,26 +221,20 @@ export function Shell() {
       {settingsOpen && <ErrorBoundary region={t.misc.shell.regionSettings}><SettingsDialog onClose={() => setSettingsOpen(false)} onResetLayout={() => layoutRef.current?.setLayout([23, 59, 18])} /></ErrorBoundary>}
       <ErrorBoundary region={t.misc.shell.regionPalette} key={String(paletteOpen)}><CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} onShowView={showRight} /></ErrorBoundary>
       {/*
-        分子编辑器挂在这一层，而不是文件树里。
+        弹窗之外的编辑器挂在这一层，而不是文件树里。
 
-        它自己 createPortal 到 body，所以挂哪儿都不影响它出现在哪儿——挂这儿只为
+        它们自己 createPortal 到 body，所以挂哪儿都不影响出现在哪儿——挂这儿只为
         **不被卸载**：右面板换视图（`key={rightView}`）和换终端（`key={session.id}`）
-        都会把文件树整棵重建，编辑器跟着重建就等于每次都冷启动一遍十几兆的 Ketcher。
-        Shell 由 App 只渲染一次，是这棵树上唯一稳定的落点。
+        都会把文件树整棵重建，跟着重建就等于每次都冷启动一遍（分子编辑器是十几兆的
+        Ketcher）。Shell 由 App 只渲染一次，是这棵树上唯一稳定的落点。
+
+        照注册表渲染，不点名任何具体类型——连出错时的区域名也由编辑器自己给。
       */}
-      {molecule.last && (
-        <ErrorBoundary region={t.misc.shell.regionMolecule}>
-          <MoleculeModal
-            open={!!molecule.open}
-            sessionId={molecule.last.sessionId}
-            root={molecule.last.root}
-            path={molecule.last.path}
-            onClose={closeMolecule}
-            onDirtyChange={setMoleculeDirty}
-            onSaved={noteMoleculeSaved}
-          />
+      {EXTERNAL_EDITORS.map(editor => (
+        <ErrorBoundary key={editor.region} region={editor.region}>
+          <editor.Host />
         </ErrorBoundary>
-      )}
+      ))}
     </div>
   );
 }
