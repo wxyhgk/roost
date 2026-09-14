@@ -147,5 +147,5 @@ jobs:
       - name: Publish versioned installers
         run: |
           gh release create "$GITHUB_REF_NAME" desktop/artifacts/release/* \
-            --verify-tag --title "Roost $GITHUB_REF_NAME" --prerelease \
+            --verify-tag --title "Roost $GITHUB_REF_NAME" \
             --notes-file desktop/artifacts/release-notes.md
