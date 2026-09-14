@@ -2,7 +2,7 @@ import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { useState, type ReactNode } from "react";
 import { IconChevron, IconEdit, IconPlus, IconTrash } from "../../shared/icons";
-import { useGroupActivity } from "../session-status/useGroupActivity";
+import { useGroupActivity } from "../session-status/public";
 import { useWorkspace } from "../../shared/store";
 import type { Session } from "../../shared/types";
 import { Collapse } from "../../shared/ui/Collapse";

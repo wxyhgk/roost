@@ -145,6 +145,25 @@ for (const owner of owners) {
           */
           if (/^(features|plugins|embeds)\//.test(from) && to.startsWith('app/')) reason = 'a feature must not depend on the app composition layer';
           /*
+            **一个特性只要有 public.ts，别的特性就只能从那儿进。**
+
+            这条一直是靠自觉的：`features/terminal/public.ts` 顶上写着「特性外部只准从这里
+            进」，而且真的被遵守了——5 个外部消费者无一例外。但 session-status 就没这个运气，
+            外面 14 处 import 直接摸进 7 个内部文件，于是它每一次内部重命名都可能碰到
+            terminal、workspace、conversations 三个特性。收口之后补上这条，让纪律不再依赖
+            有没有人读过那段注释。
+
+            只管特性之间。`app/` 是组装层，它按路径引用 `view/` 下的组件是常规做法；
+            特性内部各模块也直接互相 import，不必绕自己的公开入口转一道。
+          */
+          const publicOwner = to.match(/^features\/([^/]+)\//)?.[1];
+          if (publicOwner && publicOwner !== from.match(/^features\/([^/]+)\//)?.[1]
+              && from.startsWith('features/')
+              && existsSync(resolve(base, 'src/features', publicOwner, 'public.ts'))
+              && !/^features\/[^/]+\/public(\.ts)?$/.test(to)) {
+            reason = `feature ${publicOwner} has a public entry; enter through it`;
+          }
+          /*
             **只有注册表能认识具体的插件。**
 
             这条是「插件系统」和「一个叫 plugins 的目录」的全部区别。原来那张表拼在

@@ -1,5 +1,5 @@
 import { startLibraryRuntime } from "./features/library/runtime";
-import { startSessionStatus } from "./features/session-status/runtime";
+import { startSessionStatus } from "./features/session-status/public";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./app/App";

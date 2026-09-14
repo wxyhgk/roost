@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { fetchTerminalConversation, listConversations } from '../../shared/api/conversations';
-import { useSessionActivity } from '../session-status/useSessionActivity';
+import { useSessionActivity } from '../session-status/public';
 import { watchTerminalConversation } from './terminalIdentity';
 
 export function useTerminalConversation(terminalId: string | null) {

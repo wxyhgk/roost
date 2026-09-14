@@ -1,6 +1,6 @@
 // 终端输出静默提醒：不代表 AI 完成或等待确认。
 // 只跟踪已挂载（打开）的会话；隐藏/结束会 unmount 并遗忘，不打扰。
-import { QUIET_NOTIFY_AFTER_MS } from '../session-status/quietThresholds';
+import { QUIET_NOTIFY_AFTER_MS } from '../session-status/public';
 
 export type QuietHandler = (sessionId: string) => void;
 

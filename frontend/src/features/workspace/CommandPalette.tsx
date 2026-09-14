@@ -5,7 +5,7 @@ import { useLibraryList } from "../library/hooks";
 import { publishNav } from "../../shared/navigate";
 import { getTerminalHandle } from "../terminal/public";
 import { sessionTitle } from "../../shared/sessionTitle";
-import { sessionStatus } from "../session-status/runtime";
+import { sessionStatus } from "../session-status/public";
 import { IconCode, IconFile, IconNote, IconSearch } from "../../shared/icons";
 import { SessionLogo } from "../../shared/ui/SessionLogo";
 import type { RightView } from "../../shared/view";

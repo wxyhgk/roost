@@ -6,7 +6,7 @@ import { Shell } from "./Shell";
 import { useLocale } from "../shared/locale";
 import { isOpen, useWorkspace } from "../shared/store";
 import type { CliKind } from "../shared/types";
-import { useAgentNotify } from "../features/session-status/quietNotify";
+import { useAgentNotify } from "../features/session-status/public";
 
 /**
  * 鼠标和触屏必须分开，因为「按住不动然后移动」在两种输入上的含义完全相反。

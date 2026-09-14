@@ -1,5 +1,5 @@
 import { useWorkspace } from "../../../shared/store";
-import { useSessionActivity } from "../../session-status/useSessionActivity";
+import { useSessionActivity } from "../../session-status/public";
 import { useCliIdentity } from "../../../shared/ui/SessionLogo";
 
 // 三个可调项，改这里就够：

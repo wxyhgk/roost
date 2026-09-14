@@ -7,7 +7,7 @@ import type { ResumeSnapshot } from './resume';
 import { emitFileLink } from './fileLinks';
 import type { SessionDependencies } from './sessionController';
 import { stableRuntime } from '../../shared/runtime';
-import { sessionStatus } from '../session-status/runtime';
+import { sessionStatus } from '../session-status/public';
 /*
   屏幕快照只在**本次页面加载内**有效。
 
