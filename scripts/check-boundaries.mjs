@@ -21,7 +21,7 @@ const allowed = {
   // 这份名单是手工维护的，新增外部依赖必须显式登记——这正是这道检查的意义。
   'packages/terminal-daemon': ['@roost/terminal-runtime', '@roost/terminal-protocol', '@roost/workspace-store', '@xterm/headless', 'ws'],
   'packages/cli-adapters': [],
-  'packages/terminal-protocol': ['@roost/cli-adapters'],
+  'packages/terminal-protocol': [],
   // @xterm/headless + addon-serialize：screen.ts 在服务端持有每个会话解析好的屏幕，
   // 重连时序列化出来一帧还原，而不是把原始历史重放给用户看。
   'packages/terminal-runtime': ['@roost/cli-adapters', '@roost/terminal-protocol', 'node-pty', '@xterm/headless', '@xterm/addon-serialize', '@xterm/addon-unicode11'],
@@ -61,7 +61,7 @@ function checkReferences(owner) {
   for (const dir of ['src', 'tests']) {
     for (const path of allFiles(resolve(base, dir), /\.[cm]?[jt]sx?$/)) {
       const source = readFileSync(path, 'utf8');
-      for (const [, spec] of source.matchAll(/(?:\bfrom\s*|(?<![\w"'-])import\s*(?:\(\s*)?|\brequire\s*\(\s*)["'](\.[^"']*)["']/g)) {
+      for (const [, spec] of source.matchAll(/(?:\bfrom\s*|(?<![\w"'-])import\s*(?:\(\s*)?|\brequire\s*\(\s*)["'`](\.[^"'`]*)["'`]/g)) {
         /*
           也允许从 workspace 根解析：有些测试把一段代码放进模板字符串交给 `node -e` 跑，
           那里的相对路径按子进程的 cwd 算，不按文件所在目录算。放宽这一档仍然能抓到
@@ -108,7 +108,9 @@ for (const owner of owners) {
   for (const path of files(resolve(base, 'src'))) {
     const source = readFileSync(path, 'utf8');
     // CLI options and quoted command names ("--import", "import") are data.
-    const imports = source.matchAll(/(?:\bfrom\s*|(?<![\w"'-])import\s*(?:\(\s*)?|\brequire\s*\(\s*)["']([^"']+)["']/g);
+    // 引号字符类里必须带反引号：`import(\`../../app/Shell\`)` 这种模板写法原来整条穿过
+    // 所有规则。变量形态（`import(p)`）正则治不了，要 AST，暂不处理。
+    const imports = source.matchAll(/(?:\bfrom\s*|(?<![\w"'-])import\s*(?:\(\s*)?|\brequire\s*\(\s*)["'`]([^"'`]+)["'`]/g);
     for (const [, spec] of imports) {
       let reason;
       if (spec.startsWith('.')) {
@@ -128,7 +130,9 @@ for (const owner of owners) {
             放宽到「刚好能过」——那等于把问题藏起来；类型的归属已经修好（载荷进
             shared/api/conversationPayloads.ts），所以现在恢复成完整版。
           */
-          const FEATURE = /^(features|app|plugins)\//;
+          // embeds/ 必须在这里面。少了它，`shared/ → embeds/ → features/` 就是一条洗白
+          // 通道：直连被拦，中转一下就过。实测过，两行都补上之后仍然全绿。
+          const FEATURE = /^(features|app|plugins|embeds)\//;
           if (from.startsWith('shared/') && FEATURE.test(to)) reason = 'a shared layer must not depend on a feature';
           if (['shared/store/state.ts', 'shared/store/observable.ts'].includes(from) && FEATURE.test(to)) reason = 'workspace state must not depend on features';
           if (from === 'features/terminal/public.ts' && /(?:xtermEngine|useTerminal|index)$/.test(to)) reason = 'light terminal entry must not load the engine';
@@ -156,9 +160,13 @@ for (const owner of owners) {
             只管特性之间。`app/` 是组装层，它按路径引用 `view/` 下的组件是常规做法；
             特性内部各模块也直接互相 import，不必绕自己的公开入口转一道。
           */
-          const publicOwner = to.match(/^features\/([^/]+)\//)?.[1];
-          if (publicOwner && publicOwner !== from.match(/^features\/([^/]+)\//)?.[1]
-              && from.startsWith('features/')
+          // `(?:\/|$)` 那半不能省：`import x from "../session-status"` 解析成目录入口时
+          // `to` 没有尾斜杠，整条规则会静默跳过。同一个文件里的 pluginOf 写对了，这里
+          // 原来写漏了。
+          const featureOf = path => path.match(/^features\/([^/]+)(?:\/|$)/)?.[1];
+          const publicOwner = featureOf(to);
+          if (publicOwner && publicOwner !== featureOf(from)
+              && /^(features|embeds)\//.test(from)
               && existsSync(resolve(base, 'src/features', publicOwner, 'public.ts'))
               && !/^features\/[^/]+\/public(\.ts)?$/.test(to)) {
             reason = `feature ${publicOwner} has a public entry; enter through it`;
@@ -203,6 +211,22 @@ for (const owner of owners) {
     }
   }
 }
+/*
+  **规则锚点。** 上面有三条规则的生效条件是「某个文件叫这个名字」——public.ts 的
+  existsSync、以及轻量入口那条写死的 xtermEngine。把文件改个名、连同所有引用一起改掉，
+  是一次看起来完全正常的提交，而规则会**静默地整条消失**，此后随便谁都能深引进去。
+
+  引用存在性检查守得住「改了一半」，守不住「改得很干净」。所以这里显式钉住锚点：
+  它们比规则本身更该被守着。
+*/
+for (const anchor of [
+  'frontend/src/features/terminal/public.ts',
+  'frontend/src/features/terminal/xtermEngine.ts',
+  'frontend/src/features/session-status/public.ts',
+]) {
+  if (!existsSync(resolve(root, anchor))) errors.push(`${anchor}: 规则锚点不存在——改名或删除时请同步更新 scripts/check-boundaries.mjs`);
+}
+
 if (errors.length) {
   console.error(errors.join('\n'));
   process.exitCode = 1;

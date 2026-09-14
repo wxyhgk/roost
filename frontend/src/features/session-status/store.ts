@@ -40,6 +40,8 @@ function validAgent(value: unknown): boolean {
     && optionalText(a.summary) && optionalText(a.toolName) && optionalText(a.toolInputPreview);
 }
 
+const KNOWN_STATES = ['active', 'quiet', 'exited', 'closed', 'unavailable'];
+
 export function parseStatusFrame(value: unknown): StatusFrame | null {
   if (!value || typeof value !== 'object') return null;
   const f = value as StatusFrame;
@@ -48,9 +50,14 @@ export function parseStatusFrame(value: unknown): StatusFrame | null {
   for (const s of f.sessions) {
     if (!s || typeof s.id !== 'string' || ids.has(s.id) ||
       !(s.instanceId === null || typeof s.instanceId === 'string') || !(s.cliId === null || typeof s.cliId === 'string') ||
-      !['active', 'quiet', 'exited', 'closed', 'unavailable'].includes(s.state) ||
+      // 枚举值也要前向兼容，理由和上面那三个字段一模一样：后端加一个 state，
+      // 整帧作废 → accept 返回 false → connection.ts 不 arm()，45 秒 deadline 到期就
+      // 判成 lost，于是**永久重连**，所有会话徽标卡死，而且一句报错都没有。
+      // 认不出来的按 unavailable 处理：降级到「这一条我说不准」，而不是丢掉整帧。
+      !(typeof s.state === 'string') ||
       !(s.outputSeq === null || seq(s.outputSeq)) || !(s.lastOutputAt === null || seq(s.lastOutputAt)) ||
       !validAgent(s.agent)) return null;
+    if (!KNOWN_STATES.includes(s.state)) s.state = 'unavailable';
     ids.add(s.id);
   }
   return f;

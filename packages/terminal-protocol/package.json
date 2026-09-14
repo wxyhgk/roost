@@ -16,8 +16,5 @@
     "@types/ws": "^8.18.1",
     "tsx": "^4.23.13",
     "typescript": "^7.0.2"
-  },
-  "dependencies": {
-    "@roost/cli-adapters": "0.0.0"
   }
 }

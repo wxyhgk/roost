@@ -37,7 +37,17 @@ const SPECIFIER = /^\s*(?:import|export)\s(?:[^'"]*?\sfrom\s)?['"]([^'"]+)['"]/g
 function resolveSpecifier(from: string, spec: string, files: Set<string>): string | null {
   if (!spec.startsWith('.')) return null;
   const base = normalize(resolve(dirname(from), spec));
-  for (const candidate of [base, `${base}.ts`, `${base}.tsx`, join(base, 'index.ts'), join(base, 'index.tsx')]) {
+  /*
+    `.js` 要换回 `.ts` 再找一次。moduleResolution 是 "bundler"，一条以 .js 结尾的相对
+    说明符会正常解析到同名的 .ts，tsc 一声不吭——而这里如果不换，整条边会被当成「解析
+    不到」直接丢掉，环就隐形了。同仓的 scripts/check-boundaries.mjs 早就做了这个互换，
+    这边是漏的。
+
+    （这段话本身也踩过一次坑：原来照抄了一行带引号的示例，被 check-boundaries 的启发式
+    正则当成了真的 import。AGENTS 第四节说的就是它——撞上了改措辞，别放宽检查。）
+  */
+  const swapped = base.replace(/\.(js|jsx|mjs|cjs)$/, m => ({ '.js': '.ts', '.jsx': '.tsx', '.mjs': '.mts', '.cjs': '.cts' }[m]!));
+  for (const candidate of [base, swapped, `${base}.ts`, `${base}.tsx`, join(base, 'index.ts'), join(base, 'index.tsx')]) {
     if (files.has(candidate)) return candidate;
   }
   return null;
@@ -78,7 +88,13 @@ test('frontend modules import in one direction only', () => {
   const graph = new Map<string, string[]>();
 
   for (const file of files) {
-    const text = readFileSync(file, 'utf8');
+    /*
+      先去掉注释再扫。`SPECIFIER` 里的 `[^'"]*?` 会跨整行懒扫，所以一行以 import/export
+      开头、注释里又恰好出现 `from "……"` 时，会报出一个**并不存在的环**——而它的错误信息
+      是「import cycles found」，比 check-boundaries 那句直白的 reason 更难让人联想到
+      「是我注释写的」。AGENTS 第四节只警告了 check-boundaries 那一侧。
+    */
+    const text = readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
     const edges: string[] = [];
     for (const match of text.matchAll(SPECIFIER)) {
       const target = resolveSpecifier(file, match[1], known);
