@@ -99,14 +99,7 @@ export const files = {
     watchStopped: "自动同步已停止，点击重新刷新并重试",
     create: "新建文件 / 文件夹 / 化学分子",
     /** 新建行离被右键的那个目录很远，不写出来就只能靠猜东西会落在哪。 */
-    createIn: (path: string) => `新建到 ${path}/`,
     clearFilter: "清除过滤",
-    kindFile: "文件",
-    kindMol: "化学分子",
-    kindDir: "文件夹",
-    molPlaceholder: "分子名称，回车创建…",
-    filePlaceholder: "新建文件，可含子路径…",
-    dirPlaceholder: "新建文件夹…",
   },
 
   tree: {
@@ -155,6 +148,7 @@ export const files = {
     uploadHere: "上传到这里",
     newFile: "新建文件",
     newFolder: "新建文件夹",
+    newMolecule: "新建分子",
     rename: "重命名",
     remove: "删除",
     refresh: "刷新",

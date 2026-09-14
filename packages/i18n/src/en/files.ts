@@ -99,14 +99,7 @@ export const files = {
     refresh: "Refresh file list",
     watchStopped: "Auto-sync stopped. Click to refresh and retry.",
     create: "New file / folder / molecule",
-    createIn: (path: string) => `Creating in ${path}/`,
     clearFilter: "Clear filter",
-    kindFile: "File",
-    kindMol: "Molecule",
-    kindDir: "Folder",
-    molPlaceholder: "Molecule name, press Enter to create…",
-    filePlaceholder: "New file, may include a subpath…",
-    dirPlaceholder: "New folder…",
   },
 
   tree: {
@@ -148,6 +141,7 @@ export const files = {
     uploadHere: "Upload here",
     newFile: "New file",
     newFolder: "New folder",
+    newMolecule: "New molecule",
     rename: "Rename",
     remove: "Delete",
     refresh: "Refresh",

@@ -1,6 +1,6 @@
 import { ArrowUpIcon, ListBulletIcon, QueueListIcon } from "@heroicons/react/24/outline";
 import type { Session } from "../../shared/types";
-import { useCallback, useEffect, useRef, useState, type DragEvent as ReactDragEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type DragEvent as ReactDragEvent, useMemo } from "react";
 import { createPath } from "../../shared/api";
 import { IconClose, IconPlus, IconRefresh, IconUpload } from "../../shared/icons";
 import { useWorkspace } from "../../shared/store";
@@ -11,6 +11,8 @@ import { useUploadQueue } from "./useUploadQueue";
 import { t } from "@roost/i18n";
 import { useBrowseLocation } from "./useBrowseLocation";
 import { Tree } from "./Tree";
+import { Menu, MenuItem } from "./Menu";
+import type { NewKind, PendingCreate } from "./types";
 import type { FolderActions } from "./TreeNode";
 
 export function FilesView() {
@@ -28,8 +30,9 @@ function SessionFiles({ session }: { session: Session }) {
     会把文件建到根上。
   */
   const [createIn, setCreateIn] = useState("");
-  const [createName, setCreateName] = useState("");
   const [createError, setCreateError] = useState<string | null>(null);
+  /** 工具栏 + 弹出的三项菜单，坐标来自按钮的下沿。 */
+  const [newMenu, setNewMenu] = useState<{ x: number; y: number } | null>(null);
   /*
     换地方时要一并收拾的东西：搜索词、正在新建的条目、以及上一次的错误。
     原来导航、换模式、换根目录三处各抄了一遍，抄漏一处就会留下一个陈旧的错误提示。
@@ -37,7 +40,6 @@ function SessionFiles({ session }: { session: Session }) {
   const leaveBrowsingUi = useCallback(() => {
     setQuery("");
     setCreating(null);
-    setCreateName("");
     setCreateError(null);
     setCreateIn("");
   }, []);
@@ -75,25 +77,36 @@ function SessionFiles({ session }: { session: Session }) {
     create(dir, kind) {
       setCreateIn(dir);
       setCreating(kind);
-      setCreateName("");
       setCreateError(null);
     },
   }).current;
   const [dropping, setDropping] = useState(false);
   // 拖进来的必须是「文件」。树上的节点自己也可拖（拖去终端），
   // 不加这个判断会把拖动节点误当成上传。
+  /*
+    待命名的新条目交给树，由它就地渲染在目标目录里。**取消和提交分开**：提交失败时
+    不能把这一行收掉，否则错误信息没地方显示、用户也没得改，所以只有 commit 成功
+    才清 creating（见 commitCreate）。
+  */
+  const cancelCreate = useCallback(() => { setCreating(null); setCreateError(null); }, []);
+  const pending = useMemo<PendingCreate | null>(
+    () => (creating ? { dir: createIn, kind: creating, error: createError, commit: (name) => void commitCreate(name), cancel: cancelCreate } : null),
+    // commitCreate 每次渲染都是新函数，但它读的都是当前的 state，不需要进依赖。
+    // eslint 不在这个仓库里，这条注释就是那份说明。
+    [creating, createIn, createError, cancelCreate], // eslint-disable-line
+  );
+
   const isFileDrag = (event: ReactDragEvent) => event.dataTransfer.types.includes("Files");
   const [pendingSelect, setPendingSelect] = useState<string | null>(null);
 
-  async function commitCreate() {
+  async function commitCreate(raw: string) {
     if (!session || !creating) return;
-    let name = createName.trim().replace(/^\/+/, "");
+    let name = raw.trim().replace(/^\/+/, "");
     if (name && creating === "mol" && !/\.mol$/i.test(name)) name += ".mol";
     if (!name) return;
     try {
       const created = await createPath(session.cwd, createIn ? `${createIn}/${name}` : name, creating === "mol" ? "file" : creating);
-      setCreateName("");
-      setCreateError(null);
+        setCreateError(null);
       setCreating(null);
       if (creating !== "dir") setPendingSelect(created.path);
       setRev((r) => r + 1);
@@ -154,10 +167,13 @@ function SessionFiles({ session }: { session: Session }) {
             {watchStopped && <span aria-hidden className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-warning" />}
           </span>
         </IconButton>
-        <IconButton title={t.files.browser.create} onClick={() => {
-            setCreateError(null);
-            setCreateIn(directory);
-            setCreating((v) => (v ? null : "file"));
+        {/*
+          + 不再直接开一个「文件」输入框：类型改由菜单决定之后，三种新建各有各的入口，
+          和右键菜单是同一套。菜单开在按钮下沿，落点是当前浏览目录。
+        */}
+        <IconButton title={t.files.browser.create} onClick={(e) => {
+            const r = (e as unknown as { currentTarget: HTMLElement }).currentTarget.getBoundingClientRect();
+            setNewMenu({ x: r.left, y: r.bottom + 4 });
           }}
         >
           <IconPlus />
@@ -168,46 +184,6 @@ function SessionFiles({ session }: { session: Session }) {
           </IconButton>
         )}
       </div>
-      {creating && session && (
-        <div className="flex shrink-0 flex-col gap-1.5 border-b border-border px-2.5 py-1.5">
-          <div className="flex items-center gap-1.5">
-            {(["file", "dir", "mol"] as const).map((kind) => (
-              <button
-                key={kind}
-                className={`shrink-0 rounded px-2 py-0.5 text-caption ${
-                  creating === kind ? "bg-bg-active text-text" : "text-text-dim hover:bg-bg-hover hover:text-text"
-                }`}
-                onClick={() => setCreating(kind)}
-              >
-                {kind === "file" ? t.files.browser.kindFile : kind === "mol" ? t.files.browser.kindMol : t.files.browser.kindDir}
-              </button>
-            ))}
-            <input
-              autoFocus
-              value={createName}
-              onChange={(e) => setCreateName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  void commitCreate();
-                }
-                if (e.key === "Escape") {
-                  e.preventDefault();
-                  setCreating(null);
-                  setCreateName("");
-                  setCreateError(null);
-                }
-              }}
-              placeholder={creating === "mol" ? t.files.browser.molPlaceholder : creating === "file" ? t.files.browser.filePlaceholder : t.files.browser.dirPlaceholder}
-              spellCheck={false}
-              className="h-7 min-w-0 flex-1 rounded-md border border-border bg-bg px-2 text-body text-text outline-none placeholder:text-text-dim/60 focus:border-accent"
-            />
-          </div>
-          {/* 目标不是眼前这个目录时必须写出来：新建行在面板顶上，而右键的可能是深处某个文件夹。 */}
-          {createIn !== directory && <div className="truncate text-caption text-text-dim">{t.files.browser.createIn(createIn || ".")}</div>}
-          {createError && <div className="text-caption text-danger">{createError}</div>}
-        </div>
-      )}
       {/* 上传状态条：进行中的进度、同名的三选一、以及失败清单。 */}
       {upload.state.conflict ? (
         <div role="alertdialog" aria-label={t.files.upload.conflictTitle(upload.state.conflict.name)}
@@ -271,11 +247,25 @@ function SessionFiles({ session }: { session: Session }) {
             onPendingSelectConsumed={() => setPendingSelect(null)}
             onMutated={() => setRev((r) => r + 1)}
             folder={folder}
+            pending={pending}
           />
         ) : (
           <Empty title={t.files.browser.noSession} />
         )}
       </div>
+      {newMenu && (
+        <Menu x={newMenu.x} y={newMenu.y} onClose={() => setNewMenu(null)}>
+          {(
+            [
+              ["file", t.files.menu.newFile],
+              ["dir", t.files.menu.newFolder],
+              ["mol", t.files.menu.newMolecule],
+            ] as const satisfies readonly (readonly [NewKind, string])[]
+          ).map(([kind, label]) => (
+            <MenuItem key={kind} label={label} onClick={() => { setNewMenu(null); folder.create(directory, kind); }} />
+          ))}
+        </Menu>
+      )}
     </div>
   );
 }

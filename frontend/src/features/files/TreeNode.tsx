@@ -6,6 +6,8 @@ import { ROOST_PATH_MIME, quoteShellPath, sendToSession } from "../terminal/publ
 import { t } from "@roost/i18n";
 import { writeClipboard } from "../../shared/clipboard";
 import { FileIcon } from "./FileGlyphs";
+import { NewEntryRow } from "./NewEntryRow";
+import type { FolderActions, PendingCreate } from "./types";
 import { createCoalescedLoad } from "./coalescedLoad";
 import { Menu, MenuItem, MenuSeparator } from "./Menu";
 
@@ -43,6 +45,7 @@ export function TreeNode({
   onRenamed,
   onDeleted,
   folder,
+  pending,
 }: {
   cwd: string;
   onNavigate?: (path: string) => void;
@@ -57,6 +60,7 @@ export function TreeNode({
   onDeleted: (path: string, isDir: boolean) => void;
   /** 落在被右键的那个目录上的动作，见 FolderActions。 */
   folder: FolderActions;
+  pending: PendingCreate | null;
 }) {
   const [open, setOpen] = useState(false);
   const [children, setChildren] = useState<FileNode[] | null>(null);
@@ -67,6 +71,26 @@ export function TreeNode({
   const active = selected === node.path;
   const q = query.trim().toLowerCase();
   const filteredOut = !!q && !isDir && !node.name.toLowerCase().includes(q);
+
+  /*
+    新建落到这个目录上时，它得自己展开——新条目那一行就长在 children 里，目录收着就
+    看不见。做成声明式的而不是在右键菜单里手动 setOpen：目标从哪儿设过来都一样生效
+    （右键条目、右键空白、工具栏 +），不用每加一个入口就补一次。
+
+    只在 pending.dir 变成自己时跑一次；之后用户手动收起来是他的自由，不硬按着。
+  */
+  useEffect(() => {
+    if (pending?.dir !== node.path || !isDir || onNavigate) return;
+    setOpen(true);
+    if (children == null && !loading) {
+      setLoading(true);
+      listDir(cwd, node.path)
+        .then(setChildren)
+        .catch(() => { /* 展开失败就是空目录的样子，新建仍然可以提交 */ })
+        .finally(() => setLoading(false));
+    }
+    // children / loading 故意不进依赖：它们变了不该再触发一次展开。
+  }, [pending?.dir, node.path, isDir, onNavigate, cwd]); // eslint-disable-line
 
   async function toggle() {
     if (!isDir) {
@@ -218,6 +242,10 @@ export function TreeNode({
               {t.files.tree.loading}
             </li>
           )}
+          {pending?.dir === node.path && (
+            <NewEntryRow depth={depth + 1} kind={pending.kind} error={pending.error}
+              onCommit={pending.commit} onCancel={pending.cancel} />
+          )}
           {children?.map((c) => (
             <TreeNode
               key={c.path}
@@ -225,6 +253,7 @@ export function TreeNode({
               sessionId={sessionId}
               node={c}
               depth={depth + 1}
+              pending={pending}
               selected={selected}
               onSelect={onSelect}
               query={query}
@@ -260,12 +289,7 @@ export function TreeNode({
  * `FilesView`——树只负责把用户点的是哪个目录报上去。走一个对象而不是两个 prop，
  * 是因为 `TreeNode` 是递归的：每多一个 prop 就要在递归那一处多抄一行。
  */
-export type FolderActions = {
-  /** 把上传目标定到 `dir`，然后打开文件选择器。 */
-  upload(dir: string): void;
-  /** 把新建行的目标切到 `dir` 并打开它。 */
-  create(dir: string, kind: "file" | "dir"): void;
-};
+export type { NewKind, FolderActions, PendingCreate } from "./types";
 
 function NodeMenu({
   x,
@@ -359,6 +383,7 @@ function NodeMenu({
         <>
           <MenuItem label={t.files.menu.newFile} onClick={() => { onClose(); folder.create(node.path, "file"); }} />
           <MenuItem label={t.files.menu.newFolder} onClick={() => { onClose(); folder.create(node.path, "dir"); }} />
+          <MenuItem label={t.files.menu.newMolecule} onClick={() => { onClose(); folder.create(node.path, "mol"); }} />
         </>
       )}
       <MenuItem label={t.files.menu.rename} onClick={() => { onClose(); onRename(); }} />

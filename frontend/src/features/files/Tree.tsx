@@ -3,7 +3,9 @@ import { listDir, type FileNode } from "../../shared/api";
 import { Empty } from "../../shared/ui/Empty";
 import { t } from "@roost/i18n";
 import { FilePreviewModal } from "./FilePreviewModal";
-import { TreeNode, type FolderActions } from "./TreeNode";
+import { TreeNode } from "./TreeNode";
+import type { FolderActions, PendingCreate } from "./types";
+import { NewEntryRow } from "./NewEntryRow";
 import { Menu, MenuItem, MenuSeparator } from "./Menu";
 import { useFileViewer } from "./useFileViewer";
 import { createCoalescedLoad } from "./coalescedLoad";
@@ -30,6 +32,7 @@ export function Tree({
   onPendingSelectConsumed,
   onMutated,
   folder,
+  pending,
 }: {
   cwd: string;
   directory: string;
@@ -45,6 +48,7 @@ export function Tree({
   onMutated: () => void;
   /** 右键菜单里落在目录上的那几项，由 FilesView 实现（上传队列和新建行都在那儿）。 */
   folder: FolderActions;
+  pending: PendingCreate | null;
 }) {
   const loadedDirectory = useRef(directory);
   const [loading, setLoading] = useState(true);
@@ -180,7 +184,12 @@ export function Tree({
           <div className="px-2.5 py-2 text-body text-danger">{error}
             <button className="ml-2 rounded px-2 py-1 text-text hover:bg-bg-hover" onClick={onMutated}>{t.files.tree.retry}</button>
           </div>
-        ) : visible.length === 0 ? <Empty title={nodes.length === 0 ? t.files.tree.empty : t.files.tree.noMatch} /> : <ul className="file-tree">
+        /* 空目录也要能长出新建行，所以 pending 落在根上时不走 Empty 那条分支。 */
+        ) : visible.length === 0 && pending?.dir !== directory ? <Empty title={nodes.length === 0 ? t.files.tree.empty : t.files.tree.noMatch} /> : <ul className="file-tree">
+          {pending?.dir === directory && (
+            <NewEntryRow depth={0} kind={pending.kind} error={pending.error}
+              onCommit={pending.commit} onCancel={pending.cancel} />
+          )}
           {visible.map((n) => (
             <TreeNode
               key={n.path}
@@ -196,6 +205,7 @@ export function Tree({
               onRenamed={handleRenamed}
               onDeleted={handleDeleted}
               folder={folder}
+              pending={pending}
             />
           ))}
         </ul>}
@@ -204,6 +214,7 @@ export function Tree({
         <Menu x={blankMenu.x} y={blankMenu.y} onClose={closeBlankMenu}>
           <MenuItem label={t.files.menu.newFile} onClick={() => { closeBlankMenu(); folder.create(directory, "file"); }} />
           <MenuItem label={t.files.menu.newFolder} onClick={() => { closeBlankMenu(); folder.create(directory, "dir"); }} />
+          <MenuItem label={t.files.menu.newMolecule} onClick={() => { closeBlankMenu(); folder.create(directory, "mol"); }} />
           <MenuItem label={t.files.menu.uploadHere} onClick={() => { closeBlankMenu(); folder.upload(directory); }} />
           <MenuSeparator />
           <MenuItem label={t.files.menu.refresh} onClick={() => { closeBlankMenu(); onMutated(); }} />
