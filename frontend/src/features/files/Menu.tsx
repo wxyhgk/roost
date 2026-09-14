@@ -71,8 +71,8 @@ export function Menu({ x, y, onClose, children }: {
 
   return (
     /*
-      挂到 body 上：fixed 只在没有 transform 祖先时才真的脱离，而这棵树上方有
-      framer-motion 的动画容器。portal 之后既不怕裁剪也不怕层叠上下文。
+      挂到 body 上：fixed 只在没有 transform 祖先时才真的脱离，而文件树上方是一串
+      带 transform 的面板容器。portal 之后既不怕裁剪也不怕层叠上下文。
     */
     <FloatingPortal>
       {/*

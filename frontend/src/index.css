@@ -348,6 +348,33 @@ html[data-theme="dark"] .session-logo-mono {
   padding: 0;
 }
 
+/*
+  下拉菜单的入场动画。原来这两处走 framer-motion，但**退场那一半从来没生效过**：
+  `<AnimatePresence>` 写在 `DropdownMenu.Portal` 里面，菜单一关 Portal 连同
+  AnimatePresence 自己一起被卸载，`exit` 没有机会跑。也就是说这里真正需要的只有
+  「出现时的一小段」，而那是 CSS 动画的本分。
+
+  钩在 Radix 自己给 Content 挂的 `data-state` 上。transform 写在 Content 上是安全的：
+  定位用的 translate 在它外面那层 `[data-radix-popper-content-wrapper]`，两者不打架。
+*/
+@keyframes menu-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+@keyframes menu-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+.menu-pop[data-state="open"] {
+  animation: menu-pop-in 150ms ease-out;
+}
+.menu-fade[data-state="open"] {
+  animation: menu-fade-in 120ms ease-out;
+}
+
 /* Caret blink (legacy) */
 .caret {
   display: inline-block;

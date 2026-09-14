@@ -1,5 +1,4 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { IconClose, IconCopy, IconDots, IconEdit, IconNote, IconPin } from "../../shared/icons";
 import { IconButton } from "../../shared/ui/IconButton";
@@ -57,55 +56,45 @@ export function SessionMenu({ session, onRename, onNote, onOpenChange }: {
             </IconButton>
           </DropdownMenu.Trigger>
           <DropdownMenu.Portal>
-            <AnimatePresence>
-              <DropdownMenu.Content
-                align="start"
-                side="bottom"
-                sideOffset={4}
-                alignOffset={12}
-                className="z-50 min-w-52 rounded-xl border border-border bg-bg-panel p-1.5 shadow-pop outline-none"
-                asChild
+            <DropdownMenu.Content
+              align="start"
+              side="bottom"
+              sideOffset={4}
+              alignOffset={12}
+              className="menu-fade z-50 min-w-52 rounded-xl border border-border bg-bg-panel p-1.5 shadow-pop outline-none"
+            >
+              <SessionMenuItem
+                label={pinned ? t.session.unpin : t.session.pin}
+                onSelect={() => togglePin(session.id)}
               >
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.12, ease: "easeOut" }}
-                >
-                  <SessionMenuItem
-                    label={pinned ? t.session.unpin : t.session.pin}
-                    onSelect={() => togglePin(session.id)}
-                  >
-                    <IconPin active={pinned} />
-                  </SessionMenuItem>
-                  <SessionMenuItem
-                    label={copied ? t.session.copyCwdDone : t.session.copyCwd}
-                    onSelect={() => {
-                      void (async () => {
-                        if (!(await writeClipboard(session.cwd))) {
-                          setCopied(false);
-                          return;
-                        }
-                        setCopied(true);
-                        if (copyTimer.current !== null) window.clearTimeout(copyTimer.current);
-                        copyTimer.current = window.setTimeout(() => setCopied(false), 1200);
-                      })();
-                    }}
-                  >
-                    <IconCopy />
-                  </SessionMenuItem>
-                  <SessionMenuItem label={t.session.rename} onSelect={() => onRename()}>
-                    <IconEdit />
-                  </SessionMenuItem>
-                  <SessionMenuItem
-                    label={session.note ? t.session.noteEdit : t.session.noteAdd}
-                    onSelect={() => onNote()}
-                  >
-                    <IconNote />
-                  </SessionMenuItem>
-                </motion.div>
-              </DropdownMenu.Content>
-            </AnimatePresence>
+                <IconPin active={pinned} />
+              </SessionMenuItem>
+              <SessionMenuItem
+                label={copied ? t.session.copyCwdDone : t.session.copyCwd}
+                onSelect={() => {
+                  void (async () => {
+                    if (!(await writeClipboard(session.cwd))) {
+                      setCopied(false);
+                      return;
+                    }
+                    setCopied(true);
+                    if (copyTimer.current !== null) window.clearTimeout(copyTimer.current);
+                    copyTimer.current = window.setTimeout(() => setCopied(false), 1200);
+                  })();
+                }}
+              >
+                <IconCopy />
+              </SessionMenuItem>
+              <SessionMenuItem label={t.session.rename} onSelect={() => onRename()}>
+                <IconEdit />
+              </SessionMenuItem>
+              <SessionMenuItem
+                label={session.note ? t.session.noteEdit : t.session.noteAdd}
+                onSelect={() => onNote()}
+              >
+                <IconNote />
+              </SessionMenuItem>
+            </DropdownMenu.Content>
           </DropdownMenu.Portal>
         </DropdownMenu.Root>
         <DropdownMenu.Root open={killOpen} onOpenChange={setKillOpen}>
@@ -119,46 +108,36 @@ export function SessionMenu({ session, onRename, onNote, onOpenChange }: {
             </IconButton>
           </DropdownMenu.Trigger>
           <DropdownMenu.Portal>
-            <AnimatePresence>
-              <DropdownMenu.Content
-                align="start"
-                side="right"
-                sideOffset={6}
-                className="z-50 w-56 rounded-xl border border-border bg-bg-panel p-2 shadow-pop outline-none"
-                asChild
-              >
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.12, ease: "easeOut" }}
+            <DropdownMenu.Content
+              align="start"
+              side="right"
+              sideOffset={6}
+              className="menu-fade z-50 w-56 rounded-xl border border-border bg-bg-panel p-2 shadow-pop outline-none"
+            >
+              <div className="px-2 pt-1.5 pb-0.5 text-body font-medium text-text">
+                {t.session.killConfirm.title}
+              </div>
+              <div className="px-2 pb-2 text-xs leading-relaxed text-text-dim">
+                {t.session.killConfirm.detail}
+              </div>
+              <div className="flex items-center justify-end gap-1.5 px-1 pb-1">
+                <button
+                  className="rounded-md px-2 py-1 text-xs text-text-dim hover:bg-bg-hover"
+                  onClick={() => setKillOpen(false)}
                 >
-                  <div className="px-2 pt-1.5 pb-0.5 text-body font-medium text-text">
-                    {t.session.killConfirm.title}
-                  </div>
-                  <div className="px-2 pb-2 text-xs leading-relaxed text-text-dim">
-                    {t.session.killConfirm.detail}
-                  </div>
-                  <div className="flex items-center justify-end gap-1.5 px-1 pb-1">
-                    <button
-                      className="rounded-md px-2 py-1 text-xs text-text-dim hover:bg-bg-hover"
-                      onClick={() => setKillOpen(false)}
-                    >
-                      {t.common.cancel}
-                    </button>
-                    <button
-                      className="rounded-md bg-danger px-2 py-1 text-xs font-medium text-white hover:brightness-110"
-                      onClick={() => {
-                        setKillOpen(false);
-                        killSession(session.id);
-                      }}
-                    >
-                      {t.session.killConfirm.confirm}
-                    </button>
-                  </div>
-                </motion.div>
-              </DropdownMenu.Content>
-            </AnimatePresence>
+                  {t.common.cancel}
+                </button>
+                <button
+                  className="rounded-md bg-danger px-2 py-1 text-xs font-medium text-white hover:brightness-110"
+                  onClick={() => {
+                    setKillOpen(false);
+                    killSession(session.id);
+                  }}
+                >
+                  {t.session.killConfirm.confirm}
+                </button>
+              </div>
+            </DropdownMenu.Content>
           </DropdownMenu.Portal>
         </DropdownMenu.Root>
       </div>

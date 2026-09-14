@@ -1,5 +1,4 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { AnimatePresence, motion } from "framer-motion";
 import { FolderIcon, PlusIcon, CommandLineIcon } from "@heroicons/react/24/outline";
 import { useWorkspace } from "../../shared/store";
 import { sessionTitle } from "../../shared/sessionTitle";
@@ -23,62 +22,52 @@ export function NewMenu({ scope }: { scope: Scope }) {
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
-        <AnimatePresence>
-          <DropdownMenu.Content
-            align="end"
-            sideOffset={4}
-            className="z-50 min-w-60 rounded-lg border border-border bg-bg-raised p-1.5 shadow-pop outline-none"
-            asChild
+        <DropdownMenu.Content
+          align="end"
+          sideOffset={4}
+          className="menu-pop z-50 min-w-60 rounded-lg border border-border bg-bg-raised p-1.5 shadow-pop outline-none"
+        >
+          <DropdownMenuItem
+            onClick={() => {
+              // 和画布上那个「新建终端」落在同一处：你正在看的工作区。
+              // 两个入口同一个动作，结果不能不一样。
+              addSession(scope === "all" ? null : scope);
+            }}
           >
-            <motion.div
-              initial={{ opacity: 0, y: -4, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -4, scale: 0.98 }}
-              transition={{ duration: 0.15, ease: "easeOut" }}
-            >
-              <DropdownMenuItem
-                onClick={() => {
-                  // 和画布上那个「新建终端」落在同一处：你正在看的工作区。
-                  // 两个入口同一个动作，结果不能不一样。
-                  addSession(scope === "all" ? null : scope);
-                }}
-              >
-                <CommandLineIcon className="size-4 shrink-0" />
-                {t.newMenu.terminal}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => {
-                  addProject();
-                }}
-              >
-                <FolderIcon className="size-4 shrink-0" />
-                {t.newMenu.project}
-              </DropdownMenuItem>
-              {closed.length > 0 && (
-                <>
-                  <div className="mx-1 my-1.5 h-px bg-border" />
-                  <div className="px-2 pt-1 pb-0.5 text-caption uppercase tracking-[0.08em] text-text-dim">
-                    {t.newMenu.reopenHeading}
-                  </div>
-                  {closed.map((s) => (
-                    <DropdownMenuItem
-                      key={s.id}
-                      onClick={() => {
-                        reopenSession(s.id);
-                      }}
-                    >
-                      <CommandLineIcon className="size-4 shrink-0" />
-                      <span className="flex flex-col gap-px">
-                        <span>{sessionTitle(s)}</span>
-                        <span className="text-text-dim">{s.cwd}</span>
-                      </span>
-                    </DropdownMenuItem>
-                  ))}
-                </>
-              )}
-            </motion.div>
-          </DropdownMenu.Content>
-        </AnimatePresence>
+            <CommandLineIcon className="size-4 shrink-0" />
+            {t.newMenu.terminal}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => {
+              addProject();
+            }}
+          >
+            <FolderIcon className="size-4 shrink-0" />
+            {t.newMenu.project}
+          </DropdownMenuItem>
+          {closed.length > 0 && (
+            <>
+              <div className="mx-1 my-1.5 h-px bg-border" />
+              <div className="px-2 pt-1 pb-0.5 text-caption uppercase tracking-[0.08em] text-text-dim">
+                {t.newMenu.reopenHeading}
+              </div>
+              {closed.map((s) => (
+                <DropdownMenuItem
+                  key={s.id}
+                  onClick={() => {
+                    reopenSession(s.id);
+                  }}
+                >
+                  <CommandLineIcon className="size-4 shrink-0" />
+                  <span className="flex flex-col gap-px">
+                    <span>{sessionTitle(s)}</span>
+                    <span className="text-text-dim">{s.cwd}</span>
+                  </span>
+                </DropdownMenuItem>
+              ))}
+            </>
+          )}
+        </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>
   );

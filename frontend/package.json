@@ -43,7 +43,6 @@
     "3dmol": "^2.5.5",
     "codemirror": "^6.0.2",
     "events": "3.3.0",
-    "framer-motion": "^13.2.0",
     "ketcher-core": "3.18.0",
     "ketcher-react": "3.18.0",
     "ketcher-standalone": "3.18.0",

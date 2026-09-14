@@ -1,11 +1,11 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { AnimatePresence, motion } from "framer-motion";
 import { useState, type ReactNode } from "react";
 import { IconChevron, IconEdit, IconPlus, IconTrash } from "../../shared/icons";
 import { useGroupActivity } from "../session-status/useGroupActivity";
 import { useWorkspace } from "../../shared/store";
 import type { Session } from "../../shared/types";
+import { Collapse } from "../../shared/ui/Collapse";
 import { InlineRename } from "../../shared/ui/InlineRename";
 import { WorkspaceSessionRow } from "./WorkspaceSessionRow";
 import { IconButton } from "../../shared/ui/IconButton";
@@ -193,32 +193,21 @@ export function WorkspaceRow({
         )}
       </div>
 
-      <AnimatePresence initial={false}>
-        {open && (
-          <motion.div
-            key="sessions"
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.18, ease: "easeInOut" }}
-            style={{ overflow: "hidden" }}
-          >
-            {/* 导引线对准箭头中心：px-1.5(6px) + 半个 w-4(8px) = 14px。 */}
-            <div className="ml-[14px] flex flex-col border-l border-border/60 py-1 pl-1.5">
-              {sessions.length === 0
-                ? <div className="px-2 py-1.5 text-caption text-text-dim">{t.sidebar.noTerminals}</div>
-                : sessions.map(item => (
-                  <WorkspaceSessionRow
-                    key={item.id}
-                    session={item}
-                    current={item.id === currentSessionId}
-                    onOpen={() => onOpenSession(item.id)}
-                  />
-                ))}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <Collapse open={open}>
+        {/* 导引线对准箭头中心：px-1.5(6px) + 半个 w-4(8px) = 14px。 */}
+        <div className="ml-[14px] flex flex-col border-l border-border/60 py-1 pl-1.5">
+          {sessions.length === 0
+            ? <div className="px-2 py-1.5 text-caption text-text-dim">{t.sidebar.noTerminals}</div>
+            : sessions.map(item => (
+              <WorkspaceSessionRow
+                key={item.id}
+                session={item}
+                current={item.id === currentSessionId}
+                onOpen={() => onOpenSession(item.id)}
+              />
+            ))}
+        </div>
+      </Collapse>
     </div>
   );
 }
