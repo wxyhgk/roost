@@ -47,6 +47,55 @@ function useReducedMotion() {
   return reduced;
 }
 
+
+/**
+ * 把 viewBox 收到内容的真实边界上。
+ *
+ * 这些动画的画布是 1080×1080，而 logo 只占中间一小块——Claude 那份约 35%。静态图标是
+ * `viewBox="0 0 24 24"` 贴边裁的，所以同样 28px 的槽位里动画看着只有十来个像素，明显比
+ * 旁边的小一圈。
+ *
+ * **不写死放大倍数**：两份动画的留白比例本来就不一样，以后再加一份又是另一个数。让它
+ * 自己 `getBBox()` 量，对任何素材都成立。
+ *
+ * 取多帧的**并集**而不是只看第一帧：logo 动画常常在画面里平移或缩放，只按首帧裁会在后面
+ * 几帧被切掉一角。采样几帧足够，代价是挂载时几次 getBBox。
+ */
+function cropToContent(host: HTMLElement, animation: { goToAndStop(value: number, isFrame?: boolean): void; play(): void; totalFrames: number }) {
+  const svg = host.querySelector('svg');
+  if (!svg) return;
+  let box: { x: number; y: number; right: number; bottom: number } | null = null;
+  try {
+    for (let i = 0; i < 8; i++) {
+      animation.goToAndStop(Math.round(animation.totalFrames * i / 8), true);
+      const frame = svg.getBBox();
+      if (!frame.width || !frame.height) continue;
+      box = box
+        ? { x: Math.min(box.x, frame.x), y: Math.min(box.y, frame.y),
+            right: Math.max(box.right, frame.x + frame.width), bottom: Math.max(box.bottom, frame.y + frame.height) }
+        : { x: frame.x, y: frame.y, right: frame.x + frame.width, bottom: frame.y + frame.height };
+    }
+  } catch { /* getBBox 在元素还没布局时会抛；那就保持原样，只是小一点，不是坏掉。 */ }
+  animation.goToAndStop(0, true);
+  animation.play();
+  if (!box) return;
+  const square = squareViewBox(box);
+  svg.setAttribute('viewBox', `${square.x} ${square.y} ${square.size} ${square.size}`);
+  svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+}
+
+/**
+ * 把内容包围盒撑成正方形，内容居中。
+ *
+ * 槽位是正方形的，直接用非方形的包围盒当 viewBox 会让 logo 被拉变形。按长边取、短边
+ * 两侧各补一半，这样宽高比不变。
+ */
+export function squareViewBox(box: { x: number; y: number; right: number; bottom: number }) {
+  const width = box.right - box.x, height = box.bottom - box.y;
+  const size = Math.max(width, height);
+  return { x: box.x - (size - width) / 2, y: box.y - (size - height) / 2, size };
+}
+
 export function CliAnimation({ builtin, className, label, children }: {
   builtin: string;
   className?: string;
@@ -60,7 +109,7 @@ export function CliAnimation({ builtin, className, label, children }: {
 
   useEffect(() => {
     if (reduced) return;
-    let animation: { destroy(): void } | undefined;
+    let animation: ReturnType<Awaited<ReturnType<typeof loadPlayer>>['loadAnimation']> | undefined;
     let cancelled = false;
     void Promise.all([loadPlayer(), loadData(builtin)]).then(([player, animationData]) => {
       // 两次 await 之间组件可能已经卸载，或者这个会话已经回复完了。
@@ -72,6 +121,7 @@ export function CliAnimation({ builtin, className, label, children }: {
         autoplay: true,
         animationData,
       });
+      cropToContent(host.current, animation);
       setReady(true);
     }).catch(() => { /* 拉不到就一直用静态图标，不值得打扰用户。 */ });
     return () => {
