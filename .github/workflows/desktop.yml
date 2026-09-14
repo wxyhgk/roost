@@ -36,7 +36,11 @@ jobs:
             runner: windows-2022
             target: x86_64-pc-windows-msvc
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 45
+    # 历史最长的一次是 628s（Windows，cargo 缓存全冷那轮），20 分钟仍有 1.9 倍余量。
+    # 原来是 45——tags-only 之后跑 CI 的时候人是在等发版的，挂死一次白等 45 分钟。
+    # 真正可能无界挂住的是 tauri build 和 ci.mjs test 里的 NSIS 静默安装；
+    # windows-ui.mjs 自己带超时。
+    timeout-minutes: 20
     defaults:
       run:
         shell: bash
@@ -47,13 +51,33 @@ jobs:
       - name: Read application and toolchain versions
         id: metadata
         run: node desktop/scripts/ci.mjs metadata
+      # **不要加 `cache: npm`**，它在这个仓库必然未命中。键里含 package-lock.json 的
+      # 哈希，而 `npm run version:set` 每次发版都会改 lock 里的版本号——实测 v0.0.6 的
+      # Windows 键是 ba9bbd74…、v0.0.7 是 9150958c…，两次发版没有一次能复用。
+      #
+      # 代价不只是白跑：每次发版白写约 330MB（两个平台各 166MB），而缓存配额是 10GB、
+      # 当时已用到 4.45GB。撞上限时按 LRU 先被驱逐的正是那几份 534MB 的 rust 缓存——
+      # 也就是说这个从来不命中的缓存，在挤掉真正有用的那个。
+      #
+      # 少掉它 npm ci 慢 2~4s（实测命中 23s / 未命中 25~27s），这个价钱值得。
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: ${{ steps.metadata.outputs.node }}
-          cache: npm
+      # 这一步的实际作用是**装**工具链（rust-toolchain.toml 钉的 1.96.0）。原来只写
+      # `rustup show active-toolchain`，靠的是 rustup 的隐式自动安装，而它自己在日志里
+      # 说了要拿掉：「auto-installation is deprecated for most rustup commands」。
+      # 真拿掉的那天，这一步会**安静地成功**，构建落到 runner 镜像自带的那个 Rust 上
+      # （日志里 rust-cache 同时列出 1.96.0 和镜像自带的 1.98.1），然后在几步之后炸出
+      # 一个跟工具链毫不相干的错。
+      #
+      # 不带参数的 `rustup install` 是 rustup 自己给的替代命令，原话就在同一段警告里：
+      #   warn: to install the active toolchain, use `rustup install` instead
+      # 它读 rust-toolchain.toml，所以版本号不用在这儿抄第二遍。show 留着当日志确认。
       - name: Install pinned Rust
         working-directory: desktop
-        run: rustup show active-toolchain
+        run: |
+          rustup install
+          rustup show active-toolchain
       # Windows runner 上 Defender 的实时扫描会逐个去碰 cargo 写出来的中间产物，
       # 而 485 个 crate 的 release 编译正是「大量小文件」的极端情况。把 target 和
       # cargo home 排除掉，不改任何产物。
@@ -131,7 +155,10 @@ jobs:
   release:
     name: Publish desktop preview
     needs: build
-    if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+    # event_name 那一条不能省：在一个**已经发布过**的 tag 上手动 workflow_dispatch
+    # 复查构建时，ref_type 同样是 tag，于是 gh release create 撞上已存在的 release 而
+    # 失败——想复查一次，换来一个红叉。dispatch 只跑构建，不发布。
+    if: github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
