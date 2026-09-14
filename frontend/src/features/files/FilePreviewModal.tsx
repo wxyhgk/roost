@@ -228,10 +228,14 @@ export function FilePreviewModal({
   return (
     <div
       // 钉住后变成悬浮窗: 去掉遮罩, 事件点透, 终端可正常操作, 面板保持可拖动/缩放。
-      // backdrop-filter 在弹窗移动时要每帧重算，是拖动卡顿的另一半原因。
-      // 半透明黑本身已经足以把弹窗和背景分开，手势期间去掉模糊、松手再加回来。
+      //
+      // **不要把 backdrop-blur 加回来。** 全视口的 backdrop-filter 会让合成器一直维持一份
+      // 模糊副本，遮罩上方只要有东西在逐帧变，就容易从「只合成脏区」退化成整屏合成。
+      // 原来只在拖动面板时临时关掉它（panel.gesturing），可那个标志覆盖不到弹窗**内部**
+      // 逐帧更新的东西——3D 分子预览转起来时它全程开着，弱 GPU 上就是转一下涩一下。
+      // 半透明黑本身已经足以把弹窗和背景分开，模糊是纯装饰，不值这个价。
       className={`fixed inset-0 z-[100] flex items-center justify-center ${
-        pinned ? "pointer-events-none bg-transparent" : panel.gesturing ? "bg-black/50" : "bg-black/50 backdrop-blur-[4px]"
+        pinned ? "pointer-events-none bg-transparent" : "bg-black/50"
       }`}
       onClick={() => {
         if (panel.isGestureClick()) return;

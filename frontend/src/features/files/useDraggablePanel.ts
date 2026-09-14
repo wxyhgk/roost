@@ -58,7 +58,6 @@ export function useDraggablePanel({ minWidth, minHeight, keepVisible = 120, fall
   // 用时间戳而不用布尔值，防止残留导致下一次正常点击被吞。
   const suppressClickUntil = useRef(0);
   // 手势进行中。只在开始和结束各切一次，不是每帧。
-  const [gesturing, setGesturing] = useState(false);
 
   // 面板默认用 flex 居中，pos 是相对居中位置的偏移。
   function clampPos(x: number, y: number, w: number, h: number) {
@@ -97,7 +96,6 @@ export function useDraggablePanel({ minWidth, minHeight, keepVisible = 120, fall
     };
     e.currentTarget.setPointerCapture(e.pointerId);
     e.preventDefault();
-    setGesturing(true);
   }
 
   function move(e: ReactPointerEvent) {
@@ -123,7 +121,6 @@ export function useDraggablePanel({ minWidth, minHeight, keepVisible = 120, fall
   function end() {
     const g = gestureRef.current;
     gestureRef.current = null;
-    setGesturing(false);
     if (!g) return;
     if (g.moved) suppressClickUntil.current = Date.now() + 350;
     // 松手时才提交：整场拖动只有开始和结束各一次重渲染，而不是每帧一次。
@@ -164,7 +161,6 @@ export function useDraggablePanel({ minWidth, minHeight, keepVisible = 120, fall
     /** 挂到面板本体上。手势期间直接写它的 style，绕开 React。 */
     ref: panelRef,
     /** 拖动或缩放进行中。调用方用它在手势期间关掉昂贵的视觉效果。 */
-    gesturing,
     /** 摊到面板的 style 上。没动过时是空对象，让 CSS 里的默认值生效。 */
     style: {
       ...(livePos ? { transform: `translate(${livePos.x}px, ${livePos.y}px)` } : null),

@@ -50,6 +50,30 @@ export type ViewerHost = {
   release(owner: object): void;
 };
 
+/*
+  关掉 3Dmol 的 FXAA，但**保留 2 倍超采样**——这两个是分开的开关，默认值把它们绑在了一起。
+
+  3Dmol 的默认是 `antialias: true`，而 `upscale` 默认跟着 `antialias` 走
+  （Renderer: `this._upscale = parameters.upscale !== undefined ? parameters.upscale : this._antialias`）。
+  于是你同时得到两样东西：
+
+  1. 画布按 `max(devicePixelRatio, 2)` 渲染再缩下来——这本身就是超采样抗锯齿，边缘质量
+     主要是它给的。
+  2. 一个全屏 FXAA pass（`ShaderLib.screenaa`）。它每像素采样 8 次以上（中心、四角、再沿
+     边迭代），而关掉之后走的 `ShaderLib.screen` 只采 1 次。
+
+  第 2 条是**每帧**的填充开销，而且很大程度上是重复投保：已经按 2× 渲染过了，边缘本来就
+  是平滑的。一个 1200×800 的面板在 Retina 上是 2400×1600 ≈ 384 万像素，光这一个 pass
+  每帧就多出约 3000 万次纹理采样——表现出来就是「旋转发涩，别的都正常」。
+
+  所以显式拆开：antialias 关掉（省下 FXAA pass），upscale 明确设成 true（留住超采样，
+  否则非 Retina 屏上 dpr 会掉回 1，那才是真的糊）。
+
+  没有实测数字：改这条的时候手上没有浏览器。要是边缘看着毛了，把 antialias 调回 true 即可，
+  两个键是独立的。
+*/
+const VIEWER_CONFIG = (background: string) => ({ backgroundColor: background, antialias: false, upscale: true });
+
 export function createViewerHost(create: (host: HTMLElement, config: object) => MolViewer): ViewerHost {
   let host: HTMLDivElement | null = null;
   let viewer: MolViewer | null = null;
@@ -64,7 +88,7 @@ export function createViewerHost(create: (host: HTMLElement, config: object) => 
       }
       current = owner;
       mount.appendChild(host);
-      if (!viewer) viewer = create(host, { backgroundColor: background });
+      if (!viewer) viewer = create(host, VIEWER_CONFIG(background));
       // 复用之后主题不再跟着重建走，每次进来显式对一次。
       else viewer.setBackgroundColor(background);
       return viewer;
