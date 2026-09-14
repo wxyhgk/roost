@@ -32,7 +32,7 @@ export async function createClaudeLaunch(shell: string, env: NodeJS.ProcessEnv) 
     await writeFile(join(plugin, 'observe.mjs'), CLAUDE_OBSERVER_SCRIPT);
     await writeFile(join(dir, 'launch.mjs'), `import {spawn,spawnSync} from 'node:child_process';
 import {accessSync,constants,realpathSync,readFileSync} from 'node:fs';
-import {delimiter,join,resolve} from 'node:path';
+import {delimiter,dirname,join,resolve} from 'node:path';
 ${CLI_LAUNCH_TOOLS}
 const bin=${JSON.stringify(bin)},plugin=${JSON.stringify(plugin)};
 const paths=(process.env.PATH??'').split(delimiter).filter(p=>{try{return realpathSync(p)!==realpathSync(bin)}catch{return p!==bin}});

@@ -21,7 +21,7 @@ export function openCodeLaunchScript(bin: string, config: string) {
   return `import {spawn} from 'node:child_process';
 import {accessSync,constants,realpathSync,readFileSync} from 'node:fs';
 import {createServer} from 'node:net';
-import {delimiter,join,resolve} from 'node:path';
+import {delimiter,dirname,join,resolve} from 'node:path';
 ${CLI_LAUNCH_TOOLS}
 const bin=${JSON.stringify(bin)},config=${JSON.stringify(config)};
 const paths=(process.env.PATH??'').split(delimiter).filter(p=>{try{return realpathSync(p)!==realpathSync(bin)}catch{return p!==bin}});

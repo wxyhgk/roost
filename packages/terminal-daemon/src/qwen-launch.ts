@@ -25,7 +25,7 @@ export async function installQwenLaunch(bin: string, dir: string) {
 }
 export const QWEN_LAUNCH_SCRIPT = `import {spawn,spawnSync} from 'node:child_process';
 import {accessSync,constants,realpathSync,mkdtempSync,writeFileSync,rmSync,readdirSync,statSync,openSync,readSync,closeSync,fstatSync,readFileSync} from 'node:fs';
-import {delimiter,join,resolve} from 'node:path';
+import {delimiter,dirname,join,resolve} from 'node:path';
 import {createConnection} from 'node:net';
 import {StringDecoder} from 'node:string_decoder';
 import {homedir} from 'node:os';

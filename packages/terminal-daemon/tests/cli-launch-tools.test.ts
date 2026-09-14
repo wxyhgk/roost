@@ -95,7 +95,7 @@ test('失败时往 stderr 写一行，带上原因', () => {
 type Resolved = { file?: string; args?: string[]; unusable?: string };
 function loadResolver(files: Record<string, string | null>, platform = 'win32') {
   const factory = new Function(
-    'process', 'spawn', 'spawnSync', 'join', 'accessSync', 'constants', 'readFileSync', 'resolve',
+    'process', 'spawn', 'spawnSync', 'join', 'accessSync', 'constants', 'readFileSync', 'resolve', 'dirname',
     `${CLI_LAUNCH_TOOLS}\nreturn { resolveCli, requireCli };`,
   );
   const exists = (path: string) => { if (!(path in files)) throw new Error('ENOENT'); };
@@ -106,6 +106,7 @@ function loadResolver(files: Record<string, string | null>, platform = 'win32') 
     exists, {},
     (path: string) => { const body = files[path]; if (body == null) throw new Error('EISDIR'); return body; },
     (dir: string, rel: string) => (/^[A-Za-z]:/.test(rel) ? rel : dir + '\\' + rel.replace(/^[\\/]/, '')),
+    (path: string) => path.replace(/\\[^\\]*$/, ''),
   ) as { resolveCli(paths: string[], name: string): Resolved | undefined; requireCli(paths: string[], name: string): Resolved };
 }
 
@@ -156,4 +157,26 @@ test('真的没有才说 command not found', () => {
 test('POSIX 上找到的可执行文件直接执行', () => {
   const { resolveCli } = loadResolver({ '/usr/local/bin\\qwen': '#!/bin/sh\n' }, 'darwin');
   assert.deepEqual(resolveCli(['/usr/local/bin'], 'qwen'), { file: '/usr/local/bin\\qwen', args: [] });
+});
+
+/* qwen 在 Windows 上就是这么装的：一个 .cmd 用绝对路径 call 另一个 .cmd。 */
+test('跟着 call 链走到真正的垫片', () => {
+  const { resolveCli } = loadResolver({
+    'C:\\local\\qwen-code\\bin\\qwen.cmd':
+      '@echo off\r\ncall "C:\\local\\qwen-code\\qwen-code\\bin\\qwen.cmd" %*\r\n',
+    'C:\\local\\qwen-code\\qwen-code\\bin\\qwen.cmd':
+      '@echo off\r\n"%~dp0\\..\\dist\\cli.js" %*\r\n',
+    'C:\\local\\qwen-code\\qwen-code\\bin\\..\\dist\\cli.js': '// entry',
+  });
+  assert.deepEqual(resolveCli(['C:\\local\\qwen-code\\bin'], 'qwen'),
+    { file: 'C:\\roost\\node.exe', args: ['C:\\local\\qwen-code\\qwen-code\\bin\\..\\dist\\cli.js'] });
+});
+
+/* 两个垫片互相指着对方，不能把启动器转死。 */
+test('互相指向的垫片会在有限步内放弃', () => {
+  const { resolveCli } = loadResolver({
+    'C:\\a\\loop.cmd': '@echo off\r\ncall "C:\\b\\loop.cmd" %*\r\n',
+    'C:\\b\\loop.cmd': '@echo off\r\ncall "C:\\a\\loop.cmd" %*\r\n',
+  });
+  assert.deepEqual(resolveCli(['C:\\a'], 'loop'), { unusable: 'C:\\a\\loop.cmd' });
 });

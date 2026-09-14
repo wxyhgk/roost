@@ -19,15 +19,30 @@ function cliArgs() {
   The separator after %~dp0 is optional: %~dp0 already expands with a trailing
   backslash, and generators disagree about whether to add another one. Requiring it
   made every "%~dp0foo" shim look unparseable, i.e. reported as "not found".
+
+  A shim may also \`call\` another shim by absolute path, which is how qwen installs on
+  Windows:
+
+      @echo off
+      call "C:\...\qwen-code\qwen-code\bin\qwen.cmd" %*
+
+  So follow the chain instead of giving up on the first hop. Bounded depth, because two
+  shims pointing at each other would otherwise spin forever.
 */
-function shimTarget(file,dir) {
+function shimTarget(file,dir,depth) {
+ if(depth>4)return;
  let shim;try{shim=readFileSync(file,'utf8')}catch{return}
- const match=shim.match(/"%(?:~?dp0)%?[/\\]?([^"\r\n]+)"\s+%\*/i);
+ // 可选的 call 前缀；路径要么是 %~dp0 相对的，要么是绝对的。
+ const match=shim.match(/^[^\S\r\n]*(?:call[^\S\r\n]+)?"([^"\r\n]+)"[^\S\r\n]+%\*/im);
  if(!match)return;
- const target=resolve(dir,match[1]);
+ const relative=match[1].match(/^%~?dp0%?[/\\]?(.*)$/i);
+ const target=resolve(dir,relative?relative[1]:match[1]);
  try{accessSync(target,constants.R_OK)}catch{return}
  if(/\.(?:js|mjs|cjs)$/i.test(target))return {file:process.execPath,args:[target]};
  if(/\.(?:exe|com)$/i.test(target))return {file:target,args:[]};
+ // 一个 .cmd 转调另一个 .cmd（qwen 的装法就是这样，而且用绝对路径）。跟着链子走，
+ // 别在第一跳就放弃；深度设上限，免得互相指的两个垫片把我们转死。
+ if(/\.(?:cmd|bat)$/i.test(target))return shimTarget(target,dirname(target),depth+1);
 }
 function resolveCli(paths,name) {
  let unusable;
@@ -36,7 +51,7 @@ function resolveCli(paths,name) {
    const file=join(path,name+suffix);
    try { accessSync(file,constants.X_OK); } catch { continue; }
    if(suffix!=='.cmd'&&suffix!=='.bat')return {file,args:[]};
-   const target=shimTarget(file,path);
+   const target=shimTarget(file,path,0);
    if(target)return target;
    // 找到了却用不了，和「根本没有」不是一回事：记下来，调用方才能说清楚。
    unusable??=file;
