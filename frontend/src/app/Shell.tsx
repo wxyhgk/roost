@@ -1,7 +1,6 @@
 import { subscribeFileLinkOpen } from '../features/terminal/public';
-import { useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelHandle, type ImperativePanelGroupHandle } from "react-resizable-panels";
-import { CommandPalette } from "../features/workspace/CommandPalette";
 import { LeftRail } from "./LeftRail";
 import { RightPanel, type RightView } from "./RightPanel";
 import { RightRail } from "./RightRail";
@@ -11,8 +10,22 @@ import { StatusBar } from "./StatusBar";
 import { TerminalPane } from "../features/terminal/view/TerminalPane";
 import { TopBar } from "./TopBar";
 import { ErrorBoundary } from './ErrorBoundary';
-import { SettingsDialog } from './SettingsDialog';
 import { EXTERNAL_EDITORS } from '../plugins/external';
+
+/*
+  设置弹窗和命令面板都只在用户动手之后才出现，没有理由压在首屏里。
+
+  两个的渲染点本来就已经是「关着就不存在」了——设置是 `{settingsOpen && …}`，命令面板
+  自己在 `!open` 时 `return null`，而且外面还套着 `key={String(paletteOpen)}`，每次打开
+  都是一次全新挂载。所以改成 lazy 不改变任何既有行为，只是把代码挪出首屏 chunk。
+
+  热键在 Shell 自己身上（见下面的 keydown），不在 CommandPalette 里，所以把它整个摘掉
+  也不会让 Cmd+K 失灵——这一点是改之前专门确认过的。
+
+  fallback 用 null：这两个都是覆盖层，加载那一瞬间不该先闪一个占位框出来。
+*/
+const SettingsDialog = lazy(() => import('./SettingsDialog').then(m => ({ default: m.SettingsDialog })));
+const CommandPalette = lazy(() => import("../features/workspace/CommandPalette").then(m => ({ default: m.CommandPalette })));
 import type { Mode, Scope } from "../shared/view";
 import { t } from "@roost/i18n";
 
@@ -218,8 +231,8 @@ export function Shell() {
         <RightRail view={rightView} collapsed={rightCollapsed} onSelect={selectRight} />
       </div>
       <StatusBar monitorVisible={rightView === 'server' && !rightCollapsed} onOpenMonitor={tab => { setMonitorTarget(previous => ({ tab, revision: previous.revision + 1 })); showRight('server'); }} />
-      {settingsOpen && <ErrorBoundary region={t.misc.shell.regionSettings}><SettingsDialog onClose={() => setSettingsOpen(false)} onResetLayout={() => layoutRef.current?.setLayout([23, 59, 18])} /></ErrorBoundary>}
-      <ErrorBoundary region={t.misc.shell.regionPalette} key={String(paletteOpen)}><CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} onShowView={showRight} /></ErrorBoundary>
+      {settingsOpen && <ErrorBoundary region={t.misc.shell.regionSettings}><Suspense fallback={null}><SettingsDialog onClose={() => setSettingsOpen(false)} onResetLayout={() => layoutRef.current?.setLayout([23, 59, 18])} /></Suspense></ErrorBoundary>}
+      {paletteOpen && <ErrorBoundary region={t.misc.shell.regionPalette}><Suspense fallback={null}><CommandPalette open onClose={() => setPaletteOpen(false)} onShowView={showRight} /></Suspense></ErrorBoundary>}
       {/*
         弹窗之外的编辑器挂在这一层，而不是文件树里。
 

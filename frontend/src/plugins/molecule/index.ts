@@ -1,6 +1,13 @@
-import { createElement, useSyncExternalStore } from "react";
+import { Suspense, createElement, lazy, useSyncExternalStore } from "react";
 import type { ExternalEditor, ExternalEditorContext } from "../../shared/editor";
-import { MoleculeModal } from "../../embeds/molecule/MoleculeModal";
+/*
+  弹窗本体懒加载。Host 在 `!molecule.last` 时就已经 return null 了——也就是说在你第一次
+  打开一个分子文件之前，这段代码一行都用不上，没理由压在首屏里。
+
+  注意它和 iframe 的冷启动是两回事：真正贵的那 9 MB 代码加 wasm 住在 iframe 里，由
+  molecule.html 那个独立入口加载，从来就不在首屏。这里摘掉的只是外面那层壳。
+*/
+const MoleculeModal = lazy(() => import("../../embeds/molecule/MoleculeModal").then(m => ({ default: m.MoleculeModal })));
 import { closeMolecule, getMolecule, noteMoleculeSaved, setMoleculeDirty, subscribeMolecule } from "../../embeds/molecule/editorTarget";
 import { MOLECULE_FILE, useMoleculeBridge } from "./bridge";
 import { t } from "@roost/i18n";
@@ -21,7 +28,8 @@ function Host() {
   const molecule = useSyncExternalStore(subscribeMolecule, getMolecule);
   // last 而不是 open：关掉之后 iframe 仍然活着，它得继续有个归属。
   if (!molecule.last) return null;
-  return createElement(MoleculeModal, {
+  // fallback 用 null：弹窗加载的那一瞬间不该先闪一个占位框。
+  return createElement(Suspense, { fallback: null }, createElement(MoleculeModal, {
     open: !!molecule.open,
     sessionId: molecule.last.sessionId,
     root: molecule.last.root,
@@ -29,7 +37,7 @@ function Host() {
     onClose: closeMolecule,
     onDirtyChange: setMoleculeDirty,
     onSaved: noteMoleculeSaved,
-  });
+  }));
 }
 
 export const moleculeEditor: ExternalEditor = {
