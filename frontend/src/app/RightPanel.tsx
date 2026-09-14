@@ -1,8 +1,9 @@
 import { lazy, Suspense } from "react";
-import { useLibraryPresentation } from "./useLibraryPresentation";
+import { useLibraryPresentation } from "../shared/ui/useLibraryPresentation";
 import { createPortal } from "react-dom";
 import { useWorkspace } from "../shared/store";
 import type { NotesTab } from "../features/notes/NotesView";
+import type { RightView } from "../shared/view";
 import { PanelHeader } from "../shared/ui/PanelHeader";
 import { IconClose } from "../shared/icons";
 import { IconButton } from "../shared/ui/IconButton";
@@ -24,12 +25,16 @@ import type { MonitorTarget } from '../features/server-monitor/navigation';
 const ServerMonitorView = lazy(() => import("../features/server-monitor/ServerMonitorView"));
 const FilesView = lazy(() => import("../features/files/FilesView").then(m => ({ default: m.FilesView })));
 const NotesView = lazy(() => import("../features/notes/NotesView").then(m => ({ default: m.NotesView })));
-export type RightView = "files" | "server" | NotesTab;
 export function RightPanel({ view, onChangeView, visible = true, monitorTarget }: { view: RightView; onChangeView: (view: RightView) => void; visible?: boolean; monitorTarget?: MonitorTarget }) {
   // 每次渲染重取：切换语言后标题要跟着变，不能缓存在模块顶层。
   // 同上：占位文案也要每次渲染重取，模块级常量会把语言定死在首次加载那一刻。
   const panelFallback = <p className="p-3 text-xs text-text-dim">{t.misc.rightPanel.loading}</p>;
-  const titles: Record<RightView, string> = { server: t.serverMonitor.title, files: t.misc.rightPanel.titles.files, notes: t.misc.rightPanel.titles.notes, snippets: t.misc.rightPanel.titles.snippets };
+  /*
+    键类型故意写成结构化的那个联合而不是 RightView：它和下面的 `titles[view]` 一起，
+    把 shared/view.ts 里的 RightView 和 features/library 的 Kind 钉成同一个集合。
+    理由写在 shared/view.ts 的 RightView 上面。
+  */
+  const titles: Record<"files" | "server" | NotesTab, string> = { server: t.serverMonitor.title, files: t.misc.rightPanel.titles.files, notes: t.misc.rightPanel.titles.notes, snippets: t.misc.rightPanel.titles.snippets };
   const { sessions, selectedId } = useWorkspace("sessions", "selectedId");
   const session = sessions.find(s => s.id === selectedId && !s.closed);
   // 文件和 AI 两个视图都是终端自己的内容，不走「资料库」那套弹出布局。

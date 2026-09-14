@@ -25,3 +25,17 @@ export type Mode = "canvas" | "terminal";
 
 /** 进了终端之后：看终端本身，还是看同一段对话的可读形态。 */
 export type Lens = "tui" | "gui";
+
+/**
+ * 右侧面板此刻在看什么。和上面三个同一根轴，所以住在一起。
+ *
+ * 它**没有**写成 `"files" | "server" | NotesTab`——那样这个文件就要引用
+ * `features/library` 的 `Kind`，而共享层不许依赖特性（check-boundaries 里那条
+ * 「a shared layer must not depend on a feature」）。引用一下，它就不再是共享层了。
+ *
+ * 那两边会不会漂？不会，而且不靠自觉：`app/RightPanel.tsx` 里的 `titles` 同时被两个
+ * 联合夹着——记录的键类型写的是 `"files" | "server" | NotesTab`，而取值用的是
+ * `titles[view]`、`view: RightView`。`Kind` 多一个成员，记录字面量就少一个键；
+ * `RightView` 多一个成员，取值就索引不到。两个方向都是 tsc 当场报错。
+ */
+export type RightView = "files" | "server" | "notes" | "snippets";

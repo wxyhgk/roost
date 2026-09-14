@@ -1,5 +1,5 @@
 import { CodeBracketIcon, FolderIcon, DocumentTextIcon, ServerIcon } from "@heroicons/react/24/outline";
-import type { RightView } from "./RightPanel";
+import type { RightView } from "../shared/view";
 import { t } from "@roost/i18n";
 
 export function RightRail({

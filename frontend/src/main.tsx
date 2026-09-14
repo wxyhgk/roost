@@ -4,7 +4,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./app/App";
 import { AuthGate } from "./app/AuthGate";
-import { ErrorBoundary } from "./app/ErrorBoundary";
+import { ErrorBoundary } from "./shared/ui/ErrorBoundary";
 import { ThemeProvider } from "./shared/theme";
 import { WorkspaceProvider } from "./shared/store";
 import "./index.css";

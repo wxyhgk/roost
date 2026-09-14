@@ -133,6 +133,18 @@ for (const owner of owners) {
           if (['shared/store/state.ts', 'shared/store/observable.ts'].includes(from) && FEATURE.test(to)) reason = 'workspace state must not depend on features';
           if (from === 'features/terminal/public.ts' && /(?:xtermEngine|useTerminal|index)$/.test(to)) reason = 'light terminal entry must not load the engine';
           /*
+            **特性不许反过来依赖 app/。** `app/` 是组装层：它认识所有特性并把它们拼成界面，
+            所以特性一旦回头 import 它，方向就反了——那个模块实际上属于组装层而不是特性。
+
+            环检测（frontend/tests/module-graph.test.ts）拦不住这一类：`CommandPalette`
+            依赖 `app/RightPanel` 而 RightPanel 不依赖回去，构不成环，它就一路长着。
+            这正是 `shared/view.ts` 那段注释讲过的故事——`Mode` 曾经长在 `Shell.tsx` 里，
+            修好之后同样的形状换个名字（`RightView`）又长了一遍。所以这次补成规则。
+
+            `main.tsx` 是例外：它是组装的起点，本来就该认识 app/。
+          */
+          if (/^(features|plugins|embeds)\//.test(from) && to.startsWith('app/')) reason = 'a feature must not depend on the app composition layer';
+          /*
             **只有注册表能认识具体的插件。**
 
             这条是「插件系统」和「一个叫 plugins 的目录」的全部区别。原来那张表拼在

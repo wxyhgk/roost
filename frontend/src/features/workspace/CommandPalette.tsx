@@ -8,7 +8,7 @@ import { sessionTitle } from "../../shared/sessionTitle";
 import { sessionStatus } from "../session-status/runtime";
 import { IconCode, IconFile, IconNote, IconSearch } from "../../shared/icons";
 import { SessionLogo } from "../../shared/ui/SessionLogo";
-import type { RightView } from "../../app/RightPanel";
+import type { RightView } from "../../shared/view";
 import { t } from "@roost/i18n";
 
 type Props = {

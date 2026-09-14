@@ -11,7 +11,7 @@ import {
 import { t } from '@roost/i18n';
 import type { Metric, ServerSnapshot, ServiceInfo, DiskInfo } from '@roost/server-monitor/types';
 import { saveMonitoredServices } from '../../shared/api/serverMonitor';
-import { useLibraryPresentation } from '../../app/useLibraryPresentation';
+import { useLibraryPresentation } from '../../shared/ui/useLibraryPresentation';
 import { useServerMonitor, refreshServerMonitor } from './store';
 import type { MonitorTab as Tab, MonitorTarget } from './navigation';
 import { bytes, percentage, uptime } from './format';

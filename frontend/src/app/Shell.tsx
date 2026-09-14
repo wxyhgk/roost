@@ -2,14 +2,14 @@ import { subscribeFileLinkOpen } from '../features/terminal/public';
 import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelHandle, type ImperativePanelGroupHandle } from "react-resizable-panels";
 import { LeftRail } from "./LeftRail";
-import { RightPanel, type RightView } from "./RightPanel";
+import { RightPanel } from "./RightPanel";
 import { RightRail } from "./RightRail";
 import { Sidebar } from "../features/workspace/Sidebar";
 import type { MonitorTarget } from '../features/server-monitor/navigation';
 import { StatusBar } from "./StatusBar";
 import { TerminalPane } from "../features/terminal/view/TerminalPane";
 import { TopBar } from "./TopBar";
-import { ErrorBoundary } from './ErrorBoundary';
+import { ErrorBoundary } from '../shared/ui/ErrorBoundary';
 import { EXTERNAL_EDITORS } from '../plugins/external';
 
 /*
@@ -26,7 +26,7 @@ import { EXTERNAL_EDITORS } from '../plugins/external';
 */
 const SettingsDialog = lazy(() => import('./SettingsDialog').then(m => ({ default: m.SettingsDialog })));
 const CommandPalette = lazy(() => import("../features/workspace/CommandPalette").then(m => ({ default: m.CommandPalette })));
-import type { Mode, Scope } from "../shared/view";
+import type { Mode, RightView, Scope } from "../shared/view";
 import { t } from "@roost/i18n";
 
 /**
