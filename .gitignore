@@ -30,3 +30,6 @@ backend/lib/
 /desktop/src-tauri/icons/
 /desktop/src-tauri/tauri.generated.json
 desktop/artifacts/
+
+# 各人自己的 Claude Code 权限/偏好，不该进仓库
+.claude/settings.local.json
