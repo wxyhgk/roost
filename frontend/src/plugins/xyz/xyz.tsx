@@ -2,27 +2,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import "./3dmol-setup";
 import * as $3Dmol from "3dmol";
 import { parseXyz } from "./parse";
+import { createViewerHost, type MolViewer } from "./viewer-host";
 import type { EditorPlugin } from "../../shared/editor";
 import { t } from "@roost/i18n";
-
-type MolViewer = {
-  addModel: (s: string, fmt: string) => unknown;
-  setStyle: (sel: object, style: object) => void;
-  zoomTo: (sel?: object) => void;
-  center: (sel?: object) => void;
-  render: () => void;
-  clear: () => void;
-  resize: () => void;
-  getCanvas: () => HTMLCanvasElement;
-  /** 与 3Dmol GLViewer.getView 一致: [mx,my,mz,zoom,qx,qy,qz,qw] */
-  getView: () => number[];
-  /** 10 元数组时会额外设置 rotationGroup.position.x/y(3Dmol 2.5.5 的 setView 支持) */
-  setView: (view: number[]) => void;
-};
 
 const mol = $3Dmol as unknown as {
   createViewer: (el: HTMLElement, config?: object) => MolViewer;
 };
+
+// 唯一的那个宿主。为什么只能有一个，见 viewer-host.ts 顶部。
+const viewerHost = createViewerHost((el, config) => mol.createViewer(el, config));
 
 const CPK: Record<string, string> = {
   H: "#ffffff", C: "#909090", N: "#3050f8", O: "#ff0d0d",
@@ -114,6 +103,7 @@ function XyzPreview({ content }: { content: string }) {
     const el = containerRef.current;
     if (!el) return;
     let disposed = false;
+    const owner = {};
 
     const raf = requestAnimationFrame(() => {
       if (disposed) return;
@@ -121,8 +111,10 @@ function XyzPreview({ content }: { content: string }) {
         const bg =
           getComputedStyle(document.documentElement).getPropertyValue("--color-bg").trim() ||
           "#000000";
-        const viewer = mol.createViewer(el, { backgroundColor: bg });
+        const viewer = viewerHost.acquire(el, owner, bg);
         viewerRef.current = viewer;
+        viewer.clear();
+        viewer.resize();
         viewer.addModel(parsed?.model ?? content, "xyz");
         viewer.setStyle({}, {
           sphere: { colorscheme: "element", radius: 0.25 },
@@ -172,7 +164,7 @@ function XyzPreview({ content }: { content: string }) {
       el.removeEventListener("mousedown", onMouseDown);
       el.removeEventListener("touchstart", onTouchStart);
       el.removeEventListener("dblclick", onDoubleClick);
-      viewerRef.current?.clear();
+      viewerHost.release(owner);
       viewerRef.current = null;
       basePosRef.current = null;
       panRef.current = { x: 0, y: 0 };
