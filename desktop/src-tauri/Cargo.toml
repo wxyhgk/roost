@@ -17,8 +17,32 @@ sha2 = "0.10"
 cookie = "0.18"
 
 [profile.release]
-codegen-units = 1
-lto = true
+# 这一套是拿编译时间换体积的，四条里三条都赚，只有 lto=true + codegen-units=1 那一对亏。
+#
+#   opt-level = "s"   对编译时间几乎中性，省下的体积是白拿的
+#   strip = true      编译代价可忽略
+#   panic = "abort"   实测省 1.17 MB（26%），是性价比最高的一条
+#
+# 亏的那一对：fat LTO 加单 codegen unit 是一次整程序优化，而**缓存原理上消不掉它**。
+# 实测（CI，Windows，rust-cache 全命中那一轮）：247 个依赖 crate 一个都没重编、日志里只有
+# 一行 `Compiling roost-desktop`，cargo 仍然花了 113 秒——那 113 秒全是「一个 1077 行的
+# crate + 整图链接」。rust-cache 的 cache-workspace-crates 默认就是 false，最终链接更是
+# 从来不进缓存，所以这笔钱每一轮都要重付。
+#
+# 换来多少体积？本机实测 3.30 → 4.25 MB。放进参照系看：v0.0.5 的 .app 里这个二进制是
+# 4.54 MB，而随包的 Node 是 122 MB，整包 184 MB——Rust 部分占下载量的 2.4%，这 0.95 MB
+# 大约是安装包的 1%。
+#
+# 本机实测的编译时间（macOS arm64，同一台机器背靠背，±15% 噪声）：
+#
+#                        冷编译   热编译（≈缓存全中）   二进制
+#   fat + cgu=1（原来）    91s        40s            3.30 MB
+#   thin + cgu 默认        66s        18s            4.25 MB   ← 现在这套
+#   thin + cgu=1           70s        32s            3.83 MB
+#
+# 注意收益的大头在 codegen-units 而不是 LTO 的种类：只把 lto 换成 thin、保留 cgu=1，
+# 热路径只从 40s 降到 32s。所以两个一起改。
+lto = "thin"
 opt-level = "s"
 strip = true
 panic = "abort"
