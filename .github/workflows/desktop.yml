@@ -50,6 +50,34 @@ jobs:
       - name: Install pinned Rust
         working-directory: desktop
         run: rustup show active-toolchain
+      # Windows runner 上 Defender 的实时扫描会逐个去碰 cargo 写出来的中间产物，
+      # 而 485 个 crate 的 release 编译正是「大量小文件」的极端情况。把 target 和
+      # cargo home 排除掉，不改任何产物。
+      #
+      # 失败了就算了（策略收紧、权限不够都可能），这只是省时间，不是正确性的一环——
+      # 所以 continue-on-error，不要让它把整条流水线带红。
+      - name: Exclude cargo paths from Defender
+        if: runner.os == 'Windows'
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          Add-MpPreference -ExclusionPath "${{ github.workspace }}\desktop\src-tauri\target"
+          Add-MpPreference -ExclusionPath "$env:USERPROFILE\.cargo"
+      # 实测（run 34797834876）：Windows 那 485s 里有 333s 是 Rust——Build desktop 259s
+      # 加 cargo test 74s，占 69%。而此前**只缓存了 Node 归档、没有任何 cargo 缓存**，
+      # Cargo.lock 里 485 个 crate 每次 run 全部从零编译。这是个遗漏，不是权衡。
+      #
+      # 键不用自己拼：add-rust-environment-hash-key 默认开着，已经把 Cargo.lock、
+      # Cargo.toml、rust-toolchain.toml 一起哈希进去了；再叠一个 matrix.target，
+      # 免得两个平台的产物互相污染。
+      #
+      # **注意这份缓存经常会是冷的。** 这个 workflow 只在打标签时触发，而 GitHub 的缓存
+      # 7 天不被访问就驱逐——两次发版隔一周以上就等于没有。真要让它稳定命中，得再配一条
+      # 每周一次的 schedule 去养缓存；在那之前，这一步的收益是「发版密集时有、平时没有」。
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: desktop/src-tauri
+          key: ${{ matrix.target }}
       - name: Install dependencies
         run: npm ci
       - name: Check types and package boundaries
