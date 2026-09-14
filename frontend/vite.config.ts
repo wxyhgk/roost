@@ -82,7 +82,28 @@ const hmrClientPort = Number(process.env.VITE_HMR_CLIENT_PORT) || undefined;
 
 export default defineConfig({
   plugins: [devCompression(), react(), tailwindcss(), fileIconSubset(), ketcherRaphaelInterop()],
-  resolve: { alias: { events: 'events/' } },
+  resolve: {
+    alias: [
+      { find: 'events', replacement: 'events/' },
+      /*
+        paper 的 package.json main 指向 `dist/paper-full.js`，而 full 版把 acorn 和
+        PaperScript（paper 自己那套 DSL）一起打了进去。acorn 在**模块求值时**就用
+        `new Function("str", …)` 现编保留字检查表——桌面版的 CSP 是
+        `script-src 'self' 'wasm-unsafe-eval'`（desktop/runtime/server.mjs、
+        stable-workbench/server.mjs 各一份），没有 'unsafe-eval'，于是这一句直接抛，
+        `import('./frame')` 整个拒绝，界面上看到的就是「编辑器加载失败」。
+        浏览器直连那条路没有 CSP 头，所以只在桌面版和 stable-workbench 里犯。
+
+        ketcher 用到的只有几何部分（Path.Circle / Rectangle / Point / Size /
+        CompoundPath / setup），PaperScript 一个都没碰，换 core 版正好去掉带 eval 的那半。
+        实测 paper-core.js 里 `new Function` 出现 0 次，full 版 1 次。
+
+        必须写成 `/^paper$/` 的精确匹配：字符串 find 会连 `paper/dist/...` 这类子路径
+        一起改写，把替换结果再拼一遍。
+      */
+      { find: /^paper$/, replacement: 'paper/dist/paper-core.js' },
+    ],
+  },
   build: { rollupOptions: { input: { main: "index.html", molecule: "molecule.html" } } },
   server: {
     // Vite 默认 host 是 "localhost"，在 Node 25 上只解析到 ::1，于是 dev server 只监听
