@@ -3,8 +3,8 @@
 <p>Isolated real xterm test; no PTY, WebSocket or user session.</p>
 <button id="run">Run output and layout stress</button><pre id="result">Ready</pre><div id="host"></div>
 <script type="module">
-import { mountXterm } from '/src/features/terminal/xtermEngine.ts';
-import { createResume } from '/src/features/terminal/resume.ts';
+import { mountXterm } from '/src/features/terminal/engine/xtermEngine.ts';
+import { createResume } from '/src/features/terminal/session/resume.ts';
 const host=document.querySelector('#host'), result=document.querySelector('#result'), button=document.querySelector('#run');
 const errors=[];
 let previous;

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createConnection } from '../src/features/terminal/connection.ts';
+import { createConnection } from '../src/features/terminal/session/connection';
 import { PROTOCOL_VERSION } from '@roost/terminal-protocol';
 
 test('dead hello synchronizes restart state and a restarted terminal completes a fresh handshake', async t => {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { IBuffer, IBufferCell, IBufferLine } from '@xterm/xterm';
-import { bufferFileLinks } from '../src/features/terminal/fileLinkBuffer';
+import { bufferFileLinks } from '../src/features/terminal/engine/fileLinkBuffer';
 import { emitFileLink, subscribeFileLink, subscribeFileLinkOpen } from '../src/features/terminal/fileLinks';
 
 function buffer(rows: { chars: string[]; wrapped?: boolean }[]) {

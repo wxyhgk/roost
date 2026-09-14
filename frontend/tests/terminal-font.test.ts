@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { TERMINAL_FONT_FAMILY, observeFonts, waitForMeasurable } from '../src/features/terminal/font.ts';
+import { TERMINAL_FONT_FAMILY, observeFonts, waitForMeasurable } from '../src/features/terminal/engine/font';
 
 const tick = () => new Promise<void>(r => setImmediate(r));
 const sized = { clientWidth: 1066, clientHeight: 842 } as HTMLElement;

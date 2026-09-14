@@ -1,13 +1,13 @@
-import { ptyUrl, reopenSession } from '../../shared/api';
-import { xtermThemeFromCss } from '../../shared/theme';
-import { mountXterm } from './xtermEngine';
-import { observeFonts, waitForMeasurable } from './font';
+import { ptyUrl, reopenSession } from '../../../shared/api/index';
+import { xtermThemeFromCss } from '../../../shared/theme';
+import { mountXterm } from '../engine/xtermEngine';
+import { observeFonts, waitForMeasurable } from '../engine/font';
 import { createConnection } from './connection';
 import type { ResumeSnapshot } from './resume';
-import { emitFileLink } from './fileLinks';
+import { emitFileLink } from '../fileLinks';
 import type { SessionDependencies } from './sessionController';
-import { stableRuntime } from '../../shared/runtime';
-import { sessionStatus } from '../session-status/public';
+import { stableRuntime } from '../../../shared/runtime';
+import { sessionStatus } from '../../session-status/public';
 /*
   屏幕快照只在**本次页面加载内**有效。
 

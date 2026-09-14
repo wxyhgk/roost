@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import headless from '@xterm/headless';
 import { SerializeAddon } from '@xterm/addon-serialize';
-import { createResume } from '../src/features/terminal/resume';
+import { createResume } from '../src/features/terminal/session/resume';
 const {Terminal}=headless;
 const write=(term:InstanceType<typeof Terminal>,data:string)=>new Promise<void>(resolve=>term.write(data,resolve));
 const lines=(term:InstanceType<typeof Terminal>)=>Array.from({length:term.rows},(_,row)=>term.buffer.active.getLine(term.buffer.active.baseY+row)?.translateToString(true));

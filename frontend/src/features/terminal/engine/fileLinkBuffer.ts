@@ -1,5 +1,5 @@
 import type { IBuffer } from '@xterm/xterm';
-import { matchFileLinks } from './fileLinks';
+import { matchFileLinks } from '../fileLinks';
 
 /** Map UTF-16 match offsets to actual terminal cells, including wide/combined glyphs. */
 export function bufferFileLinks(buffer: Pick<IBuffer, 'getLine' | 'length'>, y: number, cols: number) {

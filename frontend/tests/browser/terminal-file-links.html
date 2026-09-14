@@ -2,7 +2,7 @@
 <style>body{background:#181818;color:#eee;font:14px sans-serif}#host{position:relative;margin:80px 30px;width:800px;height:280px}#result{white-space:pre-wrap}</style>
 <p>Click the file link below. This fixture has no PTY or backend connection.</p><pre id="result">No file opened</pre><div id="host"></div>
 <script type="module">
-import { mountXterm } from '/src/features/terminal/xtermEngine.ts';
+import { mountXterm } from '/src/features/terminal/engine/xtermEngine.ts';
 import { emitFileLink, subscribeFileLink, subscribeFileLinkOpen } from '/src/features/terminal/fileLinks.ts';
 const result=document.querySelector('#result');
 let unsubscribe;

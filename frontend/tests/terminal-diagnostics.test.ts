@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createDiagnosticTrace, stalledParser } from '../src/features/terminal/diagnostics.ts';
-import { createResume } from '../src/features/terminal/resume.ts';
+import { createDiagnosticTrace, stalledParser } from '../src/features/terminal/session/diagnostics';
+import { createResume } from '../src/features/terminal/session/resume';
 test('diagnostic history is bounded and callers cannot change saved events',()=>{
  const trace=createDiagnosticTrace(()=>123);for(let i=0;i<100;i++)trace.record('reconnect',i);
  const events=trace.read();assert.equal(events.length,40);assert.deepEqual(events[0],{at:123,event:'reconnect',value:60});events[0].event='changed';assert.equal(trace.read()[0].event,'reconnect');

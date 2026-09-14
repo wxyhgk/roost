@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createConnection, CONNECT_TIMEOUT_MS } from '../src/features/terminal/connection.ts';
+import { createConnection, CONNECT_TIMEOUT_MS } from '../src/features/terminal/session/connection';
 test('core adapter gates JSON input on parsed replay and suppresses passive resize, snapshot and appearance',async t=>{
  const sockets: FakeSocket[]=[];
  class FakeSocket {

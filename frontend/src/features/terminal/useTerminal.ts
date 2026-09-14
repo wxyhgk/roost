@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CliKind } from '@roost/terminal-protocol';
 import { useTheme, xtermThemeFromCss } from '../../shared/theme';
-import { createTerminalSessionController, initialSessionState, type TerminalSessionController } from './sessionController';
-import { sessionDependencies, forgetSnapshot } from './sessionRuntime';
+import { createTerminalSessionController, initialSessionState, type TerminalSessionController } from './session/sessionController';
+import { sessionDependencies, forgetSnapshot } from './session/sessionRuntime';
 
 export function useTerminal(sessionId: string, active: boolean, onCwd: (cwd: string) => void, onCli: (cli: CliKind | null, cliId?: string | null) => void) {
   const hostRef = useRef<HTMLDivElement>(null);

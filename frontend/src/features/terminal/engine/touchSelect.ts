@@ -1,3 +1,4 @@
+import type { Cell } from "../types";
 /**
  * 触点到终端单元格的换算，以及两点成范围的规整。
  *
@@ -10,7 +11,6 @@
  */
 
 /** 单元格坐标。row 是**绝对缓冲区行号**，不是屏幕行——否则选区会随滚动漂移。 */
-export type Cell = { col: number; row: number };
 
 export type Viewport = {
   cols: number;

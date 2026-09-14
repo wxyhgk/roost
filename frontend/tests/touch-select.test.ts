@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { pointToCell, selectionArgs } from "../src/features/terminal/touchSelect.ts";
+import { pointToCell, selectionArgs } from "../src/features/terminal/engine/touchSelect";
 
 // 一个 80x24 的终端，内容区 800x480，于是每格 10x20。
 const rect = { left: 100, top: 50, width: 800, height: 480 };

@@ -1,10 +1,13 @@
+/** 终端网格里的一个格子。放在这儿而不是 touchSelect：共享类型不该反过来依赖引擎零件。 */
+export type Cell = { col: number; row: number };
+
 /**
  * 终端特性的共享类型。**只有这一个家。**
  *
  * 以前这些分在 `types.ts` 和 `contracts.ts` 两处，而两者的分界说不出口——都是共享类型，
  * 一个 65 行一个 8 行。更麻烦的是 `connection.ts` 和 `handles.ts` 又各自转口导出了
  * 其中一个，于是同一个类型有两三条 import 路径：`sessionController` 里就出现过
- * `TermStatus` 从 `./connection` 进来、`SendResult` 从 `./contracts` 进来，
+ * `TermStatus` 从 `./session/connection` 进来、`SendResult` 从 `./contracts` 进来，
  * 同源的两个类型在同一个文件里走了不同的路。谁都没写错，是路本来就有两条。
  */
 
@@ -26,8 +29,6 @@ export type TermTheme = {
   minimumContrastRatio?: number;
 };
 
-import type { Cell } from "./touchSelect";
-export type { Cell };
 
 export type TermHandle = {
   repaint?: (fallback?: boolean) => void;

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createLocalEcho, echoWidth, ECHO_TIMEOUT, type EchoLine } from '../src/features/terminal/localEcho.ts';
+import { createLocalEcho, echoWidth, ECHO_TIMEOUT, type EchoLine } from '../src/features/terminal/engine/localEcho';
 
 function line(text: string, x?: number, y = 2): EchoLine {
   const cells = [...text].flatMap(text => echoWidth(text) === 2 ? [{ text, width: 2 }, { text: '', width: 0 }] : [{ text, width: 1 }]);

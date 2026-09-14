@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createResume } from "../src/features/terminal/resume.ts";
+import { createResume } from "../src/features/terminal/session/resume";
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 function freezingTerminal() {
   const calls: string[] = [];

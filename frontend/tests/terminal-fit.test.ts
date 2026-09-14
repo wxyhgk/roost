@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { fitSize, MIN_FIT_COLS, MIN_FIT_ROWS } from '../src/features/terminal/fit.ts';
+import { fitSize, MIN_FIT_COLS, MIN_FIT_ROWS } from '../src/features/terminal/engine/fit';
 
 const CELL = { width: 7.8, height: 17 };   // IBM Plex Mono @13px, 约当实际值
 const GUTTER = 14;                          // 有 scrollback 时留给滚动条的宽度

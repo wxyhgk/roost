@@ -5,6 +5,11 @@
  * 内部文件在用，而且给 `mountXterm` 包了一层参数原样透传的 `mountEngine`。两个入口、
  * 名字反的，新来的人打开目录第一眼看到的是错的那个。已经删掉，只留这一个。
  *
+ * 目录：`engine/` 是驱动 xterm.js 的那一层（xtermEngine 加它一个人拉着的十来个零件），
+ * `session/` 是会话生命周期与传输（sessionRuntime → sessionController → connection），
+ * `view/` 是 React 组件，根上剩下的是对外的句柄/能力和给 view 用的几个钩子。
+ * 这样分是按**真实引用**来的：engine 那批文件的消费者只有 xtermEngine 一个。
+ *
  * 规矩：**特性外部只准从这里进**；特性内部各模块直接互相 import，不必绕这里转一道。
  * 唯一的例外是 `view/` 下的 React 组件，按路径引用是组件的常规做法。
  *

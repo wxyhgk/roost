@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { attachTuiIme } from '../src/features/terminal/ime';
+import { attachTuiIme } from '../src/features/terminal/engine/ime';
 
 test('composition anchor stays inside resized grid and returns to live cursor after composition', t => {
   const oldRequest = globalThis.requestAnimationFrame, oldCancel = globalThis.cancelAnimationFrame;

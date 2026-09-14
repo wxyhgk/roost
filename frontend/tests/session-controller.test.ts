@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createTerminalSessionController, type SessionDependencies } from '../src/features/terminal/sessionController.ts';
-import type { ConnectionOptions } from '../src/features/terminal/connection.ts';
+import { createTerminalSessionController, type SessionDependencies } from '../src/features/terminal/session/sessionController';
+import type { ConnectionOptions } from '../src/features/terminal/session/connection';
 import type { TermHandle } from '../src/features/terminal/types.ts';
 import { getTerminalHandle, sendToSession } from '../src/features/terminal/handles.ts';
 import { getTerminalStatus } from '../src/features/terminal/status.ts';

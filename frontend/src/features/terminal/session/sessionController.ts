@@ -1,14 +1,14 @@
 import type { CliKind, ServerMessage } from "@roost/terminal-protocol";
-import { afterExplicitJump, afterGesture, afterScroll, initialFollowIntent, isViewportScrollKey } from "../../shared/followBottom";
-import type { SendResult, TermHandle, TermStatus, TermTheme } from "./types";
-import { claimTerminalSession } from "./handles";
+import { afterExplicitJump, afterGesture, afterScroll, initialFollowIntent, isViewportScrollKey } from "../../../shared/followBottom";
+import type { SendResult, TermHandle, TermStatus, TermTheme } from "../types";
+import { claimTerminalSession } from "../handles";
 import { createResume, type ResumeFrame, type ResumeSnapshot } from "./resume";
 import type { ConnectionHandle, ConnectionOptions } from "./connection";
-import { createImagePaste, type ImagePasteState } from "./imagePaste";
+import { createImagePaste, type ImagePasteState } from "../imagePaste";
 import { createDiagnosticTrace, stalledParser } from './diagnostics';
 import { t } from "@roost/i18n";
-import { ApiError } from '../../shared/api/errors';
-import { resumeError } from './resumeMessages';
+import { ApiError } from '../../../shared/api/errors';
+import { resumeError } from '../resumeMessages';
 
 export type SessionViewState = { status: TermStatus; historyTruncated: boolean; atBottom: boolean; viewers: { label: string }[]; restarting: boolean; restartError: string | null; resumePlanRevision: number; imagePaste: ImagePasteState; viewIssue: string | null; inputNotice: boolean; connectionError: string | null };
 export const initialSessionState: SessionViewState = { status: "reconnecting", historyTruncated: false, atBottom: true, viewers: [], restarting: false, restartError: null, resumePlanRevision: 0, imagePaste: null, viewIssue: null, inputNotice: false, connectionError: null };

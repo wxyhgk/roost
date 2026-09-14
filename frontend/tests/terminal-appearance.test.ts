@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Terminal } from "@xterm/xterm";
-import { attachAppearance } from "../src/features/terminal/appearance.ts";
+import { attachAppearance } from "../src/features/terminal/engine/appearance";
 
 const dark = { background: "#000000", foreground: "#f5f5f7", cursor: "#ffffff", cursorAccent: "#000000", selectionBackground: "#48484a" };
 const light = { ...dark, background: "#ffffff", foreground: "#000000" };

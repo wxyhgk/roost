@@ -3,9 +3,9 @@
 <button id="run">验证中文组词定位</button><pre id="result">Ready</pre><div id="host"></div>
 <script type="module">
 import { Terminal } from '@xterm/xterm';
-import { attachTuiIme } from '/src/features/terminal/ime.ts';
+import { attachTuiIme } from '/src/features/terminal/engine/ime.ts';
 import '@xterm/xterm/css/xterm.css';
-import '/src/features/terminal/ime.css';
+import '/src/features/terminal/engine/ime.css';
 const term=new Terminal({cols:70,rows:12,fontSize:14,allowProposedApi:true});term.open(document.querySelector('#host'));
 const textarea=term.textarea, view=term.element.querySelector('.composition-view');
 const detach=attachTuiIme({root:term.element,textarea,compositionView:view,cols:()=>term.cols,rows:()=>term.rows,buffer:()=>term.buffer.active,origin:()=>term.element.querySelector('.xterm-screen').getBoundingClientRect(),mode:'fixed'});

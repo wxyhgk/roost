@@ -1,5 +1,5 @@
 import { createHeartbeat } from './heartbeat';
-import type { SendResult, TermStatus } from "./types";
+import type { SendResult, TermStatus } from "../types";
 import { PROTOCOL_VERSION, type CliKind, type ServerMessage } from "@roost/terminal-protocol";
 
 

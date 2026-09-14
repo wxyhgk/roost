@@ -7,8 +7,8 @@
 <label>输入模式 <select id="mode"><option value="shell">Shell</option><option value="tui">全屏 AI CLI 重绘</option></select></label>
 <div id="host"></div><pre id="result" role="status">正在初始化</pre>
 <script type="module">
-import { mountXterm } from '/src/features/terminal/xtermEngine.ts';
-import { echoWidth } from '/src/features/terminal/localEcho.ts';
+import { mountXterm } from '/src/features/terminal/engine/xtermEngine.ts';
+import { echoWidth } from '/src/features/terminal/engine/localEcho.ts';
 const host=document.querySelector('#host'),result=document.querySelector('#result'),mode=document.querySelector('#mode');
 const theme={background:'#181818',foreground:'#eeeeee',cursor:'#ffffff',cursorAccent:'#000000',selectionBackground:'#444444'};
 let term,remote='',generation=0,held=false,sendCount=0;const errors=[];

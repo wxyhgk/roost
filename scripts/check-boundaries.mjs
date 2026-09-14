@@ -267,7 +267,7 @@ if (existsSync(frontendSrc)) {
       if (trail) errors.push(`frontend/src/${key}: state core must remain independent of React (经由 ${trail.join(' -> ')})`);
     }
     if (key === 'features/terminal/public.ts') {
-      const trail = findPath(key, () => false, next => /features\/terminal\/(?:xtermEngine|useTerminal|index)\.tsx?$/.test(next));
+      const trail = findPath(key, () => false, next => /features\/terminal\/(?:engine\/xtermEngine|useTerminal|index)\.tsx?$/.test(next));
       if (trail) errors.push(`frontend/src/${key}: light terminal entry must not load the engine (经由 ${trail.join(' -> ')})`);
     }
   }
@@ -283,7 +283,7 @@ if (existsSync(frontendSrc)) {
 */
 for (const anchor of [
   'frontend/src/features/terminal/public.ts',
-  'frontend/src/features/terminal/xtermEngine.ts',
+  'frontend/src/features/terminal/engine/xtermEngine.ts',
   'frontend/src/features/session-status/public.ts',
 ]) {
   if (!existsSync(resolve(root, anchor))) errors.push(`${anchor}: 规则锚点不存在——改名或删除时请同步更新 scripts/check-boundaries.mjs`);

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isBrowserShortcut } from "../src/features/terminal/keys.ts";
+import { isBrowserShortcut } from "../src/features/terminal/engine/keys";
 
 /** isBrowserShortcut 只读 navigator.platform，按平台伪造它即可。 */
 function onPlatform(platform: string, run: () => void) {
@@ -52,7 +52,7 @@ test("带额外修饰键或正在输入法组合时一律不算浏览器快捷�
   });
 });
 
-import { findTuiCaret } from "../src/features/terminal/ime.ts";
+import { findTuiCaret } from "../src/features/terminal/engine/ime";
 
 /*
   自绘光标的 TUI 把硬件光标藏起来，在自己想要的位置画一个反色格子。这段启发式就是为这种

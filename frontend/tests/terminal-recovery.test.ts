@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test, type TestContext } from 'node:test';
-import { createConnection } from '../src/features/terminal/connection.ts';
-import { createResume, type ResumeFrame } from '../src/features/terminal/resume.ts';
+import { createConnection } from '../src/features/terminal/session/connection';
+import { createResume, type ResumeFrame } from '../src/features/terminal/session/resume';
 const tick = () => new Promise<void>(r => setImmediate(r));
 function fixture(t: TestContext) {
   const sockets: Socket[] = [], timers = new Map<number, () => void>();

@@ -1,5 +1,5 @@
 import type { Terminal } from "@xterm/xterm";
-import type { TermTheme } from "./types";
+import type { TermTheme } from "../types";
 
 const CSI = "\x1b[";
 

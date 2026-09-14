@@ -7,8 +7,8 @@ import { once } from 'node:events';
 import { WebSocket } from 'ws';
 import { openTerminalDaemon, daemonSocketPath } from '@roost/terminal-daemon';
 import { createCoreServer } from '../../packages/core-server/src/server.ts';
-import { createConnection } from '../../frontend/src/features/terminal/connection.ts';
-import { createResume } from '../../frontend/src/features/terminal/resume.ts';
+import { createConnection } from '../../frontend/src/features/terminal/session/connection.ts';
+import { createResume } from '../../frontend/src/features/terminal/session/resume.ts';
 const pause=(ms:number)=>new Promise(r=>setTimeout(r,ms));
 async function until(fn:()=>boolean|Promise<boolean>){for(let i=0;i<200;i++){if(await fn())return;await pause(25);}throw Error('condition timeout');}
 test('shared frontend connection and resume reconnect and refresh the original real PTY with unchanged PID',async()=>{

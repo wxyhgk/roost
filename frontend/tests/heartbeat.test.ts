@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createHeartbeat, HEARTBEAT_TIMEOUT_MS } from '../src/features/terminal/heartbeat';
-import { createConnection } from '../src/features/terminal/connection';
+import { createHeartbeat, HEARTBEAT_TIMEOUT_MS } from '../src/features/terminal/session/heartbeat';
+import { createConnection } from '../src/features/terminal/session/connection';
 import { claimTerminalSession } from '../src/features/terminal/handles';
 import { getTerminalLatency } from '../src/features/terminal/status';
 

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createDecTracker } from "../src/features/terminal/dec.ts";
-import { attachHostWheel, encodeTuiWheel, wheelTicks } from "../src/features/terminal/wheel.ts";
-import { createResume } from "../src/features/terminal/resume.ts";
+import { createDecTracker } from "../src/features/terminal/engine/dec";
+import { attachHostWheel, encodeTuiWheel, wheelTicks } from "../src/features/terminal/engine/wheel";
+import { createResume } from "../src/features/terminal/session/resume";
 
 function scroll(tracker: ReturnType<typeof createDecTracker>, deltaY = 80) {
   return encodeTuiWheel({

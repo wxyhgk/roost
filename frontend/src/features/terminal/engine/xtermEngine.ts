@@ -7,7 +7,7 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { fitSize } from "./fit";
 import { TERMINAL_FONT_FAMILY, TERMINAL_FONT_SIZE } from "./font";
 import { Terminal } from "@xterm/xterm";
-import type { TermHandle, TermTheme } from "./types";
+import type { TermHandle, TermTheme, Cell } from "../types";
 import { bufferFileLinks } from "./fileLinkBuffer";
 import { createDecTracker } from "./dec";
 import { attachTuiIme } from "./ime";
@@ -17,12 +17,12 @@ import { attachBrowserShortcutPassthrough, isMac } from "./keys";
 // Scrollback rows to attempt per snapshot, largest first; 0 keeps the viewport only.
 const SNAPSHOT_SCROLLBACK_STEPS = [2000, 500, 0];
 import { attachHostWheel } from "./wheel";
-import { pointToCell, selectionArgs, type Cell } from "./touchSelect";
+import { pointToCell, selectionArgs } from "./touchSelect";
 import { attachAppearance } from "./appearance";
 import "@xterm/xterm/css/xterm.css";
 import "./ime.css";
-import { stableRuntime } from '../../shared/runtime';
-import { writeClipboard } from "../../shared/clipboard";
+import { stableRuntime } from '../../../shared/runtime';
+import { writeClipboard } from "../../../shared/clipboard";
 import { t } from "@roost/i18n";
 
 type RenderCore = {
