@@ -36,8 +36,7 @@ import {delimiter,join,resolve} from 'node:path';
 ${CLI_LAUNCH_TOOLS}
 const bin=${JSON.stringify(bin)},plugin=${JSON.stringify(plugin)};
 const paths=(process.env.PATH??'').split(delimiter).filter(p=>{try{return realpathSync(p)!==realpathSync(bin)}catch{return p!==bin}});
-const executable=resolveCli(paths,'claude');
-if(!executable){console.error('claude: command not found');process.exit(127)}
+const executable=requireCli(paths,'claude');
 const args=cliArgs();
 // Help/version and nested Claude commands retain their original behavior.
 const observe=process.env.ROOST_CLAUDE_OBSERVING!=='1' && !args.some(a=>['--help','-h','--version','-v'].includes(a));

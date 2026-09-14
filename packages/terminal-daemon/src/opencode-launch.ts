@@ -25,8 +25,7 @@ import {delimiter,join,resolve} from 'node:path';
 ${CLI_LAUNCH_TOOLS}
 const bin=${JSON.stringify(bin)},config=${JSON.stringify(config)};
 const paths=(process.env.PATH??'').split(delimiter).filter(p=>{try{return realpathSync(p)!==realpathSync(bin)}catch{return p!==bin}});
-const executable=resolveCli(paths,'opencode');
-if(!executable){console.error('opencode: command not found');process.exit(127)}
+const executable=requireCli(paths,'opencode');
 const args=cliArgs(), e=process.env;
 const commands=new Set(['completion','acp','mcp','attach','run','debug','providers','auth','agent','upgrade','uninstall','serve','web','models','stats','export','import','github','pr','session','plugin','plug','db']);
 let observe=!e.ROOST_OPENCODE_OBSERVING&&!e.OPENCODE_TUI_CONFIG&&e.OPENCODE_PURE!=='1'&&e.OPENCODE_PURE!=='true'&&!!e.ROOST_OPENCODE_SOCKET&&

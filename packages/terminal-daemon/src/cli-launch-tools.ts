@@ -6,18 +6,55 @@ function cliArgs() {
  if(raw!==undefined){const args=JSON.parse(Buffer.from(raw,'base64').toString('utf8'));if(!Array.isArray(args)||!args.every(a=>typeof a==='string'))throw Error('Invalid CLI arguments');return args}
  return process.argv.slice(2);
 }
+/*
+  Resolve a .cmd/.bat shim to something we can spawn WITHOUT going through cmd.exe.
+  Routing argv through cmd.exe is what this whole function exists to avoid.
+
+  The shim points at either a JS entry (run it with our own node) or a native
+  executable (run it directly). The original code assumed JS unconditionally, so a
+  shim wrapping an .exe produced \`node foo.exe\` and Node died with
+  ERR_UNKNOWN_FILE_EXTENSION — that is exactly how claude failed on Windows once
+  @anthropic-ai/claude-code started shipping claude.exe.
+
+  The separator after %~dp0 is optional: %~dp0 already expands with a trailing
+  backslash, and generators disagree about whether to add another one. Requiring it
+  made every "%~dp0foo" shim look unparseable, i.e. reported as "not found".
+*/
+function shimTarget(file,dir) {
+ let shim;try{shim=readFileSync(file,'utf8')}catch{return}
+ const match=shim.match(/"%(?:~?dp0)%?[/\\]?([^"\r\n]+)"\s+%\*/i);
+ if(!match)return;
+ const target=resolve(dir,match[1]);
+ try{accessSync(target,constants.R_OK)}catch{return}
+ if(/\.(?:js|mjs|cjs)$/i.test(target))return {file:process.execPath,args:[target]};
+ if(/\.(?:exe|com)$/i.test(target))return {file:target,args:[]};
+}
 function resolveCli(paths,name) {
+ let unusable;
  for(const path of paths) {
-  for(const suffix of process.platform==='win32'?['.exe','.cmd']:['']) {
+  for(const suffix of process.platform==='win32'?['.exe','.cmd','.bat']:['']) {
    const file=join(path,name+suffix);
    try { accessSync(file,constants.X_OK); } catch { continue; }
-   if(suffix!=='.cmd')return {file,args:[]};
-   // Resolve standard npm shims to their JS entry; never concatenate argv into cmd.exe.
-   const shim=readFileSync(file,'utf8');
-   const match=shim.match(/"%(?:dp0|~dp0)%?[/\\]([^"\r\n]+)"\s+%\*/i);
-   if(match){const script=resolve(path,match[1]);try{accessSync(script,constants.R_OK);return {file:process.execPath,args:[script]}}catch{}}
+   if(suffix!=='.cmd'&&suffix!=='.bat')return {file,args:[]};
+   const target=shimTarget(file,path);
+   if(target)return target;
+   // 找到了却用不了，和「根本没有」不是一回事：记下来，调用方才能说清楚。
+   unusable??=file;
   }
  }
+ if(unusable)return {unusable};
+}
+/*
+  「找到了但用不了」和「根本没有」必须说成两句话。原来两者都报 command not found，
+  而真相是 PATH 上明明有 qwen.cmd——那句话把排查带偏了好几轮。
+*/
+function requireCli(paths,name) {
+ const found=resolveCli(paths,name);
+ if(found&&!found.unusable)return found;
+ console.error(found
+  ? name+': found '+found.unusable+', but could not tell what it runs (unrecognized .cmd/.bat shim)'
+  : name+': command not found');
+ process.exit(127);
 }
 const spawnCli=(command,args,options)=>spawn(command.file,[...command.args,...args],options);
 const spawnCliSync=(command,args,options)=>spawnSync(command.file,[...command.args,...args],options);

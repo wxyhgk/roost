@@ -32,8 +32,7 @@ import {homedir} from 'node:os';
 ${CLI_LAUNCH_TOOLS}
 const root=__RUNTIME_ROOT__,bin=__BIN__,e=process.env;
 const paths=(e.PATH??'').split(delimiter).filter(p=>{try{return realpathSync(p)!==realpathSync(bin)}catch{return p!==bin}});
-const executable=resolveCli(paths,'qwen');
-if(!executable){console.error('qwen: command not found');process.exit(127)}
+const executable=requireCli(paths,'qwen');
 const args=cliArgs();
 const probe=probeVersion(executable,2000),version=probe.text.trim();
 if(probe.failed)reportProbeFailure('qwen',probe.reason);
