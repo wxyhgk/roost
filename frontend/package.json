@@ -47,6 +47,7 @@
     "ketcher-core": "3.18.0",
     "ketcher-react": "3.18.0",
     "ketcher-standalone": "3.18.0",
+    "lottie-web": "^5.13.0",
     "markdown-it": "^15.0.1",
     "process": "0.11.10",
     "react": "^19.1.0",

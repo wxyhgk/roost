@@ -94,7 +94,7 @@ export function WorkspaceSessionRow({ session, current, onOpen }: {
         <span className={`relative grid h-9 w-9 shrink-0 place-items-center rounded-lg transition-colors duration-150 ${
           current ? "bg-accent/8 text-text" : "bg-text/6 text-text-dim"
         }`}>
-          <SessionLogo cli={session.cli} cliId={activity.cliId ?? session.cliId} size="lg" />
+          <SessionLogo cli={session.cli} cliId={activity.cliId ?? session.cliId} size="lg" working={activity.agent?.state === "working"} />
           <span role="img" aria-label={badge.dotLabel} title={badge.dotLabel}
             className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-bg-panel ${badge.dotTone}`} />
           {badge.blocked && (

@@ -92,7 +92,7 @@ export function SessionCard({ session, selected, onOpen }: {
               <IconPin active />
             </span>
           )}
-          <SessionLogo cli={session.cli} cliId={activity.cliId ?? session.cliId} />
+          <SessionLogo cli={session.cli} cliId={activity.cliId ?? session.cliId} working={activity.agent?.state === "working"} />
           {/* 平时是 CLI 身份；AI 在等你时整条顶栏改说那件事——那才是你要先看的。 */}
           <span className="min-w-0 flex-1 truncate" title={badge.blocked ? badge.blockedLabel : identity}>
             {badge.blocked ? badge.blockedKind : identity}
@@ -177,7 +177,7 @@ export function SessionCard({ session, selected, onOpen }: {
           style={{ backgroundColor: "var(--terminal-bg, var(--color-bg))" }}
         >
           <span className="opacity-20 transition-opacity duration-150 group-hover:opacity-35">
-            <SessionLogo cli={session.cli} cliId={activity.cliId ?? session.cliId} size="xl" />
+            <SessionLogo cli={session.cli} cliId={activity.cliId ?? session.cliId} size="xl" working={activity.agent?.state === "working"} />
           </span>
         </button>
       )}
