@@ -1,20 +1,19 @@
 import type { Project, Session } from "../types";
+import type { WireWorkspaceSnapshot } from "@roost/workspace-store/types";
 import { request } from "./request";
 import { stableRuntime, coreUrl } from '../runtime';
 import { t } from "@roost/i18n";
 
-export type WorkspaceSnapshot = {
+/*
+  不再手抄。这个形状的正本在 packages/workspace-store/src/public-types.ts，而 backend 的
+  snapshot() 也声明了同一个返回类型——三处钉在一份定义上，任一处改动另外两处当场编译不过。
+
+  仍然用本地的 Session（而不是 WireSession）装 sessions：那三个字段对 localStorage 里的
+  旧快照要放宽，理由见 shared/types.ts。
+*/
+export type WorkspaceSnapshot = Omit<WireWorkspaceSnapshot, "sessions" | "projects"> & {
   sessions: Session[];
   projects: Project[];
-  selectedId: string | null;
-  expandedProjectIds: string[];
-  pinnedSessionIds: string[];
-  /** 当前选中的长期对话。**与 selectedId（终端选择）分开保存**，不随终端切换而变。 */
-  selectedConversationId: string | null;
-  /** 仅仅是 UI 偏好：置为 true 不会让后端替你猜一条对话，跟随行为由前端显式实现。 */
-  followTerminalConversation: boolean;
-  sessionSeq: number;
-  projectSeq: number;
 };
 
 export function fetchWorkspace(signal?: AbortSignal) {

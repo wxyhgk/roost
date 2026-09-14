@@ -12,7 +12,10 @@ const allowed = {
   'packages/ai-transcript': [],
   'packages/core-server': ['@roost/terminal-daemon/client', '@roost/terminal-protocol', 'ws'],
   backend: ['@roost/subscriptions', '@roost/server-monitor', '@roost/ai-transcript', '@roost/ai-session-bridge', '@roost/attachment-store', '@roost/terminal-daemon', '@roost/cli-adapters', '@roost/terminal-protocol', '@roost/terminal-runtime', '@roost/workspace-store', 'ws'],
-  frontend: ['@roost/subscriptions', '@roost/server-monitor/types', '@roost/terminal-protocol', '@roost/cli-adapters', '@roost/i18n'],
+  // @roost/workspace-store/types 是纯类型子入口（packages/workspace-store/src/public-types.ts）。
+  // 主入口 import node:sqlite，永远不该进浏览器；但只立禁令不给路径的后果是前端手抄了一份，
+  // 而手抄不会响。开这条子路径正是为了让「改了后端前端编译不过」重新成立。
+  frontend: ['@roost/subscriptions', '@roost/server-monitor/types', '@roost/terminal-protocol', '@roost/cli-adapters', '@roost/i18n', '@roost/workspace-store/types'],
   'stable-workbench': [],
   'packages/ai-session-bridge': ['@roost/ai-transcript'],
   'packages/i18n': [],

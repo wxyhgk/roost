@@ -14,6 +14,9 @@ export { PeerMessageError } from "./peer-types.ts";
 export type { PeerActor, PeerSendInput, PeerMessage, PeerDelivery, PeerDeliveryState, PeerMessageDetail, PeerPage } from "./peer-types.ts";
 export type { PeerMessagesStore } from "./peer-messages.ts";
 export type { SessionRecord, ProjectRecord, WorkspaceSnapshot, TerminalReplayRow, WorkspaceStoreOptions } from "./types.ts";
+// 线上形状。定义在 public-types.ts，因为浏览器要经 `@roost/workspace-store/types` 读它；
+// 服务端从主入口拿同一份，不必绕子路径。
+export type { WireSession, WireWorkspaceSnapshot } from "./public-types.ts";
 
 export { LibraryError, type LibraryKind, type LibraryRecord, type NoteRecord, type SnippetRecord, type LibraryFields, type LibraryListItem } from "./library-types.ts";
 export type { LibraryImport, LibraryImportItem } from "./library.ts";

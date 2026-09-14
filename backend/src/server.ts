@@ -15,6 +15,7 @@ import { pipeline } from "node:stream/promises";
 import { WebSocketServer, type WebSocket } from "ws";
 import { parseClientMessage, MAX_WS_BYTES, PROTOCOL_VERSION, type ServerMessage } from "@roost/terminal-protocol";
 import type { TerminalService, TerminalEvent } from "@roost/terminal-runtime";
+import type { WireWorkspaceSnapshot } from "@roost/workspace-store";
 import { ConversationError, ProjectNotFoundError, normalizeSessionNote, type WorkspaceStore } from "@roost/workspace-store";
 import { listCliAdapters, planImageInsertion, getCliAdapter, type CliId } from "@roost/cli-adapters";
 import { AttachmentError, type AttachmentStore } from "./attachments";
@@ -118,7 +119,12 @@ export function createBackendServer({ store, runtime, workspaceRoot, access, aut
   const wireCli = (cli: CliId | null) => cli !== "opencode" && getCliAdapter(cli) ? cli : null;
   const send = (ws: WebSocket, message: ServerMessage | { type: "cli"; cli: CliId | null }) =>
     sendTerminalMessage(ws, message.type === "cli" ? { ...message, cliId: message.cli, cli: wireCli(message.cli) } : message);
-  function snapshot() {
+  /*
+    **返回类型必须显式写出来。** 它原来是推断的，于是「/api/workspace 到底发什么」这个
+    问题在仓库里没有答案——前端只能照着实际响应手抄一份，而手抄不会响。
+    现在两边都钉在 WireWorkspaceSnapshot 上：这里少一个字段、或者改一个名字，当场编译不过。
+  */
+  function snapshot(): WireWorkspaceSnapshot {
     const ws = loadWorkspace();
     return {
       ...ws,
