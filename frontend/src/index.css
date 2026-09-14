@@ -23,8 +23,26 @@
   --color-danger-soft: rgba(255, 69, 58, 0.12);
   --color-success-soft: rgba(48, 209, 88, 0.12);
   --color-warning-soft: rgba(255, 214, 10, 0.12);
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "SF Mono", ui-monospace, "IBM Plex Mono", monospace;
+  /*
+    字体回退是**按字形**发生的，不是按整段文字：拉丁字母从前面的西文字体取，中文取不到
+    就继续往后找。所以中日韩字体放在末尾是对的，而**不写**它们并不等于「用系统默认」
+    ——Windows 上那多半是宋体，正文里看着很刺眼。
+
+    原来这两条是纯 macOS 视角写的：Windows 上 -apple-system / SF Pro Text / SF Mono
+    一个都没有，而中文完全没有指定。
+  */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "Helvetica Neue",
+    system-ui, ui-sans-serif,
+    "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+  /*
+    IBM Plex Mono 排第一，不再排在 ui-monospace 后面。
+
+    它是 index.html 里**真的下载了**的那一份（终端字体栈的第一位也是它）。排在
+    ui-monospace 之后意味着凡是系统自带等宽字体的平台都用不到它——白下一份字体，还让
+    界面里的等宽文字和终端里的长得不一样。
+  */
+  --font-mono: "IBM Plex Mono", "SF Mono", ui-monospace, Consolas, "Liberation Mono",
+    "PingFang SC", "Microsoft YaHei", monospace;
   --text-caption: 11px;
   --text-caption--line-height: 1.45;
   --text-body: 13px;
