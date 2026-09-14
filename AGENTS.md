@@ -25,24 +25,36 @@ PTY 全部活在 `com.roost.terminal` 这一个进程里。
 一律用 `launchctl kickstart -k gui/$(id -u)/com.roost.<svc>`。不要 kill 后手动拉起，
 那会和 `KeepAlive` 抢，日志里出 `EADDRINUSE`。
 
-### 2. 发布前端不是 `npm run build` 就完了
-
-Caddy 服务的是 `frontend/dist/index.html`，而 `/assets/*` 映射到
-`~/.local/share/roost/assets`（**不是** `frontend/dist/assets`）。两步：
+### 2. 发布前端是 `npm run publish`，不是 `npm run build`
 
 ```sh
-npm run build --workspace frontend
-node deploy/publish-assets.mjs --target ~/.local/share/roost/assets frontend/dist/assets
+npm run build --workspace frontend   # 只写 frontend/dist，碰不到线上
+npm run publish                      # 让它生效：资产先、外壳后
 ```
 
-第二步**用 `publish-assets.mjs`，不要用 `cp`**：它做内容冲突检查（同名不同内容会报错，
-而不是静默覆盖掉旧页面还在加载的懒加载块）并用硬链接去重。共享目录只增不删，旧哈希
-留着，已经打开的标签页不会因为一次发布而碎掉。
+Caddy 服务的两个 root **都在 `~/.local/share/roost/` 下**：`/assets/*` 取自 `assets/`，
+其余取自 `web/`。两处都由 `deploy/publish.mjs` 写入，构建产物目录不再被直接服务
+（`deploy/tests/install-service.test.mjs` 钉着这一条）。
+
+**顺序是这件事的要害，而且和直觉相反：资产先、外壳后。** 三种组合里：
+
+| | |
+| --- | --- |
+| 旧外壳 + 新资产 | 好的——资产只增不删，旧外壳引的哈希还在 |
+| 新外壳 + 新资产 | 好的 |
+| 新外壳 + 旧资产 | **入口脚本 404、页面纯白**，被顺序排除了 |
+
+在此之前兜底 root 直接就是 `frontend/dist`，于是 `npm run build` 自己就会造出第三种状态：
+它先把 `index.html` 换成指向新哈希的版本，而那些哈希要等发布才到位。**两天内栽了三次**，
+每次的补救都停在「记得跑第二步」那一档——而那一档永远靠人。现在构建碰不到线上，
+「构建了没发布」等于什么都没发生。
+
+两步的语义是相反的，所以是两个函数：资产按内容哈希、只增不删、撞名报冲突（而不是静默
+覆盖掉旧页面还在加载的懒加载块）并用硬链接去重；外壳没有哈希、每次构建都可能变、必须替换。
 
 **`npm run workbench:build` / `workbench:install` 不是发布前端。** 它构建的是
-`stable-workbench`——用同一份前端源码打出的独立降级版本，默认只装成候选。跑它不会更新
-线上那份。验证发布是否生效：取 `frontend/dist/index.html` 里的哈希，逐个 curl
-`http://127.0.0.1:8080/assets/<name>`。
+`stable-workbench`——用同一份前端源码打出的独立降级版本，有自己的服务器，默认只装成候选。
+跑它不会更新线上那份。
 
 ### 3. 看输出的尾巴不等于看结果
 

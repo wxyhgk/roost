@@ -77,7 +77,7 @@ export function servicePlist({ label, args, workingDirectory, env, logPath }) {
  * 这样一次发布不会让已经打开的标签页加载不到它正在用的懒加载块。用
  * `deploy/publish-assets.mjs` 往那儿推，别用 cp。
  */
-export function caddyfile({ port, backendPort, assetsDir, distDir }) {
+export function caddyfile({ port, backendPort, assetsDir, webDir }) {
   return `{
     admin off
     auto_https off
@@ -110,7 +110,10 @@ http://:${port} {
         }
     }
     handle {
-        root * ${JSON.stringify(distDir)}
+        # **不要把这里指回 frontend/dist。** 那样 npm run build 就直接写进了线上：它会
+        # 先把外壳换成指向新哈希的版本，而那些哈希还要等发布才到位，中间这段时间入口脚本
+        # 404、页面纯白。两天内栽了三次。现在外壳也由 deploy/publish.mjs 发布，构建碰不到线上。
+        root * ${JSON.stringify(webDir)}
         header Cache-Control no-store
         try_files {path} /index.html
         file_server
@@ -172,7 +175,7 @@ export function plan(options) {
   const caddyConfig = join(installDir, 'Caddyfile');
   return {
     files: [
-      { path: caddyConfig, content: caddyfile({ port, backendPort, assetsDir: join(installDir, 'assets'), distDir: join(repo, 'frontend/dist') }), mode: 0o600 },
+      { path: caddyConfig, content: caddyfile({ port, backendPort, assetsDir: join(installDir, 'assets'), webDir: join(installDir, 'web') }), mode: 0o600 },
       { path: startBackend, content: backendScript(node, repo), mode: 0o700 },
     ],
     services: [
@@ -259,6 +262,7 @@ async function main() {
 
   await mkdir(join(dataDir, 'logs'), { recursive: true, mode: 0o700 });
   await mkdir(join(installDir, 'assets'), { recursive: true, mode: 0o700 });
+  await mkdir(join(installDir, 'web'), { recursive: true, mode: 0o700 });
   await mkdir(agents, { recursive: true });
   for (const file of files) { await writeFile(file.path, file.content); await chmod(file.path, file.mode); }
   for (const service of services) {
@@ -281,7 +285,7 @@ async function main() {
   console.log(`密码 cat ${join(dataDir, 'auth-password')}`);
   console.log(`日志 ${join(dataDir, 'logs')}`);
   if (insecureHttp) console.log('\n注意：已放行明文 HTTP 的登录 cookie。这台机器之外的人能访问到这个端口的话，请在反向代理那层再加一道访问控制。');
-  console.log('\n还没构建过前端的话，Caddy 会 404：npm run build --workspace frontend 然后');
+  console.log('\n还没发布过前端的话，Caddy 会 404：npm run build --workspace frontend && npm run publish 然后');
   console.log(`node deploy/publish-assets.mjs --target ${join(installDir, 'assets')} frontend/dist/assets`);
 }
 

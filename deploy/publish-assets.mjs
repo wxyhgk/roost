@@ -6,7 +6,7 @@ import { brotliCompress, constants as zlib } from 'node:zlib';
 import { readFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { constants } from 'node:fs';
-import { chmod, link, lstat, mkdir, mkdtemp, open, opendir, rm } from 'node:fs/promises';
+import { chmod, link, lstat, mkdir, mkdtemp, open, opendir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, parse, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -187,6 +187,49 @@ export async function publishAssets({ target, sources }) {
     }
   } finally { await rm(staging, { recursive: true, force: true }); }
   return { published, reused, bytes, compressed };
+}
+
+/*
+  **外壳的发布，和资产是相反的语义。**
+
+  资产按内容哈希命名，所以「只增不删、撞名必同内容」是它的不变量——publishAssets 里那句
+  `asset content conflict` 守的就是这条。外壳（index.html / molecule.html / favicon.svg /
+  logos/）没有哈希，每次构建都可能变，**必须替换**。两种语义混进一个函数会毁掉上面那条保证，
+  所以分开写。
+
+  顺序是关键，而且方向和直觉相反：**资产先、外壳后**。
+
+  在此之前 Caddy 兜底那段的 root 直接就是 frontend/dist，也就是说 `npm run build` 会**先**
+  把外壳换成指向新哈希的版本，而那些哈希还没发布——破窗是构建制造的，不是发布遗漏的。
+  两天内栽了三次，每次的补救都停在「记得跑第二步」那一档，而那一档永远靠人。
+
+  改成外壳也发布之后，构建只写 dist、碰不到线上；旧外壳配新资产是好的（资产只增不删），
+  新外壳配新资产也是好的，唯一坏的那个组合（新外壳 + 资产还没到）被顺序排除了。
+
+  逐个文件 rename 就够原子：每个文件自身是完整的，而外壳里的文件互相之间没有「必须同时
+  生效」的关系——真正有那种关系的是外壳和资产，那一层由顺序保证。
+*/
+export async function publishShell({ target, source }) {
+  const from = await directory(source), to = await directory(target, true);
+  let written = 0;
+  const copyInto = async prefix => {
+    for await (const entry of await opendir(join(from, prefix))) {
+      const path = join(prefix, entry.name);
+      if (entry.name === 'assets') continue; // 资产有自己的发布方式，不归这里管
+      const src = join(from, path), dest = join(to, path);
+      const details = await lstat(src);
+      if (details.isSymbolicLink()) throw new Error(`shell symlinks are not supported: ${src}`);
+      if (details.isDirectory()) { await directory(dest, true); await copyInto(path); continue; }
+      if (!details.isFile()) throw new Error(`expected a regular file or directory: ${src}`);
+      // 同目录下的临时名 + rename：rename 在同一文件系统上是原子的，不会让读的人看到半截文件。
+      const temporary = dest + '.publishing';
+      await writeFile(temporary, await readFile(src), { mode: 0o644 });
+      await rename(temporary, dest);
+      written++;
+    }
+  };
+  await copyInto('');
+  return { written };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

@@ -80,13 +80,21 @@ test('plist 里的值转义 XML，含 & 和 < 的路径不会把文件写坏', a
   assert.equal(parsed.EnvironmentVariables.X, 'y&z');
 });
 
-test('Caddy 配置把 /assets 指向共享目录，其余交给 dist', () => {
-  const text = caddyfile({ port: 8080, backendPort: 8787, assetsDir: '/share/roost/assets', distDir: '/src/roost/frontend/dist' });
+test('Caddy 两个 root 都指向发布后的位置，不指仓库里的构建产物', () => {
+  const text = caddyfile({ port: 8080, backendPort: 8787, assetsDir: '/share/roost/assets', webDir: '/share/roost/web' });
   assert.match(text, /http:\/\/:8080 \{/);
   assert.match(text, /reverse_proxy 127\.0\.0\.1:8787/);
   // 哈希资产只增不删，不能指向 dist/assets——一次发布就会让已打开的页面加载不到旧块。
   assert.match(text, /handle_path \/assets\/\*[\s\S]*?root \* "\/share\/roost\/assets"/);
-  assert.match(text, /root \* "\/src\/roost\/frontend\/dist"/);
+  /*
+    外壳同理，而且理由更硬：兜底 root 一旦指回 frontend/dist，npm run build 就**直接写进了
+    线上**——它先把 index.html 换成指向新哈希的版本，而那些哈希要等发布才到位，中间入口
+    脚本 404、页面纯白。两天内栽了三次，所以这条钉死。
+  */
+  assert.match(text, /root \* "\/share\/roost\/web"/);
+  // 只盯 root 指令本身：注释里提到 dist 是在说明「为什么不能指回去」，那是该留的。
+  for (const [, dir] of text.matchAll(/^\s*root \* "([^"]+)"/gm))
+    assert.doesNotMatch(dir, /frontend\/dist/, '构建产物目录不许被 Caddy 直接服务');
   assert.match(text, /try_files \{path\} \/index\.html/);
 });
 

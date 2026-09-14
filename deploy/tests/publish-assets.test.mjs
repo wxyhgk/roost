@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { publishAssets } from '../publish-assets.mjs';
+import { publishAssets, publishShell } from '../publish-assets.mjs';
 
 async function fixture(t) {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'roost-publish-assets-')));
@@ -200,4 +200,47 @@ test('给已经发布过、但还没有 .br 的老资产补上', async t => {
   const result = await publishAssets({ target, sources: [source] });
   assert.equal(result.published, 0, '正文已经在了');
   assert.equal(result.compressed, 1, '缺的 .br 要补回来');
+});
+
+/*
+  外壳发布。它和资产的语义是相反的——资产按内容哈希、只增不删、撞名必同内容；外壳没有
+  哈希、每次构建都可能变、必须替换。
+
+  顺序才是这件事的要害：资产先、外壳后。三种组合里只有「新外壳 + 资产还没到」是坏的，
+  而那正是 Caddy 兜底 root 指向 frontend/dist 时 npm run build 会造出来的状态——入口脚本
+  404、页面纯白。两天内栽了三次。
+*/
+test('外壳会被替换而不是报冲突（和资产相反）', async t => {
+  const { root, target } = await fixture(t);
+  const dist = join(root, 'dist');
+  await mkdir(join(dist, 'logos'), { recursive: true });
+  await writeFile(join(dist, 'index.html'), '<html>v1</html>');
+  await writeFile(join(dist, 'logos', 'a.svg'), '<svg/>');
+  const web = join(target, 'web');
+  assert.equal((await publishShell({ target: web, source: dist })).written, 2);
+  assert.equal(await readFile(join(web, 'index.html'), 'utf8'), '<html>v1</html>');
+
+  await writeFile(join(dist, 'index.html'), '<html>v2</html>');
+  await publishShell({ target: web, source: dist });
+  assert.equal(await readFile(join(web, 'index.html'), 'utf8'), '<html>v2</html>', '同名不同内容必须覆盖，不能像资产那样报冲突');
+});
+
+test('assets/ 不归外壳管——它有自己的发布方式', async t => {
+  const { root, target } = await fixture(t);
+  const dist = join(root, 'dist');
+  await mkdir(join(dist, 'assets'), { recursive: true });
+  await writeFile(join(dist, 'index.html'), '<html/>');
+  await writeFile(join(dist, 'assets', 'main-abc.js'), 'hashed');
+  const web = join(target, 'web');
+  assert.equal((await publishShell({ target: web, source: dist })).written, 1);
+  await doesNotExist(join(web, 'assets'));
+});
+
+test('外壳里不接受符号链接', async t => {
+  const { root, target } = await fixture(t);
+  const dist = join(root, 'dist');
+  await mkdir(dist, { recursive: true });
+  await writeFile(join(dist, 'index.html'), '<html/>');
+  await symlink('/etc/passwd', join(dist, 'sneaky.html'));
+  await assert.rejects(publishShell({ target: join(target, 'web'), source: dist }), /symlinks are not supported/);
 });
