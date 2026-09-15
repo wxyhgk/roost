@@ -184,3 +184,17 @@ export function toolSummary(args: ToolArgs): string | null {
   const parts = keys.map(key => `${key}=${clip(shortValue(json[key]), SUMMARY_VALUE_CHARS)}`);
   return clip(parts.join(" "), SUMMARY_TOTAL_CHARS);
 }
+
+/**
+ * 摘要行和组头上显示的那个名字。
+ *
+ * MCP 工具原样是 `mcp__workspace_messaging__agent_send` 一长串下划线，占满半行而信息只在
+ * 后半截。拆成「服务器 · 工具」之后，长度减半而且读得出层级。
+ *
+ * 两处共用一个函数，是因为它们此前不一致：摘要行拆了、组头没拆，于是同一次调用在折叠和
+ * 展开两种状态下叫两个名字。
+ */
+export function toolLabel(id: ToolId, raw: string): string {
+  if (id.server) return `${id.server} · ${id.tool}`;
+  return raw;
+}

@@ -52,7 +52,7 @@ const RENDERERS: readonly ToolRenderer[] = [
   {
     name: "mcp",
     match: ({ id }) => id.key === "mcp" && !!id.server,
-    View: ({ block, id }) => <McpTool block={block} id={id} />,
+    View: ({ block }) => <McpTool block={block} />,
   },
 ];
 

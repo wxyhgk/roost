@@ -10,6 +10,7 @@ import {
 import { ApiError } from "../../shared/api/errors";
 import { IconChevron } from "../../shared/icons";
 import { ToolView } from "./tools/registry";
+import { identifyTool, toolLabel } from "./tools/identify";
 import { emptyHistory, historyOnReload, isLongReply, mergeMessages, type HistoryState } from "./history";
 import { startConversationRecovery } from "./recovery";
 
@@ -51,6 +52,22 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
     它只跟着 history.items 变。
   */
   const items = useMemo(() => buildItems(groupMessages(history.items)), [history.items]);
+  /*
+    每条上面要不要标「你 / AI」。同一个角色连着说好几条时只标第一条——一次回合里 AI 往往是
+    「调用 → 改动 → 再调用」，每条都顶一个「AI」纯属噪音，还把真正的分界（换人说话）淹掉。
+
+    **diff 条目不算换人**：它没有角色，夹在同一个回合中间，所以要跨过它记住上一个真实角色，
+    否则它后面那条会莫名其妙又标一次。
+  */
+  const showRole = useMemo(() => {
+    let last: string | undefined;
+    return items.map(item => {
+      if (item.kind === "diff") return false;
+      const show = item.turnStart || item.role !== last;
+      last = item.role;
+      return show;
+    });
+  }, [items]);
   const id = initial.id;
   const outgoing = useOutgoing(id);
   // 待发消息也算「新内容」：发完要跟着滚到底，否则自己刚发的话在视野之外。
@@ -172,7 +189,7 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
           </button>
         )}
         <ul className="flex flex-col gap-2.5 px-2.5 py-2">
-          {items.map(item => <TranscriptItem key={item.key} item={item} />)}
+          {items.map((item, i) => <TranscriptItem key={item.key} item={item} showRole={showRole[i]} />)}
           {/* 待发的消息就在流的末尾——它会进 TUI、再从 transcript 回来，本来就属于这里。 */}
           {outgoing.pending.map(item => (
             <li key={item.message.id} className="flex flex-col items-end gap-1">
@@ -357,7 +374,7 @@ function ToolsItem({ item }: { item: Extract<Item, { kind: "tools" }> }) {
         <span className={`size-1.5 shrink-0 rounded-full ${dot}`} />
         <span className="shrink-0 text-text">{t.misc.conversations.detail.toolGroup(item.tools.length)}</span>
         <span className="min-w-0 flex-1 truncate font-mono text-text-dim">
-          {item.tools.map(tool => tool.name).filter(Boolean).join(" · ")}
+          {item.tools.map(tool => toolLabel(identifyTool(tool.name), tool.name)).filter(Boolean).join(" · ")}
         </span>
         {item.status !== "completed" && (
           <span className={`shrink-0 ${item.status === "error" ? "text-danger" : "text-warning"}`}>
@@ -404,14 +421,18 @@ function TurnDiffItem({ diff }: { diff: TurnDiff }) {
 }
 
 /* 一个回合从用户说话开始；边界靠上方的留白和一条细线，而不是给每条消息加框。 */
-function TranscriptItem({ item }: { item: Item }) {
+function TranscriptItem({ item, showRole }: { item: Item; showRole: boolean }) {
   if (item.kind === "diff") return <li className="flex flex-col items-start"><TurnDiffItem diff={item.diff} /></li>;
   const mine = item.role === "user";
   return (
     <li className={`flex flex-col gap-1 ${item.turnStart ? "mt-3 border-t border-border/40 pt-3" : ""} ${
       mine ? "items-end" : "items-start"}`}>
       <div className="flex items-center gap-2 text-caption text-text-dim">
-        <span>{roleName(item.role)}</span>
+        {/*
+          同一个角色连着好几条时只标第一条。一次回合里 AI 往往是「调用 → 改动 → 再调用」，
+          每条上面都顶一个「AI」纯属噪音，而且把真正的分界（换人说话）淹掉了。
+        */}
+        {showRole && <span>{roleName(item.role)}</span>}
         {item.message.event.createdAt && (
           <time dateTime={new Date(item.message.event.createdAt).toISOString()}>{formatTime(item.message.event.createdAt)}</time>
         )}

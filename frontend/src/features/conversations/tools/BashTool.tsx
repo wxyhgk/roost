@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { SummaryRow, type ToolBlock } from "./SummaryRow";
 import { tailText } from "./text";
 import { t } from "@roost/i18n";
@@ -17,6 +18,21 @@ const MAX_OUTPUT = 4000;
  * 拿不到 stdout / stderr / 退出码——我们的 result 是拍平的一坨字符串，后端没有分流。
  * 要真正分开，得在 `MessagePart` 上补一个和 `patch` 平行的结构化字段。
  */
+/**
+ * 命令输出。封顶加滚动，**而且一上来就停在底部**。
+ *
+ * 结论在末尾——退出码、报错、最后一行汇总。这也是 `tailText` 截断留尾部的同一条理由：
+ * 给个高度上限但停在开头，等于让人先滚过四十行「通过」才看得到那一行「失败」。
+ */
+function Output({ text, failed }: { text: string; failed: boolean }) {
+  const box = useRef<HTMLDivElement | null>(null);
+  useEffect(() => { const el = box.current; if (el) el.scrollTop = el.scrollHeight; }, [text]);
+  return (
+    <div ref={box} className={`mt-1 max-h-72 overflow-auto whitespace-pre-wrap break-words ${
+      failed ? "text-danger" : "text-text-dim"}`}>{text}</div>
+  );
+}
+
 export function BashTool({ block, command }: { block: ToolBlock; command: string }) {
   const output = block.result ?? "";
   const { text, clipped } = tailText(output, MAX_OUTPUT);
@@ -33,8 +49,7 @@ export function BashTool({ block, command }: { block: ToolBlock; command: string
         {block.result === null
           ? <div className="mt-1 text-text-dim">{t.misc.conversations.detail.toolNoResult}</div>
           : text.trim()
-            ? <div className={`mt-1 overflow-x-auto whitespace-pre-wrap break-words ${
-                block.failed ? "text-danger" : "text-text-dim"}`}>{text}</div>
+            ? <Output text={text} failed={block.failed} />
             // 「跑完了但一个字都没输出」必须说出来，否则和「结果没拿到」长得一模一样。
             : <div className="mt-1 italic text-text-dim">{t.misc.conversations.detail.outputEmpty}</div>}
       </div>

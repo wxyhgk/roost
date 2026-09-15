@@ -168,9 +168,23 @@ export function buildItems(rows: readonly Row[]): Item[] {
     const isUser = row.role === "user";
     for (const [index, block] of row.blocks.entries()) {
       if (block.kind === "tool") {
+        turnTools.push(block);
+        /*
+          **带 diff 的调用不进组。** `PatchTool` 顶上那句——「不折叠，它到底改了什么是用户
+          最关心的结果」——被组一收就作废了：折叠之后它和别的调用一样只剩一行字，而真正
+          要看的绿红行藏在两次点击之后。
+
+          所以它打断连续：前面攒着的先落下去，自己独占一条。代价是一个回合里改了好几个
+          文件时组会被切成几段，那正是想要的——每段的边界就是一次改动。
+        */
+        if (block.patch?.hunks.length) {
+          flush();
+          items.push({ kind: "tools", key: `${row.message.messageId}:patch:${index}`, role: row.role,
+            tools: [block], status: toolsStatus([block]), message: row.message, turnStart: false });
+          continue;
+        }
         pendingTools ??= { tools: [], message: row.message, key: `${row.message.messageId}:tools`, role: row.role };
         pendingTools.tools.push(block);
-        turnTools.push(block);
         continue;
       }
       flush();
