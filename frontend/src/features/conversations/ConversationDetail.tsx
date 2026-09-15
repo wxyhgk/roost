@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { buildItems, groupMessages, MIN_GROUPED_TOOLS, type Block, type Item, type TurnDiff } from "./parts";
-import type { EditPatch } from "../../shared/api/conversationPayloads";
-import { IconChevron } from "../../shared/icons";
+import { buildItems, groupMessages, MIN_GROUPED_TOOLS, type Item, type TurnDiff } from "./parts";
 import { renderMarkdown, useCodeHighlight } from "../../shared/markdown";
 import { afterGesture, afterScroll, initialFollowIntent, isViewportScrollKey } from "../../shared/followBottom";
 import { useTheme } from "../../shared/theme";
@@ -10,6 +8,8 @@ import {
   type Conversation, type ConversationRun, type SnapshotRun,
 } from "../../shared/api/conversations";
 import { ApiError } from "../../shared/api/errors";
+import { IconChevron } from "../../shared/icons";
+import { ToolView } from "./tools/registry";
 import { emptyHistory, historyOnReload, isLongReply, mergeMessages, type HistoryState } from "./history";
 import { startConversationRecovery } from "./recovery";
 
@@ -45,6 +45,12 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
   const [error, setError] = useState<string | null>(null);
   const [live, setLive] = useState(true);
   const [resynced, setResynced] = useState(false);
+  /*
+    分组和成组是**整段历史**的遍历（配对跨消息的工具调用、把连续工具收成一组），
+    原来写在 JSX 里，于是每一次 render——包括打字、滚动、任何无关的状态变化——都全量重算一遍。
+    它只跟着 history.items 变。
+  */
+  const items = useMemo(() => buildItems(groupMessages(history.items)), [history.items]);
   const id = initial.id;
   const outgoing = useOutgoing(id);
   // 待发消息也算「新内容」：发完要跟着滚到底，否则自己刚发的话在视野之外。
@@ -166,7 +172,7 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
           </button>
         )}
         <ul className="flex flex-col gap-2.5 px-2.5 py-2">
-          {buildItems(groupMessages(history.items)).map(item => <TranscriptItem key={item.key} item={item} />)}
+          {items.map(item => <TranscriptItem key={item.key} item={item} />)}
           {/* 待发的消息就在流的末尾——它会进 TUI、再从 transcript 回来，本来就属于这里。 */}
           {outgoing.pending.map(item => (
             <li key={item.message.id} className="flex flex-col items-end gap-1">
@@ -259,85 +265,6 @@ export function ConversationRuns({ conversationId }: { conversationId: string })
 }
 
 /*
-  工具调用默认折叠成一行。
-
-  真实数据里工具占了一半以上的条数，而其中绝大多数只需要知道「调用了什么、成没成」。
-  把参数和输出摊开会把用户真正在读的东西——问题和回答——整段淹掉。
-*/
-/*
-  文件改动的 diff。**不折叠**——「它到底改了什么」是 AI coding 对话里用户最关心的结果，
-  藏进一个要点开的地方等于没显示。工具调用的参数和输出才是噪音，那些才该收起来。
-*/
-function PatchView({ patch }: { patch: EditPatch }) {
-  return (
-    <div className="max-w-[92%] overflow-hidden rounded-lg border border-border/60 bg-bg">
-      <div className="flex items-center gap-2 border-b border-border/60 px-2.5 py-1 text-caption">
-        <span className="shrink-0 text-text-dim">{t.misc.conversations.detail.patchFile}</span>
-        <span className="min-w-0 flex-1 truncate font-mono text-text" dir="rtl">{patch.filePath ?? ""}</span>
-      </div>
-      <div className="overflow-x-auto">
-        {patch.hunks.map((hunk, h) => (
-          <div key={h} className="border-t border-border/40 first:border-t-0">
-            <div className="px-2.5 py-0.5 font-mono text-caption text-text-dim/70">
-              @@ -{hunk.oldStart},{hunk.oldLines} +{hunk.newStart},{hunk.newLines} @@
-            </div>
-            {hunk.lines.map((line, i) => (
-              <div key={i} className={`whitespace-pre px-2.5 font-mono text-caption ${
-                line.startsWith("+") ? "bg-success-soft text-success"
-                : line.startsWith("-") ? "bg-danger-soft text-danger" : "text-text-dim"}`}>{line || " "}</div>
-            ))}
-          </div>
-        ))}
-      </div>
-      {patch.truncated && <div className="border-t border-border/60 px-2.5 py-1 text-caption text-text-dim">
-        {t.misc.conversations.detail.patchTruncated}</div>}
-    </div>
-  );
-}
-
-/** 有真实改动就把 diff 摆出来，那一行调用摘要退到它下面当脚注。 */
-function ToolBlock({ block }: { block: Extract<Block, { kind: "tool" }> }) {
-  if (!block.patch?.hunks.length) return <ToolSummaryRow block={block} />;
-  return (
-    <>
-      <PatchView patch={block.patch} />
-      <ToolSummaryRow block={block} />
-    </>
-  );
-}
-
-/** 一次工具调用的摘要行：折叠时只有一行，展开才看参数和输出。 */
-function ToolSummaryRow({ block }: { block: Extract<Block, { kind: "tool" }> }) {
-  const [open, setOpen] = useState(false);
-  const summary = block.args || block.name;
-  return (
-    <div className="max-w-[92%] overflow-hidden rounded-lg border border-border/60 bg-bg text-caption">
-      <button type="button" aria-expanded={open} onClick={() => setOpen(value => !value)}
-        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left hover:bg-bg-hover">
-        <span className="shrink-0 text-text-dim"><IconChevron open={open} /></span>
-        <span className={`shrink-0 font-medium ${block.failed ? "text-danger" : "text-text"}`}>
-          {t.misc.conversations.detail.toolRan(block.name)}
-        </span>
-        <span className="min-w-0 flex-1 truncate font-mono text-text-dim">{summary}</span>
-        {block.failed && <span className="shrink-0 text-danger">{t.misc.conversations.detail.toolFailed}</span>}
-      </button>
-      {open && (
-        <dl className="border-t border-border/60 px-2.5 py-1.5">
-          {block.args && <>
-            <dt className="text-text-dim">{t.misc.conversations.detail.toolArgs}</dt>
-            <dd className="mb-1.5 whitespace-pre-wrap break-words font-mono text-text">{block.args}</dd>
-          </>}
-          <dt className="text-text-dim">{t.misc.conversations.detail.toolResult}</dt>
-          <dd className="whitespace-pre-wrap break-words font-mono text-text">
-            {block.result ?? <span className="text-text-dim">{t.misc.conversations.detail.toolNoResult}</span>}
-          </dd>
-        </dl>
-      )}
-    </div>
-  );
-}
-
-/*
   AI 的回复按 Markdown 渲染，**用户自己发的那条不渲染**——那是他敲进去的原文，
   重新排版等于把他写的东西改了样子。工具输出同理：那是程序的输出，不是文档。
 */
@@ -420,7 +347,7 @@ function roleName(role: string) {
 */
 function ToolsItem({ item }: { item: Extract<Item, { kind: "tools" }> }) {
   const [open, setOpen] = useState(false);
-  if (item.tools.length < MIN_GROUPED_TOOLS) return <ToolBlock block={item.tools[0]!} />;
+  if (item.tools.length < MIN_GROUPED_TOOLS) return <ToolView block={item.tools[0]!} />;
   const dot = item.status === "running" ? "bg-warning" : item.status === "error" ? "bg-danger" : "bg-text-dim/50";
   return (
     <div className="max-w-[92%] overflow-hidden rounded-lg border border-border/60 bg-bg text-caption">
@@ -439,7 +366,7 @@ function ToolsItem({ item }: { item: Extract<Item, { kind: "tools" }> }) {
         )}
       </button>
       {open && <div className="flex flex-col gap-1 border-t border-border/60 p-1.5">
-        {item.tools.map((tool, i) => <ToolBlock key={i} block={tool} />)}
+        {item.tools.map((tool, i) => <ToolView key={i} block={tool} />)}
       </div>}
     </div>
   );

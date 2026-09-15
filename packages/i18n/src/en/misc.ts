@@ -164,6 +164,10 @@ export const misc = {
       toolRan: (name: string) => name || "Tool call",
       toolFailed: "failed",
       toolNoResult: "no result",
+      /** 命令输出留尾部：报错和结论都在末尾。 */
+      outputClipped: "Earlier output omitted",
+      /** 「跑完了但没输出」和「结果没拿到」必须分得开。 */
+      outputEmpty: "Finished with no output",
       patchFile: "Change",
       turnDiffFiles: (n: number) => `${n} changed ${n === 1 ? "file" : "files"} this turn`,
       turnDiffPartial: "(partial)",

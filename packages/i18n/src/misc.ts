@@ -165,6 +165,10 @@ export const misc = {
       toolRan: (name: string) => name || "工具调用",
       toolFailed: "失败",
       toolNoResult: "没有结果",
+      /** 命令输出留尾部：报错和结论都在末尾。 */
+      outputClipped: "上面还有更早的输出，已省略",
+      /** 「跑完了但没输出」和「结果没拿到」必须分得开。 */
+      outputEmpty: "执行完成，没有输出",
       /** 折叠成组时的摘要。 */
       /** 文件改动：直接显示 diff，不折叠——那是用户最关心的结果。 */
       patchFile: "改动",
