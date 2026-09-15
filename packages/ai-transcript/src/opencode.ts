@@ -1,11 +1,14 @@
 import { createHash } from 'node:crypto';
 import { TranscriptError, type TranscriptCheckpoint, type TranscriptItem } from './index.js';
 import { openCodeSessionIdentity, parseOpenCodeStatus, type OpenCodeNativeStatus } from './opencode-control.js';
+import { previewToolArgs } from './truncate.js';
 
 const LIMIT = 100, BODY_LIMIT = 4 * 1024 * 1024;
 type State = TranscriptCheckpoint & { adapter: 'opencode-api'; state: { snapshotHash: string; sessionIdentity: string; coverage: 'bounded_snapshot'; nativeStatus: OpenCodeNativeStatus } };
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const object = (v: any): v is Record<string, any> => !!v && typeof v === 'object' && !Array.isArray(v);
+/** 快照一次读完、预览和详情各成一份，所以两份文本要一起挂在 part 上，由 normalize 各取一份。 */
+type Part = TranscriptItem['data']['parts'][number] & { preview?: { text: string; truncated: boolean } };
 
 /** Read an explicitly bound existing server. Never starts a second server or discovers sessions. */
 export async function readOpenCodeTranscript(endpoint: string, nativeId: string, previous?: TranscriptCheckpoint) {
@@ -48,7 +51,7 @@ export async function readOpenCodeTranscript(endpoint: string, nativeId: string,
       if (typeof info.id !== 'string' || !info.id || info.id.length > 256 || ids.has(info.id)) throw new TranscriptError('invalid_message');
       ids.add(info.id);
       if (!['user', 'assistant'].includes(info.role) || !Array.isArray(row.parts)) { skipped++; continue; }
-      const parts: TranscriptItem['data']['parts'] = [];
+      const parts: Part[] = [];
       let partial = row.parts.length > 512;
       for (const p of row.parts.slice(0, 512)) {
         if (!object(p)) { partial = true; continue; }
@@ -58,7 +61,8 @@ export async function readOpenCodeTranscript(endpoint: string, nativeId: string,
           parts.push({ type: p.type === 'reasoning' ? 'thinking' : 'text', text: p.text });
         else if (p.type === 'tool' && typeof p.tool === 'string' && object(p.state)) {
           const toolCallId = typeof p.callID === 'string' ? p.callID : undefined;
-          parts.push({ type: 'tool_call', name: p.tool, toolCallId, text: JSON.stringify(p.state.input ?? {}) });
+          // 预览态按结构截断，详情态保持完整 JSON。
+          parts.push({ type: 'tool_call', name: p.tool, toolCallId, text: JSON.stringify(p.state.input ?? {}), preview: previewToolArgs(p.state.input) });
           if (p.state.status === 'completed') parts.push({ type: 'tool_result', name: p.tool, toolCallId, text: typeof p.state.output === 'string' ? p.state.output : '' });
           else if (p.state.status === 'error') parts.push({ type: 'tool_error', name: p.tool, toolCallId, text: typeof p.state.error === 'string' ? p.state.error : '' });
           else if (!['pending', 'running'].includes(p.state.status)) partial = true;
@@ -66,16 +70,19 @@ export async function readOpenCodeTranscript(endpoint: string, nativeId: string,
       }
       if (partial) skipped++;
       const revision = hash({ info, parts: row.parts });
-      function normalize(limit: number): TranscriptItem {
+      function normalize(limit: number, full: boolean): TranscriptItem {
         let remaining = limit, truncated = partial;
-        const bounded = parts.map(p => { const text = (p.text ?? '').slice(0, remaining); remaining -= text.length; truncated ||= text.length < (p.text ?? '').length; return { ...p, text }; });
+        const bounded = parts.map(({ preview, ...p }) => {
+          const source = (full ? p.text : preview?.text ?? p.text) ?? '';
+          const text = source.slice(0, remaining); remaining -= text.length;
+          truncated ||= text.length < source.length || (!full && !!preview?.truncated); return { ...p, text }; });
         return { eventId: `opencode:${nativeId}:${info.id}`, type: 'message', role: info.role,
           ...(Number.isFinite(info.time?.created) ? { createdAt: info.time.created } : {}),
           content: bounded.map(p => p.text ?? '').join('\n'), data: { source: 'transcript', nativeMessageId: info.id,
             parentId: typeof info.parentID === 'string' ? info.parentID : null, parts: bounded, truncated,
             detail: { path, fingerprint: sessionIdentity, offset: 0, length: 0, nativeSessionId: nativeId, recordId: info.id, hash: revision } } };
       }
-      items.push(normalize(64000)); details.push(normalize(256000));
+      items.push(normalize(64000, false)); details.push(normalize(256000, true));
     }
     // Status is supplemental: older or temporarily failing servers must not hide readable messages.
     let nativeStatus: OpenCodeNativeStatus = 'unknown';

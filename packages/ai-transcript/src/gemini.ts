@@ -3,10 +3,13 @@ import { constants } from 'node:fs';
 import { open, realpath } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
 import { TranscriptError, type TranscriptCheckpoint, type TranscriptItem } from './index.ts';
+import { previewToolArgs } from './truncate.ts';
 
 const LIMIT = 4 * 1024 * 1024, MAX_MESSAGES = 2000;
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const object = (value: unknown): value is Record<string, any> => !!value && typeof value === 'object' && !Array.isArray(value);
+/** 快照一次读完、预览和详情各成一份，所以两份文本要一起挂在 part 上，由 normalize 各取一份。 */
+type Part = TranscriptItem['data']['parts'][number] & { preview?: { text: string; truncated: boolean } };
 
 /** Gemini rewrites a JSON conversation, so offsets cannot safely tail it. Read a bounded,
  * identity-checked snapshot; the durable store applies stable message IDs as revisions. */
@@ -45,7 +48,7 @@ export async function readGeminiTranscript(inputPath: string, nativeId: string, 
       ids.add(row.id);
       if (!['user', 'gemini', 'info', 'error', 'warning'].includes(row.type)) { skipped++; continue; }
       let partial = false;
-      const parts: TranscriptItem['data']['parts'] = [];
+      const parts: Part[] = [];
       function content(value: unknown, type = 'text', extra = {}) {
         const entries = Array.isArray(value) ? value : [value];
         if (entries.length > 512) partial = true;
@@ -69,17 +72,19 @@ export async function readGeminiTranscript(inputPath: string, nativeId: string, 
         for (const tool of row.toolCalls.slice(0, 512)) {
           if (!object(tool) || typeof tool.id !== 'string' || typeof tool.name !== 'string') { partial = true; continue; }
           const extra = { toolCallId: tool.id, name: tool.name };
-          parts.push({ type: 'tool_call', text: JSON.stringify(tool.args ?? {}), ...extra });
+          // 预览态按结构截断，详情态保持完整 JSON。
+          parts.push({ type: 'tool_call', text: JSON.stringify(tool.args ?? {}), preview: previewToolArgs(tool.args), ...extra });
           if (tool.result != null) content(tool.result, tool.status === 'error' ? 'tool_error' : 'tool_result', extra);
           if (!['validating', 'scheduled', 'executing', 'success', 'error', 'cancelled', 'awaiting_approval'].includes(tool.status)) partial = true;
         }
       }
       if (partial) skipped++;
-      function normalize(limit: number): TranscriptItem {
+      function normalize(limit: number, full: boolean): TranscriptItem {
         let remaining = limit, truncated = partial;
-        const bounded = parts.map(part => {
-          const text = (part.text ?? '').slice(0, remaining); remaining -= text.length;
-          truncated ||= text.length !== (part.text ?? '').length; return { ...part, text };
+        const bounded = parts.map(({ preview, ...part }) => {
+          const source = (full ? part.text : preview?.text ?? part.text) ?? '';
+          const text = source.slice(0, remaining); remaining -= text.length;
+          truncated ||= text.length !== source.length || (!full && !!preview?.truncated); return { ...part, text };
         });
         const createdAt = Date.parse(row.timestamp);
         return { eventId: `gemini:${nativeId}:${row.id}`, type: 'message', role: row.type === 'gemini' ? 'assistant' : row.type === 'user' ? 'user' : 'system',
@@ -87,7 +92,7 @@ export async function readGeminiTranscript(inputPath: string, nativeId: string, 
           data: { source: 'transcript', nativeMessageId: row.id, parentId: null, parts: bounded, truncated,
             detail: { provider: 'gemini', path, fingerprint: identity, offset: 0, length: bytesRead, nativeSessionId: nativeId, recordId: row.id, hash: hash(row) } } };
       }
-      items.push(normalize(64 * 1024)); details.push(normalize(256 * 1024));
+      items.push(normalize(64 * 1024, false)); details.push(normalize(256 * 1024, true));
     }
     const snapshotHash = hash([items, skipped]);
     const reset = previous?.adapter !== 'gemini-json' || previous.path !== path || previous.state?.snapshotHash !== snapshotHash;

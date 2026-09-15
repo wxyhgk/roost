@@ -3,6 +3,7 @@ import { constants } from 'node:fs';
 import { open, opendir, realpath } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { TranscriptError, type TranscriptCheckpoint, type TranscriptItem } from './index.ts';
+import { previewToolArgs } from './truncate.ts';
 const BATCH = 256 * 1024, LINE = 1024 * 1024;
 const object = (value: unknown): value is Record<string, any> => !!value && typeof value === 'object' && !Array.isArray(value);
 function fingerprint(stat: {dev:number;ino:number;birthtimeMs:number}) { return `${stat.dev}:${stat.ino}:${stat.birthtimeMs}`; }
@@ -56,7 +57,11 @@ function normalize(row: Record<string, any>, ref: TranscriptItem['data']['detail
     if (typeof update.toolCallId !== 'string' || !update.toolCallId || update.toolCallId.length > 512) return {partial:true};
     const extra = {toolCallId:update.toolCallId, ...(typeof update.title === 'string' ? {name:update.title.slice(0,512)} : {})};
     add('tool_call',typeof update.title === 'string' ? update.title : update.toolCallId,extra);
-    if (update.rawInput !== undefined) add('tool_input',JSON.stringify(update.rawInput),extra);
+    if (update.rawInput !== undefined) {
+      // 预览态按结构截断，详情态给完整 JSON。
+      const args = full ? {text:JSON.stringify(update.rawInput),truncated:false} : previewToolArgs(update.rawInput);
+      truncated ||= args.truncated; add('tool_input',args.text,extra);
+    }
     if (Array.isArray(update.content)) {
       if (update.content.length > 512) partial = true;
       for (const block of update.content.slice(0,512)) {

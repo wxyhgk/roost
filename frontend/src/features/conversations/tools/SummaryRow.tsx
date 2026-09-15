@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { IconChevron } from "../../../shared/icons";
 import type { Block } from "../parts";
+import { toolArgsOf, toolSummary } from "./identify";
 import { t } from "@roost/i18n";
 
 export type ToolBlock = Extract<Block, { kind: "tool" }>;
@@ -16,13 +17,18 @@ export type ToolBlock = Extract<Block, { kind: "tool" }>;
  */
 export function SummaryRow({ block, title, children }: {
   block: ToolBlock;
-  /** 覆盖那一行中间的摘要文字。不给就用参数原文。 */
+  /** 覆盖那一行中间的摘要文字。不给就自己从参数里挤一行出来。 */
   title?: ReactNode;
   /** 展开后画什么。不给就是原来的参数 / 结果两段。 */
   children?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  const summary = block.args || block.name;
+  /*
+    参数是结构化 JSON 时，原文是一坨花括号——摘要行里放它等于什么都没说。`toolSummary` 挤出
+    主语或者 k=v 的一行；挤不出来（参数是空的、或者是预览态的标量）才落回原文，那条路是改动
+    之前的行为，一个字节都没动。三样全缺时它一路 null 到底，最后是空串，和以前一样画得出一行。
+  */
+  const summary = toolSummary(toolArgsOf(block)) ?? (block.args || block.name);
   return (
     <div className="max-w-[92%] overflow-hidden rounded-lg border border-border/60 bg-bg text-caption">
       <button type="button" aria-expanded={open} onClick={() => setOpen(value => !value)}

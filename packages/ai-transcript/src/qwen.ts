@@ -4,10 +4,10 @@ import { open, opendir, realpath } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 
 import { TranscriptError, type TranscriptCheckpoint, type TranscriptItem } from "./index.ts";
+import { previewToolArgs } from "./truncate.ts";
 const BATCH = 256 * 1024, LINE = 1024 * 1024, PREVIEW = 4000;
 function fingerprint(stat: {dev: number; ino: number; birthtimeMs: number}) { return `${stat.dev}:${stat.ino}:${stat.birthtimeMs}`; }
 const object = (value: unknown): value is Record<string, any> => !!value && typeof value === "object" && !Array.isArray(value);
-function textPreview(value: unknown) { return typeof value === "string" ? value.slice(0, PREVIEW) : ""; }
 
 export async function discoverQwenTranscript(nativeId: string, roots: string[]): Promise<string | null> {
   if (!/^[a-zA-Z0-9_-]{1,512}$/.test(nativeId)) throw new TranscriptError("invalid_native_id");
@@ -60,8 +60,10 @@ function normalize(row: Record<string, any>, ref: TranscriptItem["data"]["detail
     if (!object(p)) { partial = true; continue; }
     if (typeof p.text === "string") add(p.thought === true ? "thinking" : "text", p.text);
     else if (object(p.functionCall) && typeof p.functionCall.name === "string") {
-      const c = p.functionCall; truncated ||= !full && c.args !== undefined;
-      add("tool_call", c.name + ": " + (full ? JSON.stringify(c.args ?? {}) : textPreview(c.args?.command ?? c.args?.path)), { name: c.name, toolCallId: typeof c.id === "string" ? c.id : undefined });
+      const c = p.functionCall;
+      const args = full ? { text: JSON.stringify(c.args ?? {}), truncated: false } : previewToolArgs(c.args);
+      truncated ||= args.truncated;
+      add("tool_call", c.name + ": " + args.text, { name: c.name, toolCallId: typeof c.id === "string" ? c.id : undefined });
     } else if (object(p.functionResponse) && typeof p.functionResponse.name === "string") {
       const r = p.functionResponse;
       add(r.response?.error ? "tool_error" : "tool_result", JSON.stringify(r.response ?? {}), {name: r.name, toolCallId: typeof r.id === "string" ? r.id : row.toolCallResult?.callId});

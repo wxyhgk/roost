@@ -50,8 +50,9 @@ test("batch details retain bounded tool bodies and whitelist fields independentl
   assert.equal(batch.details.length,2);assert.equal(batch.items[0].data.parts[1].text!.length,4000);
   assert.equal(batch.details[0].data.parts[1].text!.length,256*1024);assert.equal(batch.details[0].data.truncated,true);
   assert.equal(batch.details[0].data.parts[0].type,"tool_error");assert.equal(batch.details[0].data.parentId,"parent");
-  assert.match(batch.details[1].content,/"offset":50/);assert.doesNotMatch(batch.items[1].content,/offset/);
-  assert.equal(batch.details[1].data.truncated,false);assert.equal(batch.items[1].data.truncated,true);
+  // 预览态改成结构截断之后，短参数在预览里是原样活着的，也就不该再被标成 truncated。
+  assert.match(batch.details[1].content,/"offset":50/);assert.match(batch.items[1].content,/"offset":50/);
+  assert.equal(batch.details[1].data.truncated,false);assert.equal(batch.items[1].data.truncated,false);
   assert.doesNotMatch(JSON.stringify(batch.details),/raw-secret|signature-secret|providerPayload|textSignature/);
   assert.deepEqual(batch.details[0],await readOmpDetail(batch.items[0].data.detail));
   assert.equal("details" in batch.items[0].data,false);

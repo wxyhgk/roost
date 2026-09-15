@@ -4,6 +4,7 @@ import { open, opendir, realpath } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 
 import { TranscriptError, type EditPatch, type TranscriptCheckpoint, type TranscriptItem } from "./index.ts";
+import { previewToolArgs } from "./truncate.ts";
 const BATCH = 256 * 1024, LINE = 1024 * 1024, PREVIEW = 4000;
 
 /** hunk 数、总行数、单行长度都封顶：原始数据可以任意大，而这份要过预览和列表预算。 */
@@ -32,7 +33,6 @@ function editPatch(value: unknown): EditPatch | undefined {
 
 function fingerprint(stat: {dev: number; ino: number; birthtimeMs: number}) { return `${stat.dev}:${stat.ino}:${stat.birthtimeMs}`; }
 const object = (value: unknown): value is Record<string, any> => !!value && typeof value === "object" && !Array.isArray(value);
-function textPreview(value: unknown) { return typeof value === "string" ? value.slice(0, PREVIEW) : ""; }
 
 export async function discoverClaudeTranscript(nativeId: string, roots: string[]): Promise<string | null> {
   if (!/^[a-zA-Z0-9_-]{1,512}$/.test(nativeId)) throw new TranscriptError("invalid_native_id");
@@ -92,8 +92,10 @@ function normalize(row: Record<string, any>, ref: TranscriptItem["data"]["detail
     if (block.type === "text" && typeof block.text === "string") add("text", block.text);
     else if (block.type === "thinking" && typeof block.thinking === "string") add("thinking", block.thinking);
     else if (block.type === "tool_use" && typeof block.name === "string" && typeof block.id === "string") {
-      truncated ||= !full && block.input !== undefined;
-      add("tool_call", block.name + ": " + (full ? JSON.stringify(block.input ?? {}) : textPreview(block.input?.command ?? block.input?.file_path ?? block.input?.path)), { toolCallId: block.id, name: block.name });
+      // 预览态按结构截断而不是压成一个标量：Grep 的 pattern、TodoWrite 的 todos 以前在这里就丢干净了。
+      const args = full ? { text: JSON.stringify(block.input ?? {}), truncated: false } : previewToolArgs(block.input);
+      truncated ||= args.truncated;
+      add("tool_call", block.name + ": " + args.text, { toolCallId: block.id, name: block.name });
     } else if (block.type === "tool_result" && typeof block.tool_use_id === "string") {
       let text = "";
       if (typeof block.content === "string") text = block.content;

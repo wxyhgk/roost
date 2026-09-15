@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { identifyTool, toolArgsOf, argString, toolSubject } from '../src/features/conversations/tools/identify.ts';
+import { identifyTool, toolArgsOf, argString, toolSubject, toolSummary } from '../src/features/conversations/tools/identify.ts';
 import type { Block } from '../src/features/conversations/parts.ts';
 
 const tool = (args: string, name = 'X'): Extract<Block, { kind: 'tool' }> =>
@@ -58,6 +58,65 @@ test('主语：预览态下参数原文本身就是主语', () => {
   assert.equal(toolSubject(toolArgsOf(tool('{"file_path":"/a/b.ts"}'))), '/a/b.ts');
   // 有 JSON 但没有认识的字段：不要把整串 JSON 当主语显示。
   assert.equal(toolSubject(toolArgsOf(tool('{"todos":[]}'))), null);
+});
+
+const summary = (args: string) => toolSummary(toolArgsOf(tool(args)));
+
+test('摘要行：有主语就用主语，那是最可读的一行', () => {
+  assert.equal(summary('{"command":"npm test","timeout":120000}'), 'npm test');
+  assert.equal(summary('{"file_path":"/a/b.ts","old_string":"x","new_string":"y"}'), '/a/b.ts');
+  // Grep/Glob 两个字段都带，主语取模式不取目录：「搜 TODO」比「在 /src 里搜」有信息量。
+  assert.equal(summary('{"pattern":"TODO","path":"/src"}'), 'TODO');
+  assert.equal(summary('{"path":"/src"}'), '/src', 'LS 只有 path，不会被抢走');
+  assert.equal(summary('{"pattern":"TODO"}'), 'TODO');
+  assert.equal(summary('{"url":"https://example.com/x"}'), 'https://example.com/x');
+  // 预览态：参数原文本身就是主语，不该被 k=v 那条路碰到。
+  assert.equal(summary('npm run build'), 'npm run build');
+});
+
+test('摘要行：没有主语才退到 k=v，不显示花括号原文', () => {
+  /*
+    TodoWrite、绝大多数 MCP 工具都是这样：参数是结构化 JSON，但里面一个我们认识的主语字段
+    都没有。直接显示原文就是一坨花括号，比预览态时代更难读。
+  */
+  assert.equal(summary('{"todos":[{"content":"a"}]}'), 'todos=[{"content":"a"}]');
+  assert.equal(summary('{"query":"roost","limit":10,"safe":true}'), 'query=roost limit=10 safe=true');
+  // 只取前三个键：键多的工具不该拼出好几屏。
+  assert.equal(summary('{"a":1,"b":2,"c":3,"d":4,"e":5}'), 'a=1 b=2 c=3');
+  // null / undefined 不写成 "null"，留空值即可——键名本身已经有信息。
+  assert.equal(summary('{"cursor":null}'), 'cursor=');
+});
+
+test('摘要行：跳过下划线开头的内部字段', () => {
+  // `_meta` 这类是各家 CLI 自己塞的，占位置且对用户没意义。
+  assert.equal(summary('{"_meta":{"trace":"x"},"name":"roost"}'), 'name=roost');
+  assert.equal(summary('{"_a":1,"_b":2,"_c":3,"real":"v"}'), 'real=v');
+  // 全是内部字段：挤不出东西就返回 null，让调用方兜底。
+  assert.equal(summary('{"_meta":1}'), null);
+});
+
+test('摘要行：单值和整串各有上限，长参数不撑破一行', () => {
+  const long = 'x'.repeat(500);
+  const one = summary(JSON.stringify({ blob: long }));
+  assert.ok(one!.length <= 1 + 'blob='.length + 60, `单值截到 60：实际 ${one!.length}`);
+  assert.ok(one!.endsWith('…'), '截过要看得出来');
+
+  // 三个长值：单值上限之外，整串还有一道上限。
+  const three = summary(JSON.stringify({ a: long, b: long, c: long }));
+  assert.ok(three!.length <= 140, `整串截到 140：实际 ${three!.length}`);
+  assert.ok(three!.endsWith('…'));
+
+  // 换行塌成空格：摘要行是单行，不塌的话字符预算全花在看不见的空白上。
+  assert.equal(summary(JSON.stringify({ body: 'a\n\nb   c' })), 'body=a b c');
+});
+
+test('摘要行：参数为空 / 非对象 / 半截 JSON 都不崩，只是没有摘要', () => {
+  // 三样全缺（孤儿结果 + 还在跑）也要有答案，兜底那条路靠的就是这个 null。
+  assert.equal(summary(''), null);
+  assert.equal(summary('   '), null, '只有空白等于没有参数');
+  assert.equal(summary('{}'), null, '空对象挤不出键');
+  assert.equal(summary('[1,2,3]'), '[1,2,3]', '数组当预览态标量，原样顶着');
+  assert.equal(summary('{"file_path":"/a/b'), '{"file_path":"/a/b', '半截 JSON 解不出，当预览态原文');
 });
 
 import { rendererNameFor } from '../src/features/conversations/tools/registry.tsx';

@@ -3,6 +3,8 @@ import { constants } from "node:fs";
 import { open, opendir, realpath } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 
+import { previewToolArgs } from "./truncate.ts";
+
 export type TranscriptCheckpoint = {
   adapter?: string; state?: Record<string, unknown>;
   path: string; fingerprint: string; offset: number; pending: string; discarding: boolean;
@@ -36,7 +38,6 @@ export class TranscriptError extends Error { constructor(public code: string) { 
 const BATCH = 256 * 1024, LINE = 1024 * 1024, PREVIEW = 4000;
 function fingerprint(stat: {dev: number; ino: number; birthtimeMs: number}) { return `${stat.dev}:${stat.ino}:${stat.birthtimeMs}`; }
 const object = (value: unknown): value is Record<string, any> => !!value && typeof value === "object" && !Array.isArray(value);
-function textPreview(value: unknown) { return typeof value === "string" ? value.slice(0, PREVIEW) : ""; }
 
 export async function discoverOmpTranscript(nativeId: string, roots: string[]): Promise<string | null> {
   if (!/^[a-zA-Z0-9_-]{1,512}$/.test(nativeId)) throw new TranscriptError("invalid_native_id");
@@ -93,9 +94,9 @@ function normalize(row: Record<string, any>, ref: TranscriptItem["data"]["detail
     if (block.type === "text" && typeof block.text === "string") add("text", block.text);
     else if (block.type === "thinking" && typeof block.thinking === "string") add("thinking", block.thinking);
     else if (block.type === "toolCall" && typeof block.name === "string") {
-      truncated ||= !full && block.arguments !== undefined;
-      const args = full ? JSON.stringify(block.arguments ?? {}) : textPreview(block.arguments?.command ?? block.arguments?.file_path ?? block.arguments?.path);
-      add("tool_call", `${block.name}: ${args}`, { toolCallId: typeof block.id === "string" ? block.id : undefined, name: block.name });
+      const args = full ? { text: JSON.stringify(block.arguments ?? {}), truncated: false } : previewToolArgs(block.arguments);
+      truncated ||= args.truncated;
+      add("tool_call", `${block.name}: ${args.text}`, { toolCallId: typeof block.id === "string" ? block.id : undefined, name: block.name });
     } else { partial = true; add("unsupported", "[未支持的记录内容]"); }
   }
   if (message.role === "toolResult") {

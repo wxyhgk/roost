@@ -73,12 +73,12 @@ export type ToolArgs = {
   /**
    * 解析出来的参数对象，解不出就是 null。
    *
-   * **大多数时候是 null，这不是 bug。** 解析器在写库时就把参数压成了预览态：Claude / qwen /
-   * omp 只留 `command ?? file_path ?? path` 一个标量值（见
-   * `packages/ai-transcript/src/claude.ts` 的 `textPreview`），完整 JSON 只有详情接口才给。
-   * codex / gemini / opencode 存的是完整 JSON，所以它们能解出来。
+   * **新数据基本都解得出，老数据基本都解不出。** 解析器现在按结构深度截断
+   * （`packages/ai-transcript/src/truncate.ts`），七家一致地存可解析的 JSON；而在那之前
+   * Claude / qwen / omp 是把整个参数对象压成 `command ?? file_path ?? path` 一个标量值的，
+   * 那些记录已经写进库里，压掉的字段回不来了。
    *
-   * 也就是说渲染器**不能假设 json 存在**，拿不到就得靠 raw 顶着。
+   * 所以同一条对话里新旧会混着，渲染器**不能假设 json 存在**——拿不到就得靠 raw 顶着。
    */
   json: Record<string, unknown> | null;
 };
@@ -111,11 +111,76 @@ export function argString(args: ToolArgs, ...keys: string[]): string | null {
 /**
  * 这次调用最能代表它的那个「主语」：命令、文件路径、或者随便什么参数原文。
  *
- * 预览态下 Claude 只留一个标量，那个标量**恰好就是**命令或路径（解析器按
- * `command ?? file_path ?? path` 的顺序挑的），所以 raw 本身就是主语。完整 JSON 的那几家
- * 才需要真的去取字段。
+ * 老数据里 Claude 只留一个标量，那个标量**恰好就是**命令或路径（当时的解析器按
+ * `command ?? file_path ?? path` 的顺序挑的），所以 raw 本身就是主语；新数据是结构化 JSON，
+ * 走上面那条按字段取的路。两条都要留着，因为库里两种记录同时存在。
  */
 export function toolSubject(args: ToolArgs): string | null {
-  return argString(args, "command", "file_path", "filePath", "path", "pattern", "url")
+  /*
+    `pattern` 排在 `path` 前面是有讲究的：Grep 和 Glob 两个字段都带，而它们的主语是模式不是
+    目录——「在 /src 里搜」远不如「搜 TODO」有信息量。反过来 LS 只有 path、Read 只有
+    file_path，谁都不会被这个顺序抢走。`command` 始终第一，所以 Bash 不受影响。
+  */
+  return argString(args, "command", "file_path", "filePath", "pattern", "path", "url")
     ?? (args.json ? null : args.raw || null);
+}
+
+/*
+  k=v 摘要的三道上限。数字照搬 happier（MIT，happier-dev/happier，
+  apps/ui/sources/components/tools/renderers/system/UnknownToolView.tsx 的 `formatSubtitle`）：
+  它那一行和我们这一行是同一个位置、同一个用途，没有理由自己另拍一组。
+
+  三道都是必需的，少一道就还是会糊成一坨：只限总长的话，第一个键的长文本就能把预算吃光，
+  后面的键一个都轮不到；只限单值的话，键多的工具（TodoWrite 那种）照样能拼出好几屏。
+*/
+const SUMMARY_KEYS = 3;
+const SUMMARY_VALUE_CHARS = 60;
+const SUMMARY_TOTAL_CHARS = 140;
+
+function clip(text: string, max: number): string {
+  return text.length <= max ? text : text.slice(0, Math.max(0, max - 1)) + "…";
+}
+
+/**
+ * 参数值压成一行。
+ *
+ * 换行要塌成空格，不是为了好看：摘要行是 `truncate` 的单行，浏览器本来就会把换行渲染成
+ * 空格——不塌的话字符预算全花在看不见的空白上，截断出来的一行比实际显示的短一大截。
+ */
+function shortValue(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  const text = typeof value === "string" ? value
+    : typeof value === "number" || typeof value === "boolean" ? String(value)
+      : safeStringify(value);
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function safeStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value) ?? "";
+  } catch {
+    // 循环引用之类。JSON.parse 出来的东西不会有，但这函数不该假设调用方只喂它解析结果。
+    return String(value);
+  }
+}
+
+/**
+ * 摘要行里那一行字：拿得到就是有信息量的一行，拿不到返回 null 让调用方自己兜底。
+ *
+ * **主语优先。** `toolSubject` 取的是命令 / 路径 / 模式 / URL，那是一次调用里最可读的东西，
+ * 有它就不该退而求其次。k=v 是主语取不到时才用的——参数是结构化 JSON、但里面没有一个我们
+ * 认识的字段（TodoWrite、各种 MCP 工具都是这样），这时候直接显示参数原文就是一坨花括号。
+ *
+ * 下划线开头的键跳过：那是各家 CLI 塞的内部字段（`_meta` 之类），占位置且对用户没意义。
+ */
+export function toolSummary(args: ToolArgs): string | null {
+  // 主语可能是纯空白（预览态的 raw 原样顶上来的），那和没有主语是一回事。
+  const subject = toolSubject(args);
+  if (subject?.trim()) return subject;
+  const json = args.json;
+  if (!json) return null;
+  const keys = Object.keys(json).filter(key => !key.startsWith("_")).slice(0, SUMMARY_KEYS);
+  if (!keys.length) return null;
+  const parts = keys.map(key => `${key}=${clip(shortValue(json[key]), SUMMARY_VALUE_CHARS)}`);
+  return clip(parts.join(" "), SUMMARY_TOTAL_CHARS);
 }

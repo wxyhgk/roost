@@ -1,5 +1,5 @@
 import { SummaryRow, type ToolBlock } from "./SummaryRow";
-import type { ToolId } from "./identify";
+import { toolArgsOf, toolSummary, type ToolId } from "./identify";
 
 /**
  * MCP 工具。
@@ -9,13 +9,15 @@ import type { ToolId } from "./identify";
  * 而真正有信息的是后半截。
  */
 export function McpTool({ block, id }: { block: ToolBlock; id: ToolId }) {
+  // 这一行同样不能放参数原文：MCP 工具的参数几乎都是结构化 JSON，而且基本没有我们认识的主语字段。
+  const summary = toolSummary(toolArgsOf(block));
   return (
     <SummaryRow block={block} title={
       <>
         <span className="text-text-dim">{id.server}</span>
         <span className="px-1 text-text-dim/60">·</span>
         <span className="text-text">{id.tool}</span>
-        {block.args && <span className="pl-2 text-text-dim">{block.args}</span>}
+        {summary && <span className="pl-2 text-text-dim">{summary}</span>}
       </>
     } />
   );

@@ -3,6 +3,7 @@ import { constants } from "node:fs";
 import { open, realpath } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import { TranscriptError, type TranscriptCheckpoint, type TranscriptItem } from "./index.ts";
+import { previewToolArgs, previewToolText } from "./truncate.ts";
 const BATCH = 256 * 1024, LINE = 1024 * 1024;
 const object = (value: unknown): value is Record<string, any> => !!value && typeof value === "object" && !Array.isArray(value);
 function fingerprint(stat: {dev: number; ino: number; birthtimeMs: number}) { return `${stat.dev}:${stat.ino}:${stat.birthtimeMs}`; }
@@ -20,6 +21,10 @@ function recordId(row: Record<string, any>, offset: number): string {
   const payload = row?.payload;
   return typeof payload?.id === "string" && payload.id.length > 0 && payload.id.length <= 256
     ? payload.id : `row:${offset}`;
+}
+/** codex 的参数存成 JSON 字符串：解得回对象就交给结构截断，解不回就原样当字符串。 */
+function parseArgs(raw: string): unknown {
+  try { const parsed = JSON.parse(raw); return parsed && typeof parsed === "object" ? parsed : raw; } catch { return raw; }
 }
 function normalize(row: Record<string, any>, ref: TranscriptItem["data"]["detail"], full = false): { item?: TranscriptItem; partial: boolean } {
   if (row.type === "session_meta" || row.type === "turn_context") return { partial: false };
@@ -47,9 +52,14 @@ function normalize(row: Record<string, any>, ref: TranscriptItem["data"]["detail
     }
   } else if (["function_call", "custom_tool_call"].includes(p.type)) {
     if (typeof p.call_id !== "string" || typeof p.name !== "string") return {partial: true};
-    const args = p.type === "function_call" ? p.arguments : p.input;
-    const text = typeof args === "string" ? args : JSON.stringify(args ?? {});
-    add("tool_call", `${p.name}: ${text}`, {toolCallId: p.call_id, name: p.name});
+    const raw = p.type === "function_call" ? p.arguments : p.input;
+    // codex 把 function_call 的参数存成 JSON 字符串，custom_tool_call 的 input 则是自由文本。
+    // 预览态：解得回对象的按结构截断，解不回的仍当一段文本——它本来就不是一份参数对象。
+    const parsed = typeof raw === "string" ? parseArgs(raw) : raw;
+    const args = full ? {text: typeof raw === "string" ? raw : JSON.stringify(raw ?? {}), truncated: false}
+      : typeof parsed === "string" ? previewToolText(parsed) : previewToolArgs(parsed);
+    truncated ||= args.truncated;
+    add("tool_call", `${p.name}: ${args.text}`, {toolCallId: p.call_id, name: p.name});
   } else if (toolOutput) {
     if (typeof p.call_id !== "string") return {partial: true};
     role = "tool";
