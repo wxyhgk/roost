@@ -195,6 +195,60 @@ export const misc = {
       turnDiffFiles: (n: number) => `本轮改动 ${n} 个文件`,
       turnDiffPartial: "（不完整）",
       patchTruncated: "改动过长，已截断",
+      /*
+        回合用量 / 回合耗时两个药丸和它们的弹层（vendor/dsh/chat/TurnUsagePanel）。上游的 `t`
+        是一个扁平 key 的 locale seat（`message.turnUsage.count` 这种），调用方把下面这些映射过去。
+
+        **紧凑单位用 K/M，不用「万/亿」。** 中文里 12200 本该读作「1.22 万」，但 `formatTokens`
+        的分档是写死的 1e3/1e6（`vendor/dsh/chat/token-format.ts`）——把模板换成「万」而不动函数，
+        会让 12200 显示成「12.2万」，也就是 12 万，**差一个数量级的谎**。要换就得连函数一起改，
+        而那不值得：token 数是技术量，K/M 是 CLI、API 文档、供应商控制台一致的写法，换成万/亿
+        反而对不上用户在别处看到的数；精确值那一档还用三位一组的千分位（`groupSeparator`），
+        四位一档的万/亿和它摆在同一个弹层里也自相矛盾。所以函数不动，中英两份都用 K/M。
+      */
+      turnUsage: {
+        /** `{count}` 已经是格式化好的数（`517` / `12.2K`）。 */
+        count: (count: string) => `${count} tokens`,
+        /** 药丸上那句。 */
+        consumed: (total: string) => `用了 ${total}`,
+        title: "本轮用量",
+        model: "模型",
+        cacheHit: "缓存命中",
+        /** 特意不写成「输入」：这一项是**没命中缓存的**那部分，缓存读写各有自己一行。 */
+        input: "未缓存输入",
+        cacheRead: "缓存读取",
+        cacheWrite: "缓存写入",
+        output: "输出",
+        /** 思考是输出的子集，所以挂在「输出」那一行后面，而不是自己占一行。 */
+        reasoning: (tokens: string) => `（含思考 ${tokens}）`,
+      },
+      turnTime: {
+        title: "本轮耗时",
+        duration: "总时长",
+        /*
+          速度和首 token 延迟这两行**当前画不出来**：transcript 里没有首 token 时刻，我们只给
+          `runMs`，弹层里这两行有 `!== undefined` 的闸门。文案照样留着——`TurnStatTranslate`
+          的键是个闭合联合，少一个调用方就没法给出一个全覆盖的 `t`；而为了省两句话去改抄来的
+          组件，代价比留着大。
+        */
+        speed: "速度",
+        ttft: "首 token 延迟",
+      },
+      ranFor: (duration: string) => `耗时 ${duration}`,
+      tokensPerSecond: (tps: string) => `${tps} tokens/秒`,
+      number: {
+        thousand: (value: string) => `${value}K`,
+        million: (value: string) => `${value}M`,
+        /** 精确值的千分位分隔符，不带参数。 */
+        groupSeparator: ",",
+      },
+      /** 耗时三档。小单位已经在格式化函数里补过零，所以可能是字符串。 */
+      duration: {
+        seconds: (seconds: number | string) => `${seconds} 秒`,
+        minutes: (minutes: number | string, seconds: number | string) => `${minutes} 分 ${seconds} 秒`,
+        hours: (hours: number, minutes: number | string, seconds: number | string) =>
+          `${hours} 小时 ${minutes} 分 ${seconds} 秒`,
+      },
       toolGroup: (n: number) => `${n} 次工具调用`,
       toolGroupRunning: "进行中",
       toolGroupError: "有失败",

@@ -190,6 +190,40 @@ export const misc = {
       turnDiffFiles: (n: number) => `${n} changed ${n === 1 ? "file" : "files"} this turn`,
       turnDiffPartial: "(partial)",
       patchTruncated: "Change truncated",
+      /* 回合用量 / 回合耗时两个药丸和它们的弹层。中文那份的注释说明了为什么两边都用 K/M。 */
+      turnUsage: {
+        count: (count: string) => `${count} tokens`,
+        consumed: (total: string) => `Used ${total}`,
+        title: "Turn usage",
+        model: "Model",
+        cacheHit: "Cache hit",
+        /** 不是 "Input"：这一项是**没命中缓存的**那部分。 */
+        input: "Uncached input",
+        cacheRead: "Cache read",
+        cacheWrite: "Cache write",
+        output: "Output",
+        reasoning: (tokens: string) => ` (incl. ${tokens} reasoning)`,
+      },
+      turnTime: {
+        title: "Turn time",
+        duration: "Duration",
+        /** 这两行当前画不出来（我们只给 runMs），文案留着是为了让 t 能覆盖全部键。 */
+        speed: "Speed",
+        ttft: "Time to first token",
+      },
+      ranFor: (duration: string) => `Ran for ${duration}`,
+      tokensPerSecond: (tps: string) => `${tps} tokens/s`,
+      number: {
+        thousand: (value: string) => `${value}K`,
+        million: (value: string) => `${value}M`,
+        groupSeparator: ",",
+      },
+      duration: {
+        seconds: (seconds: number | string) => `${seconds}s`,
+        minutes: (minutes: number | string, seconds: number | string) => `${minutes}m ${seconds}s`,
+        hours: (hours: number, minutes: number | string, seconds: number | string) =>
+          `${hours}h ${minutes}m ${seconds}s`,
+      },
       toolGroup: (n: number) => `${n} tool ${n === 1 ? "call" : "calls"}`,
       toolGroupRunning: "running",
       toolGroupError: "failed",

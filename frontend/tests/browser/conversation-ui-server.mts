@@ -18,8 +18,11 @@ bridge.bind({ webSessionId: 'fixture-shell', terminalInstanceId: 'fixture-pty', 
 
 const hunk = (lines: string[]) => ({ oldStart: 12, oldLines: 3, newStart: 12, newLines: lines.filter(l => !l.startsWith('-')).length, lines });
 let seq = 0;
+// usage 的量级照本机实测：缓存读取是大头，未缓存输入只有个位数。
+const usage = { inputTokens: 2, outputTokens: 1843, cacheReadTokens: 187432, cacheWriteTokens: 9871, reasoningTokens: 612, model: 'claude-opus-5' };
 const say = (role: string, parts: unknown[], content = '') =>
-  bridge.publish('fixture-shell', { eventId: `e${++seq}`, type: 'message', role, content, data: { parts } } as never,
+  bridge.publish('fixture-shell', { eventId: `e${++seq}`, type: 'message', role, content,
+    data: { parts, ...(role === 'assistant' ? { usage } : {}) }, createdAt: Date.now() - (60 - seq) * 1000 } as never,
     { cursor: seq, hasGap: false });
 
 say('user', [{ type: 'text', text: '把 xyz 解析器里那个空行的兜底删掉，顺便跑一下测试。' }]);

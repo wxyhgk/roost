@@ -11,6 +11,9 @@ import { ReasoningRow } from "../../vendor/dsh";
 import { MessageIconActions } from "../../vendor/dsh/chat/MessageIconActions";
 import { CompactionItem } from "../../vendor/dsh/chat/CompactionItem";
 import { ChatView, ChatFlowItem } from "../../vendor/dsh/chat/ChatView";
+import { TurnUsagePanel, TurnTimePanel } from "../../vendor/dsh/chat/TurnUsagePanel";
+import { turnStatsByItemKey } from "./turn-usage";
+import { TURN_STAT } from "./turn-stat-labels";
 import { MarkdownText } from "../../vendor/dsh/markdown/MarkdownText";
 import { TurnProcessNodeView } from "../../vendor/dsh/chat/TurnProcessNodeView";
 import { useSearchableHidden } from "../../vendor/dsh/chat/searchable-hidden";
@@ -63,6 +66,16 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
     **diff 条目和压缩摘要都不算换人**：它们没有角色、夹在同一个回合中间，所以要跨过它们
     记住上一个真实角色，否则它们后面那条会莫名其妙又标一次。
   */
+  /*
+    每个回合的 token 用量和耗时。**按条目 key 查**——一个回合里每一条都能查到同一份，
+    所以挂在哪一条是纯粹的展示决定，改挂位置不用回头改折算那一层。
+
+    折算本身在 turn-usage.ts：它按 messageId 去重（一条 assistant 消息在 buildItems 里
+    会摊成正文 + 工具组 + 每个带 diff 的调用各一条，按条目求和会把同一次请求数好几遍），
+    而且桶不全就整桶不给——缺席和零是两件事。
+  */
+  const turnStats = useMemo(() => turnStatsByItemKey(items, conversation.source.cliId), [items, conversation.source.cliId]);
+
   const showRole = useMemo(() => {
     let last: string | undefined;
     return items.map(item => {
@@ -207,11 +220,26 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
           （`data-turn-process-answer`），展开后自动变回 16px——收起时它们读起来是一件事。
         */}
         <ChatView>
-          {items.map((item, i) => (
-            <ChatFlowItem key={item.key} flowKey={item.key} kind={item.kind}>
-              <TranscriptItem item={item} showRole={showRole[i]} />
-            </ChatFlowItem>
-          ))}
+          {items.map((item, i) => {
+            /*
+              用量挂在回合的**最后一条**上。原来想挂 `kind: "diff"` 那条（「这一轮做了什么」
+              的天然位置），但它**只在这个回合真的改过文件时才存在**——没改文件的回合就
+              一份用量都看不到了。
+            */
+            const stats = turnStats.get(item.key);
+            const last = stats?.itemKeys.at(-1) === item.key;
+            return (
+              <ChatFlowItem key={item.key} flowKey={item.key} kind={item.kind}>
+                <TranscriptItem item={item} showRole={showRole[i]} />
+                {last && (stats?.usage || stats?.runMs != null) && (
+                  <div className="mt-1 flex items-center gap-1.5">
+                    {stats.usage && <TurnUsagePanel usage={stats.usage} t={TURN_STAT} />}
+                    {stats.runMs != null && <TurnTimePanel runMs={stats.runMs} t={TURN_STAT} />}
+                  </div>
+                )}
+              </ChatFlowItem>
+            );
+          })}
           {/* 待发的消息就在流的末尾——它会进 TUI、再从 transcript 回来，本来就属于这里。 */}
           {outgoing.pending.map(item => (
             <ChatFlowItem key={item.message.id} flowKey={item.message.id} kind="user">
