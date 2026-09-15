@@ -22,4 +22,7 @@ export { sessionBadge } from './badge';
 export { useAgentNotify } from './quietNotify';
 export { useSessionActivity } from './useSessionActivity';
 export { useGroupActivity } from './useGroupActivity';
+// 收件箱：判定是纯函数（inbox.ts，测得到），hook 只管订阅和快照缓存。
+export { useInbox, useInboxCount } from './useInbox';
+export type { InboxItem, InboxReason } from './inbox';
 export { useQuietFor } from './useQuietFor';
