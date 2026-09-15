@@ -112,6 +112,13 @@ export const misc = {
         相对时间。上游的 `relativeTime()` 只给桶和数量，文字由这里拼——
         **紧凑到能塞进 32px 行的尾巴**，所以是「12min」不是「12 分钟前」。
       */
+      /* 侧栏行 hover 时露出的两颗动作。 */
+      rowActions: {
+        archive: "归档",
+        trash: "移到回收站",
+        /** 改不动时那一行。**不吞掉**——用户点了就该知道成没成。 */
+        failed: "改不了，稍后再试",
+      },
       when: {
         now: "刚刚",
         minutes: (n: number) => `${n} 分`,

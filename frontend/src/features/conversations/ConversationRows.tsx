@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
-import { listConversations, MAX_QUERY_LENGTH, type Conversation, type ConversationFilters } from "../../shared/api/conversations";
+import { listConversations, patchConversation, MAX_QUERY_LENGTH,
+  type Conversation, type ConversationFilters, type ConversationPatch } from "../../shared/api/conversations";
 import { ApiError } from "../../shared/api/errors";
 import { emptyList, reduceList } from "./list";
 import { Empty } from "../../shared/ui/Empty";
 import { groupByDay } from "./when";
 import { relativeTime } from "../../vendor/dsh/relative-time";
-import { SessionRow, GroupRow } from "../../vendor/dsh/sidebar/Rows";
+import { SessionRow, GroupRow, RowIconButton } from "../../vendor/dsh/sidebar/Rows";
+import { IconArchiveOutline20, IconTrashOutline16 } from "../../vendor/dsh/icons/index";
 import { SidebarBrowser, SidebarGroup } from "../../vendor/dsh/sidebar/WorkspaceBrowser";
 import { t } from "@roost/i18n";
 
@@ -65,6 +67,43 @@ export function ConversationRows({ onOpen, activeId, wide = true, onExpandSideba
     return () => clearTimeout(timer);
   }, [query, load]);
 
+  /**
+   * 归档 / 移到回收站。两个都是给对话打一个布尔标记，后端 PATCH 早就收（白名单里有
+   * `archived` / `trashed`），所以这里是纯接线，没有新路由。
+   *
+   * **成功之后就地把这一行移走**：列表按 `state` 筛（默认只列 active），打完标记那一条
+   * 按定义就不该在这儿了。理由见 `list.ts` 里 `drop` 那段。
+   *
+   * **409 只重试一次，而且只对布尔标记这么做。** `patchConversation` 用 revision 做乐观并发，
+   * 而标题是后端异步生成的——用户打开侧栏到点下这颗钮之间，revision 很可能已经被一次自动
+   * 改名推进过。那种冲突和「两个人同时改同一个字段」不是一回事：
+   *
+   * - 标题那类**文本**冲突必须让用户在新值上重做，静默覆盖会吞掉别人写的东西
+   *   （`shared/api/conversations.ts` 上那段注释说的就是这个）；
+   * - 而「归档」是一个**幂等的、与顺序无关的**意图，拿服务端刚给回来的 `current.revision`
+   *   再打一次，不会覆盖任何人的任何东西。
+   *
+   * 第二次还冲突就不再试了——那说明有东西在持续改它，继续重试是在和一个看不见的写者赛跑。
+   */
+  const mark = useCallback(async (conversation: Conversation, patch: ConversationPatch) => {
+    const attempt = async (revision: number) => patchConversation(conversation.id, revision, patch);
+    try {
+      try {
+        await attempt(conversation.revision);
+      } catch (error) {
+        const current = error instanceof ApiError && error.status === 409
+          ? (error.body?.["current"] as { revision?: unknown } | undefined)
+          : undefined;
+        if (typeof current?.revision !== "number") throw error;
+        await attempt(current.revision);
+      }
+      dispatch({ type: "drop", id: conversation.id });
+    } catch {
+      // **不吞掉**：用户点了就该知道成没成。复用列表本来那条错误行（它自带重试按钮）。
+      dispatch({ type: "failed", message: t.misc.conversations.sidebar.rowActions.failed });
+    }
+  }, []);
+
   const searching = state.filters.q !== undefined && state.filters.q !== "";
   const groups = groupByDay(state.items, item => item.lastMessageAt ?? item.createdAt);
 
@@ -96,7 +135,7 @@ export function ConversationRows({ onOpen, activeId, wide = true, onExpandSideba
       */}
       {groups.map(group => (
         <DayGroup key={group.key} label={group.label} items={group.items}
-          activeId={activeId ?? null} onOpen={onOpen} />
+          activeId={activeId ?? null} onOpen={onOpen} onMark={mark} />
       ))}
 
       {state.error && (
@@ -125,11 +164,12 @@ export function ConversationRows({ onOpen, activeId, wide = true, onExpandSideba
  * 折起来时给 `SidebarGroup` 一个空数组，而不是把行藏起来——超出上限的条目它本来就不挂载，
  * 这里跟着同一条规矩。
  */
-function DayGroup({ label, items, activeId, onOpen }: {
+function DayGroup({ label, items, activeId, onOpen, onMark }: {
   label: string;
   items: readonly Conversation[];
   activeId: string | null;
   onOpen: (conversation: Conversation) => void;
+  onMark: (conversation: Conversation, patch: ConversationPatch) => void;
 }) {
   const [expanded, setExpanded] = useState(true);
   const containsActive = activeId !== null && items.some(item => item.id === activeId);
@@ -140,9 +180,36 @@ function DayGroup({ label, items, activeId, onOpen }: {
       labels={{ expand: t.misc.conversations.sidebar.more, collapse: t.misc.conversations.sidebar.collapse }}
       items={expanded ? items : []}
       renderItem={item => (
-        <SessionRow key={item.id} {...rowOf(item, item.id === activeId)} onOpen={() => { onOpen(item); }} />
+        <SessionRow key={item.id} {...rowOf(item, item.id === activeId)} onOpen={() => { onOpen(item); }}
+          menu={<RowActions conversation={item} onMark={onMark} />} />
       )}
     />
+  );
+}
+
+/**
+ * 行尾那两颗动作，hover 时替下相对时间（上游 `.rowActions` 的既有行为）。
+ *
+ * **只有两颗，不做 `…` 菜单**：我们只有归档和回收站两个动作，为两项开一层菜单等于多一次
+ * 点击换零信息。上游那一行也是直接摆图标，菜单是它动作多到摆不下时才有的。
+ *
+ * `stopPropagation` 不能省：这两颗在行里，而行自己 `onClick` 是「打开这条对话」——
+ * 不拦住的话点归档会连带把它打开一次。
+ */
+function RowActions({ conversation, onMark }: {
+  conversation: Conversation;
+  onMark: (conversation: Conversation, patch: ConversationPatch) => void;
+}) {
+  const labels = t.misc.conversations.sidebar.rowActions;
+  return (
+    <span onClick={event => { event.stopPropagation(); }}>
+      <RowIconButton label={labels.archive} onClick={() => { onMark(conversation, { archived: true }); }}>
+        <IconArchiveOutline20 size={16} />
+      </RowIconButton>
+      <RowIconButton label={labels.trash} onClick={() => { onMark(conversation, { trashed: true }); }}>
+        <IconTrashOutline16 size={16} />
+      </RowIconButton>
+    </span>
   );
 }
 

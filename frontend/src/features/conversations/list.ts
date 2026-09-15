@@ -27,7 +27,17 @@ export type ListAction =
   | { type: "filter"; filters: ConversationFilters }
   | { type: "loading" }
   | { type: "page"; items: Conversation[]; nextCursor: string | null; append: boolean }
-  | { type: "failed"; message: string };
+  | { type: "failed"; message: string }
+  /**
+   * 一条对话不再属于这个列表了（归档、进回收站）。
+   *
+   * **就地移走，不重新拉一页。** 列表是按 `state` 筛的（默认只列 active），归档之后那一条
+   * 按定义就不该在这儿；重拉一页会让整列闪一下，而且**游标是和筛选条件绑定的**——重拉要么
+   * 从头开始（丢掉用户已经翻出来的几页），要么拿旧游标去请求而后端判 400。就地移走两样都不碰。
+   *
+   * `done` 和 `cursor` 一个都不动：少一条不改变「还有没有下一页」。
+   */
+  | { type: "drop"; id: string };
 
 const sameFilters = (a: ConversationFilters, b: ConversationFilters) =>
   (a.q ?? "") === (b.q ?? "") && (a.state ?? "active") === (b.state ?? "active")
@@ -55,5 +65,10 @@ export function reduceList(state: ListState, action: ListAction): ListState {
       };
     case "failed":
       return { ...state, loading: false, error: action.message };
+    case "drop": {
+      const items = state.items.filter(item => item.id !== action.id);
+      // 没命中就原样返回：那一条可能本来就不在当前这一页，换个对象等于白渲染一次整列。
+      return items.length === state.items.length ? state : { ...state, items };
+    }
   }
 }

@@ -105,6 +105,11 @@ export const misc = {
       more: (hidden: number) => `${hidden} more`,
       collapse: "Show less",
       gap: "This conversation's record has a gap",
+      rowActions: {
+        archive: "Archive",
+        trash: "Move to trash",
+        failed: "Could not update, try again",
+      },
       when: {
         now: "now",
         minutes: (n: number) => `${n}min`,
