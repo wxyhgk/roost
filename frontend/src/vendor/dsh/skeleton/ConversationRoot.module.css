@@ -34,12 +34,14 @@
 
   ---- 我们这边空转的规则 ------------------------------------------------
 
-  照抄保留、当前没有对应 DOM 喂它们的：`.titleRow` / `.titleCluster` / `.crumbs` /
-  `.crumbSeg` / `.crumbSep` / `.crumb*` / `.headerActions` / `.headerUtilities` /
-  `.headerCorner` / `.tabs` / `.tab*`（上游 Session 头里的面包屑和标签页，我们的头是
-  调用方传进来的 ReactNode）、`.heroWorkspaceRow`（工作区芯片）、以及所有
-  `[data-conversation-composer-overlay]` 分支（上游让某个视图接管输入区的插槽机制，
-  我们没有）。留着是为了重新同步时不用对 diff。
+  **这一段曾经长得多——面包屑和标签页那一批已经接上了**（第四轮把中栏那三层头收成了
+  一个 76px 的头，`features/conversations/ConversationDetail.tsx` 的 `ColumnHeader`
+  按上游的五个位喂：`.crumbs` / `.headerActions` / `.headerUtilities` / `.headerCorner`
+  / `.tabs`）。
+
+  照抄保留、当前仍然没有对应 DOM 喂它们的：`.heroWorkspaceRow`（工作区芯片，我们没有
+  工作区这个对象）、以及所有 `[data-conversation-composer-overlay]` 分支（上游让某个视图
+  接管输入区的插槽机制，我们没有）。留着是为了重新同步时不用对 diff。
 */
 .root {
   position: relative; /* positioning context for slot-owned absolute chrome */

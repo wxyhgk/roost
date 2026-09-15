@@ -121,6 +121,17 @@ say('assistant', [{ type: 'text', text: [
   '> 我把它改回 `continue` 了，测试重新全绿。',
 ].join('\n') }]);
 
+/*
+  `FIXTURE_GAP=1` 时最后再补一条带缺口标记的记录，用来看那条缺口横幅（role="status"，
+  说的是「你读到的不是完整记录」）。**默认不开**：缺口是异常态，把它写进默认 fixture
+  会让每次截图都顶着一条告警，反而看不出正常态长什么样。
+*/
+if (process.env.FIXTURE_GAP === '1') {
+  bridge.publish('fixture-shell', { eventId: `e${++seq}`, type: 'message', role: 'user', content: '',
+    data: { parts: [{ type: 'text', text: '（这条之前有记录没保存下来）' }] }, createdAt: Date.now() } as never,
+    { cursor: seq, hasGap: true });
+}
+
 bridge.unbind('fixture-shell');
 
 const runtime = createTerminalRuntime({ defaultCwd: dir, shell: '/bin/sh', env: {}, historyStore: store });

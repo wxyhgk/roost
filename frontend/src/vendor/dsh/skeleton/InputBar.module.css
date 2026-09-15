@@ -3,12 +3,10 @@
   **输入卡的几何。** 22px 圆角的胶囊、`--dsh-composer-card-max-width` 封顶、上面一块可滚动
   的草稿区、下面一行工具条。
 
-  **一行未改，零处 ROOST-CHANGE，而且当前谁都没有 import 它。** 这是有意的：
-  搬进来是为了把样式表和它认得的类名结构先备齐，我们自己的 `ConversationComposer`
-  **还没有**接过来——接线是另一件事，接之前这份只被 `frontend/tests/browser/
-  dsh-conversation-shell.tsx` 画一个假卡片用。
+  **一行未改，零处 ROOST-CHANGE**（这段注释之外，规则部分逐字）。接它的是
+  `./InputBar.tsx`，再往上是 `features/conversations/ConversationComposer.tsx`。
 
-  接的时候要知道的三件事：
+  接线时用得上的三件事：
 
   1. **类名结构**（由外到内）：
      `.root`（或 hero 下再加 `.hero`）→ `.card` → `.scroll` → `.grow` → `.input` +
@@ -21,11 +19,17 @@
      纯图标。容器名是匿名的（CSS Modules 会给具名容器加哈希，跨文件的 @container 查询
      永远匹配不上）——真接上时自己的 @container 规则必须写在**这个文件里**。
 
-  空转的：`.notice`、`.cardWorkspaceTrigger*`（没选工作区时的虚线态）、`.overlayAnchor`、
-  `.pending`、`.accessory`、`.retry`，以及 `.input p::after` 那条读 `--dsh-composer-hint`
-  的幽灵提示。
-*/
+  **`.input` 在上游是 Lexical 的 contenteditable，在我们这儿是 `<textarea>`**
+  （理由见 `InputBar.tsx` 的 ROOST-CHANGE 2）。后果是这份 CSS 里有两条永远命中不了：
+  `.input p { margin: 0 }` 和 `.input p:last-child::after`（读 `--dsh-composer-hint`
+  的幽灵提示）——textarea 没有子元素。逐字留着，重新同步上游时才是覆盖而不是合并。
+  另外 preflight 的 `textarea { resize: vertical }` 和 textarea 自带的滚动由
+  `InputBar.tsx` 的内联样式压掉，不在这份表里。
 
+  当前空转的：`.cardWorkspaceTrigger*`（没选工作区时的虚线态）、`.overlayAnchor`、
+  `.pending`、`.accessory`、`.select`（模式/模型两个座位没喂数据）、`.retry`。
+  `.notice` 接上了，但装的是错误——上游那条路是 Toast，而 Toast 没搬。
+*/
 .root {
   display: flex;
   flex-direction: column;

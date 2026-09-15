@@ -80,9 +80,37 @@ export function TerminalPane({
   // 一条对话都没有就没有 GUI 可看，切换器不出现，也不会误停在 gui 上。
   const showGui = mode === "terminal" && lens === "gui";
 
+  /*
+    主题 / 搜索 / 下载这一撮**两个头共用同一个节点**：TUI 下它在 PanelHeader 的 actions 位，
+    对话下它在那一个 76px 头的 `.headerUtilities` 位。写两份必然漂移。
+
+    查找按钮多做一件事：**先切回 TUI**。它驱动的是 xterm 上那条查找条，而对话视角下
+    xterm 整个被盖住——在那里开一条看不见的查找条是个假动作。对话本身用浏览器自带的
+    Cmd+F 就能搜（折叠的工具组特意用了 `hidden="until-found"`，见 ConversationDetail）。
+    lens 已经是 tui 时这一步是空操作，所以 TUI 那边的行为一个字没变。
+  */
+  const paneUtilities = mode === "terminal" && session && (
+    <>
+      <TerminalAppearanceSettings />
+      <IconButton title={t.terminal.pane.search} onClick={() => { onLens("tui"); search.toggle(); }}>
+        <IconSearch />
+      </IconButton>
+      <IconButton title={t.terminal.pane.exportLog}
+        onClick={() => downloadTerminalLog(session.id, sessionTitle(session))}>
+        <IconDownload />
+      </IconButton>
+    </>
+  );
+
   return (
     <section className="flex h-full flex-col bg-bg-panel">
-      <PanelHeader
+      {/*
+        **对话视角下这个头不画。** 中栏原来叠着三层头（这一层 + 镜头里的历史下拉横幅 +
+        对话详情自己的头），而上游那一栏只有一个 76px 的头。现在这一层的全部内容——返回
+        画布、终端身份、工作目录、视角切换、主题/搜索/下载——都进了那一个头的四个位里，
+        由 ConversationLens 填、对话壳画。画布和 TUI 仍旧用这一层，它们本来就只有一个头。
+      */}
+      {!showGui && <PanelHeader
         icon={mode === "canvas" ? <IconTerminal /> : (
           <>
             <button
@@ -101,21 +129,10 @@ export function TerminalPane({
           <LensSwitch lens={lens} onChange={onLens} available={!!session} fallbackTitle={t.terminal.pane.title} />
         )}
         sub={mode === "canvas" ? t.terminal.canvas.count(scoped.length) : session?.cwd}
-        actions={
-          mode === "terminal" && session && (
-            <>
-              <TerminalAppearanceSettings />
-              <IconButton title={t.terminal.pane.search} onClick={search.toggle}>
-                <IconSearch />
-              </IconButton>
-              <IconButton title={t.terminal.pane.exportLog}
-                onClick={() => downloadTerminalLog(session.id, sessionTitle(session))}>
-                <IconDownload />
-              </IconButton>
-          </>
-        )}
-      />
-      {mode === "terminal" && search.open && session && <TerminalSearchBar search={search} />}
+        actions={paneUtilities}
+      />}
+      {/* 查找条跟着它的头走：对话视角下那个头不在，这条也不该冒出来。 */}
+      {mode === "terminal" && search.open && session && !showGui && <TerminalSearchBar search={search} />}
       <div className="relative flex flex-1 flex-col overflow-hidden bg-bg shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
         {openSessions.length === 0 ? (
           <div className="m-auto">
@@ -147,7 +164,9 @@ export function TerminalPane({
         {showGui && session && (
           <div className="absolute inset-0 z-[5] flex flex-col bg-bg-panel">
             <ConversationLens key={session.id} terminalId={session.id} conversationId={conversationId}
-              current={currentConversation} pinned={selectedConversationId} />
+              current={currentConversation} pinned={selectedConversationId}
+              terminalLabel={sessionTitle(session)} cwd={session.cwd} onBackToCanvas={toCanvas}
+              utilities={paneUtilities} lens={lens} onLens={onLens} />
           </div>
         )}
         {/*

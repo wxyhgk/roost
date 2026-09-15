@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { buildItems, groupMessages, MIN_GROUPED_TOOLS, type Item, type TurnDiff } from "./parts";
 import { afterGesture, afterScroll, initialFollowIntent, isViewportScrollKey } from "../../shared/followBottom";
 import {
@@ -6,12 +6,19 @@ import {
   type Conversation, type ConversationRun, type SnapshotRun,
 } from "../../shared/api/conversations";
 import { ApiError } from "../../shared/api/errors";
-import { IconChevron } from "../../shared/icons";
+import { IconChevron, IconDots } from "../../shared/icons";
 import { ReasoningRow } from "../../vendor/dsh";
-import { MessageIconActions } from "../../vendor/dsh/chat/MessageIconActions";
 import { CompactionItem } from "../../vendor/dsh/chat/CompactionItem";
 import { ChatView, ChatFlowItem } from "../../vendor/dsh/chat/ChatView";
 import { ConversationShell } from "../../vendor/dsh/skeleton/ConversationShell";
+/*
+  头的那几个位（面包屑 / 动作 / 工具 / 角落 / 标签条）和上游是同一套类。这两份 CSS 在
+  vendor 里逐字躺着，在此之前**一条规则都没生效**——我们的头是自己拿 Tailwind 拼的。
+  `InputBar.module.css` 只取 `.notice` 一条：上游把「机器状态」这类 role=status 的短句
+  放在输入卡上方（InputBar.tsx 第 345 行），不放进头里，正是因为头有 76px 的高度契约。
+*/
+import shellCss from "../../vendor/dsh/skeleton/ConversationRoot.module.css";
+import inputCss from "../../vendor/dsh/skeleton/InputBar.module.css";
 import { TurnUsagePanel, TurnTimePanel } from "../../vendor/dsh/chat/TurnUsagePanel";
 import { turnStatsByItemKey } from "./turn-usage";
 import { TURN_STAT } from "./turn-stat-labels";
@@ -20,7 +27,8 @@ import assistantCss from "../../vendor/dsh/chat/AssistantMarkdown.module.css";
 import { TurnProcessNodeView } from "../../vendor/dsh/chat/TurnProcessNodeView";
 import { useSearchableHidden } from "../../vendor/dsh/chat/searchable-hidden";
 import { ToolView } from "./tools/registry";
-import { emptyHistory, historyOnReload, isLongReply, mergeMessages, type HistoryState } from "./history";
+import { emptyHistory, historyOnReload, mergeMessages, type HistoryState } from "./history";
+import { MessageBody } from "./MessageBody";
 import { startConversationRecovery } from "./recovery";
 
 import { ConversationComposer, PendingMessage } from "./ConversationComposer";
@@ -37,13 +45,18 @@ import { BookmarkButton } from '../bookmarks/BookmarkButton';
  * 打开它不会启动任何 CLI，也不会继续生成——所以这里没有「恢复并继续」按钮。
  * run 非空时给一个「跳到终端」的入口，为空就照常读历史，两种情况都完整可用。
  */
-export function ConversationDetail({ conversation: initial, onBack, onJumpToTerminal, readOnly = false }: {
+export function ConversationDetail({
+  conversation: initial, onBack, onJumpToTerminal, readOnly = false, notice,
+  crumbs, actions, utilities, tabs, tabsLabel, onSelectTab,
+}: {
   conversation: Conversation;
   /** 目录里进来才有「返回列表」；中间栏是这个终端的固定视角，没有可返回的列表。 */
   onBack?: () => void;
   onJumpToTerminal?: (webSessionId: string) => void;
   readOnly?: boolean;
-}) {
+  /** 调用方想说的一句状态（比如「当前显示已保存的记录」）。和断线/重同步并列在输入卡上方。 */
+  notice?: string | undefined;
+} & ColumnChrome) {
   // 改标题/分组会返回新的记录（含新 revision），本地跟着走，
   // 否则下一次修改会拿着过期的 revision 撞 409。
   const [conversation, setConversation] = useState(initial);
@@ -159,6 +172,15 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
 
   const gap = history.coverage?.hasGap === true;
   const jumpTarget = typeof run?.webSessionId === "string" ? run.webSessionId : null;
+  /*
+    三句短状态合成一摞，摆在输入卡上方。原来断线/重同步挤在头里的「跳到终端」旁边，
+    出现和消失都会把那一行的按钮挤得左右横跳——它们是文字，不是控件，不该和控件同列。
+  */
+  const notices = [
+    ...(notice ? [notice] : []),
+    ...(live ? [] : [t.misc.conversations.detail.disconnected]),
+    ...(resynced ? [t.misc.conversations.detail.resynced] : []),
+  ];
 
   /*
     **历史回放期间用 `settling`，不是 `hero` 也不是 `active`。** 座位这时是
@@ -172,63 +194,89 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
       phase={phase}
       scrollRef={listHost}
       header={
-      <>
-        <div className="flex items-center gap-2">
-          {onBack && (
-            <button type="button" onClick={onBack}
-              className="shrink-0 rounded px-1.5 py-0.5 text-caption text-text-dim hover:bg-bg-hover hover:text-text">
-              {t.misc.conversations.detail.back}
-            </button>
-          )}
-          <span className="min-w-0 flex-1 truncate text-body text-text" title={conversation.title}>{conversation.title}</span>
-          <BookmarkButton conversation={conversation} />
-          {/* 只有真正只读（没有终端可投递）时才标「只读历史」，否则是自相矛盾的。 */}
-          {(!jumpTarget || readOnly) && (
-            <span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-caption text-text-dim"
-              title={t.misc.conversations.detail.readOnlyHint}>{t.misc.conversations.detail.readOnly}</span>
-          )}
-        </div>
-        {/*
-          只留一个按钮。原先「终端已关闭」的常驻横幅 +「跳到终端」+「定位终端」
-          三者说的是同一件事，而且要点一下才知道结果，等于把同一个事实讲了三遍。
-          现在是：点它才去核验，结果就地显示——不点就不打扰。
-        */}
-        <div className="flex items-center gap-2 text-caption text-text-dim">
-          <JumpToTerminal conversationId={id} onJump={onJumpToTerminal} />
-          {!live && <span className="text-text-dim/80">{t.misc.conversations.detail.disconnected}</span>}
-          {resynced && <span className="text-text-dim/80">{t.misc.conversations.detail.resynced}</span>}
-        </div>
-        {gap && (
-          <div role="status" className="rounded-md border border-warning/40 bg-warning-soft px-2 py-1 text-caption text-warning">
-            <div className="font-medium">{t.misc.conversations.detail.gap}</div>
-            <div className="opacity-80">{t.misc.conversations.detail.gapDetail(history.coverage?.skippedRecords ?? 0)}</div>
-          </div>
-        )}
-        <ConversationMeta conversation={conversation} onChanged={setConversation} />
-      </>
+        <ColumnHeader
+          /*
+            面包屑就是「你现在在哪」这条链：调用方给前缀（终端 → 回画布 / 返回列表），
+            最后一格永远是这条对话本身，disabled + `.crumbCurrent`，和上游同一个形状。
+          */
+          crumbs={[
+            ...(onBack ? [{ key: "back", label: t.misc.conversations.detail.back, onClick: onBack }] : []),
+            ...(crumbs ?? []),
+          ]}
+          current={{ key: "conversation", label: conversation.title, title: conversation.title }}
+          actions={
+            <>
+              {actions}
+              <BookmarkButton conversation={conversation} />
+              {/* 只有真正只读（没有终端可投递）时才标「只读历史」，否则是自相矛盾的。 */}
+              {(!jumpTarget || readOnly) && (
+                <span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-caption text-text-dim"
+                  title={t.misc.conversations.detail.readOnlyHint}>{t.misc.conversations.detail.readOnly}</span>
+              )}
+              {/*
+                只留一个按钮。原先「终端已关闭」的常驻横幅 +「跳到终端」+「定位终端」
+                三者说的是同一件事，而且要点一下才知道结果，等于把同一个事实讲了三遍。
+                现在是：点它才去核验，结果就地显示——不点就不打扰。
+              */}
+              <JumpToTerminal conversationId={id} onJump={onJumpToTerminal} />
+            </>
+          }
+          utilities={utilities}
+          /*
+            角落位上游是**单个**控件，伸进右边距里。我们放对话属性那颗 `…`：它是这条
+            对话自己的元数据与管理动作，和左边那串「此刻能做什么」不是一类。
+            面板绝对定位挂在按钮下面，**不撑高头**——76px 是和右栏 38+38 对齐的硬数字。
+          */
+          corner={<ConversationMetaMenu conversation={conversation} onChanged={setConversation} />}
+          {...(tabs ? { tabs } : {})}
+          {...(tabsLabel ? { tabsLabel } : {})}
+          {...(onSelectTab ? { onSelectTab } : {})}
+        />
       }
       composer={
         /*
-          **封顶和居中在这里补。** 上游那条 `max-width: var(--dsh-composer-card-max-width)`
-          长在输入卡自己身上（`InputBar.module.css` 的 `.card`），而我们的
-          `ConversationComposer` 还是自己那套标记、没接上游的卡——不补的话输入区会摊满
-          整个栏宽，而正文列封在 819px，两者对不齐。
+          **这一层只包横幅，不包输入卡。**
 
-          写成内联样式而不是 Tailwind：那个上限是一个 CSS 变量（= 正文列宽 + 32px），
-          Tailwind 的任意值语法表达不了「跟着变量走」。
+          输入卡接上上游那张 `.card` 之后自己就带 `max-width: var(--dsh-composer-card-max-width)`，
+          而它外面的 `.root` 还带 `padding: 0 var(--dsh-composer-side-clearance)`（16 × 2）。
+          再在外面按同一个变量封一次顶，卡片就只剩 `封顶 − 32`——**正好等于正文列宽，
+          那 32px 的悬出整个没了**，而「卡片永远比正文宽 32」正是上游那条关系。
 
-          接上游那张卡（`+` 圆钮、模型选择、22px 圆角胶囊）是下一步，那时这三行就该删掉。
+          横幅没有自己的封顶，所以仍然要这一层，宽度按同一个变量给，和卡片对齐。
         */
+        <>
         <div style={{ width: "100%", maxWidth: "var(--dsh-composer-card-max-width)", marginInline: "auto" }}>
-          {/* 没有在跑的终端时不给输入框：投递不出去，摆一个能打字的框只会让人白写一段。 */}
-          {jumpTarget && !readOnly ? (
-            <ConversationComposer outgoing={outgoing} />
-          ) : (
-            <div className="border-t border-border px-2.5 py-2 text-caption text-text-dim">
-              {readOnly ? t.bookmarks.readingHistory : t.misc.conversations.detail.send.noRun}
+          {/*
+            **缺口横幅落在这里，不在头里。**
+
+            它必须一直看得见（role="status"，说的是「你读到的不是完整记录」），而头有一条
+            76px 的高度契约——把一个两行的告警塞进去就等于把那条契约作废。输入座位是
+            `.composerSeat`，滚动容器**内部**的 sticky：它永远贴在栏底，滚到哪儿都在，
+            比原来那个跟着头走的位置更难错过，而且不占头的高度。
+
+            上游把 role=status 的短句放在输入卡上方（InputBar.tsx 的 `.notice`），这里是
+            同一个座位。**只有它保留告警配色**：缺口是坏消息，用 `.notice` 那种中性灰
+            等于把它降一级。
+          */}
+          {gap && (
+            <div role="status" className="mb-1.5 rounded-md border border-warning/40 bg-warning-soft px-2 py-1 text-caption text-warning">
+              <div className="font-medium">{t.misc.conversations.detail.gap}</div>
+              <div className="opacity-80">{t.misc.conversations.detail.gapDetail(history.coverage?.skippedRecords ?? 0)}</div>
             </div>
           )}
+          {/* 断线 / 重同步 / 调用方那句，都是「机器状态」，走上游的 `.notice`。 */}
+          {notices.map(text => <div key={text} className={inputCss.notice} role="status">{text}</div>)}
         </div>
+        {/* 没有在跑的终端时不给输入框：投递不出去，摆一个能打字的框只会让人白写一段。 */}
+        {jumpTarget && !readOnly ? (
+          <ConversationComposer outgoing={outgoing} />
+        ) : (
+          <div style={{ width: "100%", maxWidth: "var(--dsh-composer-card-max-width)", marginInline: "auto" }}
+            className="border-t border-border px-2.5 py-2 text-caption text-text-dim">
+            {readOnly ? t.bookmarks.readingHistory : t.misc.conversations.detail.send.noRun}
+          </div>
+        )}
+        </>
       }
     >
         {loading && <div className="px-2.5 py-2 text-caption text-text-dim">{t.misc.conversations.detail.loading}</div>}
@@ -281,6 +329,207 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
           ))}
         </ChatView>
 
+    </ConversationShell>
+  );
+}
+
+/** 面包屑的一格。没有 `onClick` 的那格是「当前位置」，disabled 且加粗。 */
+export type ColumnCrumb = { key: string; label: string; title?: string | undefined; onClick?: (() => void) | undefined };
+/** 标签条的一格。上游只在**多于一个**视图时才画这条，所以只有一格等于不画。 */
+export type ColumnTab = { id: string; label: string; title?: string | undefined; active: boolean };
+
+/**
+ * 中栏那一个头的四个位加一条标签条，由调用方填。
+ *
+ * 分成 prop 而不是一整块 ReactNode，是因为**位是有语义的**：`.headerActions` 是
+ * 「此刻能对这条对话做什么」，`.headerUtilities` 是「属于这一栏而不是这条对话的控件」，
+ * `.headerCorner` 是单个收尾控件。传一整块进来，位就退化成了一个 div。
+ */
+export type ColumnChrome = {
+  /** 对话标题**之前**的几格。最后一格由 ColumnHeader 自己补。 */
+  crumbs?: readonly ColumnCrumb[] | undefined;
+  /** 追加进 `.headerActions` 的动作，排在书签之前。 */
+  actions?: ReactNode;
+  /** `.headerUtilities`：工作目录、主题、搜索、下载这些属于栏的东西。 */
+  utilities?: ReactNode;
+  tabs?: readonly ColumnTab[] | undefined;
+  tabsLabel?: string | undefined;
+  onSelectTab?: ((id: string) => void) | undefined;
+};
+
+/**
+ * **中栏唯一的那个头**，形状逐条对着上游的 `ConversationSessionHeader`
+ * （`ui-conversation/src/client/skeleton/ConversationSession.tsx` 71-158 行）：
+ *
+ *     .titleRow
+ *       .titleCluster [ nav.crumbs | .headerActions ]
+ *       .headerUtilities            （:empty 时自己消失）
+ *       .headerCorner               （单个控件，伸进右边距 16px）
+ *     .tabs                         （**只在多于一格时出现**，和上游同一个判据）
+ *
+ * 类全部来自 `vendor/dsh/skeleton/ConversationRoot.module.css`。这些规则在此之前
+ * 是空转的——那份 CSS 逐字搬进来了，但没有任何 DOM 喂它们。
+ *
+ * **不要在这里加行。** `.header` 的 `min-height: 76px` 等于右栏的标签条 38 + 窗格头 38，
+ * 两条规则在栏边接得上；上游把 76 拆成 10 + 30 + 10 + 16 + 9，每一档都没有余量。
+ * 需要更多地方的东西（告警、状态、展开的面板）要么去输入座位，要么绝对定位挂在头下面。
+ */
+function ColumnHeader({ crumbs, current, actions, utilities, corner, tabs, tabsLabel, onSelectTab }: {
+  crumbs: readonly ColumnCrumb[];
+  current: ColumnCrumb;
+  corner?: ReactNode;
+} & Omit<ColumnChrome, "crumbs">) {
+  const chain = [...crumbs, current];
+  const [row, width] = useRowWidth();
+  /*
+    **两档收纳。** 只有一行 30px 可用，而我们要放的东西比上游那个头多：面包屑、本终端
+    历史、书签、只读徽章、跳到终端、工作目录、主题/搜索/下载、角落。全排开大约要 750px，
+    而中栏的下限是 400（`vendor/dsh/layout/columns.ts` 的 CENTER_MIN，窗口再窄还会破）。
+
+    **这条是截图才看出来的**：`.headerActions` 和 `.headerUtilities` 都是 `flex: none`，
+    挤不下时不是换行也不是截断，而是直接压到彼此身上——400px 下三段文字叠在一起。
+    typecheck 和单测对此一无所知（NOTICE 第 3 条记的就是这一类）。
+
+    收的顺序按「离这条对话有多远」：工具位（栏的东西）先收，动作位（这条对话的东西）后收。
+    收进去的是一颗「更多」菜单，**一样都不删**。
+  */
+  const foldUtilities = width !== null && width < 900;
+  const foldActions = width !== null && width < 620;
+  // 渲染成片段而不是数组：数组会要 key，而这两块是固定的两块，不是列表。
+  const overflowing = (foldActions && !!actions) || (foldUtilities && !!utilities);
+  return (
+    <>
+      <div ref={row} className={shellCss.titleRow}>
+        <div className={shellCss.titleCluster}>
+          <nav className={shellCss.crumbs} aria-label={t.misc.conversations.detail.hierarchy}>
+            {chain.map((crumb, index) => (
+              <span key={crumb.key} className={shellCss.crumbSeg}>
+                {index > 0 && <span className={shellCss.crumbSep}>/</span>}
+                <button type="button" disabled={!crumb.onClick} title={crumb.title ?? crumb.label}
+                  className={`${shellCss.crumb} ${crumb.onClick ? "" : shellCss.crumbCurrent}`}
+                  onClick={crumb.onClick}>{crumb.label}</button>
+              </span>
+            ))}
+          </nav>
+          {(!foldActions && actions) || overflowing ? (
+            <div className={shellCss.headerActions}>
+              {!foldActions && actions}
+              {/*
+                「更多」面板**不加 `relative`**：让它挂到 `.root` 上（那一份 CSS 的第一条
+                就是 `position: relative`），于是能横跨整栏摊开。挂在按钮自己身上试过——
+                按钮在头的左半边，面板往哪边长都会有一半掉到栏外（截图里「本终端历史」和
+                「只读历史」被切掉了半截）。`top-[78px]` 是头的 76 加一点缝。
+              */}
+              {overflowing && (
+                <details className="shrink-0">
+                  <summary className="flex cursor-pointer list-none items-center rounded-md border border-border px-2 py-1 text-caption text-text hover:bg-bg-hover">
+                    {t.misc.conversations.detail.more}
+                  </summary>
+                  {/* 收起来的东西横着摆一排、允许换行：它们本来就是一行控件，竖排会变成一张假菜单。 */}
+                  <div className="absolute inset-x-2 top-[78px] z-30 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-bg-panel p-2 shadow-lg">
+                    {foldActions && actions}
+                    {foldUtilities && utilities}
+                  </div>
+                </details>
+              )}
+            </div>
+          ) : null}
+        </div>
+        <div className={shellCss.headerUtilities}>{!foldUtilities && utilities}</div>
+        <div className={shellCss.headerCorner}>{corner}</div>
+      </div>
+      {/* 上游的判据逐字照搬：`tabs.length > 1`。只有一个视图时一条标签条什么也没在选。 */}
+      {tabs && tabs.length > 1 && (
+        <div className={shellCss.tabs} role="tablist" aria-label={tabsLabel}>
+          {tabs.map(tab => (
+            <button key={tab.id} type="button" role="tab" aria-selected={tab.active} title={tab.title}
+              className={`${shellCss.tab} ${tab.active ? shellCss.tabActive : ""}`}
+              onClick={() => onSelectTab?.(tab.id)}>{tab.label}</button>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+/**
+ * 量标题行的实际宽度。
+ *
+ * **不是视口宽度**：中栏的宽由左右两栏让出来，窗口 1600 而中栏 400 是常态
+ * （`AppFrame` 的栏宽契约），按视口断点收纳会在那种布局下完全不起作用。
+ *
+ * 量到之前返回 `null`，按「不收」渲染——第一帧就摆出收起态，再在观察者回调里展开，
+ * 会让每次挂载都闪一下。ResizeObserver 的首次回调在首帧绘制前就到。
+ */
+function useRowWidth(): [(node: HTMLDivElement | null) => void, number | null] {
+  const [width, setWidth] = useState<number | null>(null);
+  const observer = useRef<ResizeObserver | null>(null);
+  const ref = useCallback((node: HTMLDivElement | null) => {
+    observer.current?.disconnect();
+    observer.current = null;
+    if (node === null) return;
+    observer.current = new ResizeObserver(() => { setWidth(node.offsetWidth); });
+    observer.current.observe(node);
+    setWidth(node.offsetWidth);
+  }, []);
+  return [ref, width];
+}
+
+/**
+ * 对话属性收进角落那颗 `…`。
+ *
+ * **`ConversationMeta` 一个字没改**，只是从常驻的第三层横幅挪进了一个浮层。代价是
+ * 多一次点击（浮层自己还有一层「显示详情」折叠）——那一层是 `ConversationMeta` 自带的，
+ * 拆掉它要动那个文件，不在这次的改动范围里。
+ *
+ * 浮层用 `<details>`，和同一行里的终端外观设置（`TerminalAppearanceSettings`）同一种做法：
+ * 这个仓库里还没有 Menu/Popover 原语（上游那个我们没搬），为一颗按钮现写一套点外面就关
+ * 的逻辑，等于在两个地方各留一份将来会漂移的实现。
+ */
+function ConversationMetaMenu({ conversation, onChanged }: {
+  conversation: Conversation;
+  onChanged: (next: Conversation) => void;
+}) {
+  return (
+    <details className="relative">
+      <summary aria-label={t.misc.conversations.detail.details} title={t.misc.conversations.detail.details}
+        className="icon-button grid h-5 w-5 cursor-pointer list-none place-items-center rounded-md text-text-dim transition-colors hover:bg-bg-hover hover:text-text">
+        <IconDots />
+      </summary>
+      <div className="absolute right-0 top-full z-30 mt-2 w-80 overflow-hidden rounded-lg border border-border bg-bg-panel shadow-lg">
+        <ConversationMeta conversation={conversation} onChanged={onChanged} />
+      </div>
+    </details>
+  );
+}
+
+/**
+ * 没有对话可画时的那一栏。**存在的全部理由是那个头**。
+ *
+ * 中栏切到对话视角之后 `TerminalPane` 就不画自己的 `PanelHeader` 了（那是被合并掉的
+ * 第一层）。如果这时恰好一条对话都定位不到，栏里就会只剩一句话——没有返回画布、
+ * 没有视角切换、也够不着「本终端的对话」那颗菜单。所以空态也得带着同一个头。
+ *
+ * 和 `ConversationDetail` 在同一个模块里，于是共用同一个懒加载 chunk，不多一次请求。
+ */
+export function ConversationColumnEmpty({ message, crumbs, actions, utilities, tabs, tabsLabel, onSelectTab }: {
+  message: string;
+} & ColumnChrome) {
+  return (
+    <ConversationShell
+      header={
+        <ColumnHeader
+          crumbs={crumbs?.slice(0, -1) ?? []}
+          current={crumbs?.at(-1) ?? { key: "empty", label: t.terminal.lens.gui }}
+          actions={actions}
+          utilities={utilities}
+          {...(tabs ? { tabs } : {})}
+          {...(tabsLabel ? { tabsLabel } : {})}
+          {...(onSelectTab ? { onSelectTab } : {})}
+        />
+      }
+    >
+      <p role="status" className="p-4 text-caption text-text-dim">{message}</p>
     </ConversationShell>
   );
 }
@@ -401,43 +650,12 @@ function Prose({ value, breakout = true }: { value: string; breakout?: boolean }
   return breakout ? <div className={assistantCss.body}>{markdown}</div> : markdown;
 }
 
-function TextBlock({ text: value, mine, role }: { text: string; mine: boolean; role: string }) {
-  const [expanded, setExpanded] = useState(false);
-  const prose = !mine && role !== "tool";
-  /*
-    **markdown 正文不折叠**——`line-clamp-4` 只留给工具那种纯文本。
+/*
+  助手正文的渲染器。**必须是模块级常量**：`MessageItem` 是 memo，就地写箭头等于每次渲染
+  换一个 `renderBody` 引用，memo 当场作废。
+*/
+const RENDER_PROSE = (value: string) => <Prose value={value} />;
 
-    这条折叠是纯文本时代的设计：>4 行或 >240 字就掐成四行。正文改成结构化渲染之后它反而
-    有害——掐掉的恰恰是表格、代码块、列表这些**最有信息的部分**，只留下开头两行散文。
-    deepseek-harness 的助手回复根本不折叠，长回合靠「回合过程折叠」解决，不靠掐答复。
-  */
-  const collapsible = !mine && !prose && isLongReply(value);
-  /*
-    **气泡只给用户消息，助手的不套框。**
-
-    照 deepseek-harness 的做法改的（`ui-chat/src/client/chat/MessageItem.module.css` 的
-    `.bubble` 只用在 userRow 上，助手那侧没有任何外框）——ChatGPT 系的对话都是这个形状，
-    理由也站得住：一屏里助手的字远多于用户的，每段都套一个灰盒子等于给正文加了一圈噪音，
-    而且会把里面真正需要框的东西（diff、终端输出、代码块）压得没有层次。
-
-    用户那条保留气泡并加大圆角（上游 22px），因为它是短的、需要一眼认出「这句是我说的」。
-  */
-  return (
-    <>
-      <div className={`break-words text-body leading-[1.55] ${
-        prose ? "" : "whitespace-pre-wrap"
-      } ${mine ? "max-w-[85%] rounded-[22px] bg-bg-active px-4 py-2.5 text-text"
-        : role === "tool" ? "max-w-full rounded-lg bg-bg px-2.5 py-1.5 text-text-dim" : "max-w-full text-text"
-      } ${collapsible && !expanded ? "line-clamp-4" : ""}`}>{prose ? <Prose value={value} /> : value}</div>
-      {collapsible && (
-        <button type="button" aria-expanded={expanded} onClick={() => setExpanded(v => !v)}
-          className="rounded px-1 py-0.5 text-caption text-text-dim hover:bg-bg-hover hover:text-text">
-          {expanded ? t.session.aiSync.collapse : t.session.aiSync.expand(value.split("\n").length)}
-        </button>
-      )}
-    </>
-  );
-}
 
 
 /**
@@ -474,18 +692,6 @@ function useFollowBottom(host: RefObject<HTMLElement | null>, dep: unknown) {
   }, [host, dep]);
 }
 
-/*
-  消息动作行的文案。**提到模块顶层**：组件本身没 memo，每次渲染新建一个 labels 会让内部的
-  时刻格式化白算一遍；将来真把消息行 memo 起来时，一个新对象会让 memo 彻底失效。
-*/
-const ACTION_LABELS = {
-  copy: t.misc.conversations.detail.copy,
-  copied: t.misc.conversations.detail.copied,
-  branch: t.misc.conversations.detail.branch,
-  branchUnavailable: t.misc.conversations.detail.branchUnavailable,
-  clockDate: (key: "clock.md" | "clock.ymd", p: { y: number; m: number; d: number }) =>
-    key === "clock.md" ? t.misc.conversations.detail.clockMd(p.m, p.d) : t.misc.conversations.detail.clockYmd(p.y, p.m, p.d),
-};
 
 function roleName(role: string) {
   return role === "user" ? t.misc.conversations.detail.roleUser
@@ -597,9 +803,15 @@ function TranscriptItem({ item, showRole }: { item: Item; showRole: boolean }) {
   );
   const mine = item.role === "user";
   return (
-    <div className={`flex flex-col gap-1 ${item.turnStart ? "mt-3 border-t border-border/40 pt-3" : ""} ${
-      mine ? "items-end" : "items-start"}`}>
-      <div className="flex items-center gap-2 text-caption text-text-dim">
+    /*
+      **行容器必须是 stretch，右对齐交给 `.userRow` 自己。**
+
+      改回 `items-end` 的话 `.userRow` 会被压成 fit-content，气泡的
+      `max-width: min(轴 × 0.702, 82%)` 里那个百分比就按自己的宽度又算了一遍——
+      实测短消息的气泡从 285px 掉到 234px，白白多折一行。
+    */
+    <div className={`flex flex-col items-stretch gap-1 ${item.turnStart ? "mt-3 border-t border-border/40 pt-3" : ""}`}>
+      <div className={`flex items-center gap-2 text-caption text-text-dim ${mine ? "self-end" : "self-start"}`}>
         {/*
           同一个角色连着好几条时只标第一条。一次回合里 AI 往往是「调用 → 改动 → 再调用」，
           每条上面都顶一个「AI」纯属噪音，而且把真正的分界（换人说话）淹掉了。
@@ -611,19 +823,13 @@ function TranscriptItem({ item, showRole }: { item: Item; showRole: boolean }) {
         )}
         {item.message.bodyState !== "stored" && <span className="text-warning/80">{t.misc.conversations.detail.preview}</span>}
       </div>
+      {/*
+        消息主体换成上游的 `MessageItem`（vendor/dsh/chat）。尾部那行动作也在它里面——
+        上游把它摆在 `.userRow` 内部，和气泡共享 6px 间距与右对齐。
+      */}
       {item.kind === "tools"
         ? <ToolsItem item={item} />
-        : <TextBlock text={item.text} mine={mine} role={item.role} />}
-      {/*
-        消息尾部那行：复制 + 时刻。抄自 deepseek-harness（vendor/dsh/chat/MessageIconActions）。
-        **`onBranch` 不传**——分支我们还没实现，传了就会冒出一个点不动的按钮；组件里那条
-        渲染路径原样留着，将来实现了接上即可。
-        用户那侧时刻在前、AI 那侧在后，跟上游一致（`clock`）。
-      */}
-      {item.kind === "text" && (
-        <MessageIconActions text={item.text} time={item.message.event.createdAt}
-          clock={mine ? "start" : "end"} labels={ACTION_LABELS} />
-      )}
+        : <MessageBody item={item} renderBody={RENDER_PROSE} />}
     </div>
   );
 }

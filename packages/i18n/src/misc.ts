@@ -172,6 +172,12 @@ export const misc = {
     },
     detail: {
       back: "返回列表",
+      /** 头里那条面包屑的无障碍名。上游同一个位叫 `session.hierarchy`。 */
+      hierarchy: "对话位置",
+      /** 头右上角那颗 `…`：对话的属性与管理动作。 */
+      details: "对话详情",
+      /** 栏太窄时把动作/工具收进来的那颗钮。一样都不删，只是换个地方点。 */
+      more: "更多",
       loading: "正在加载对话…",
       loadOlder: "加载更早的消息",
       noMessages: "这段对话没有已保存的消息",
@@ -447,6 +453,24 @@ export const misc = {
       sourcesTruncated: "来源已截断",
       http: "HTTP",
       contentTruncated: "内容已截断",
+      /*
+        `MessageItem` 那六句。**其中四句当前一条都画不出来**，照 `turnTime.speed/ttft`
+        的先例留着：`MessageItemLabels` 是个闭合的接口，少一个键调用方就给不出一个
+        全覆盖的对象，而为了省几句话去改抄来的组件，代价比留着大。
+
+        画得出来的只有 extraBlock / jsonTruncated（用户消息里解析不出来的块）；
+        turnError / authFailure / maxTokens / maxTokensHint 走的是 `error` 那个 prop，
+        而我们的 transcript 里**没有回合级错误、也没有 stop_reason**——不传 `error`，
+        那两行整块不渲染。**尤其不能把 maxTokens 那两句接上**：`TurnMaxTokensRow` 不吃
+        任何数据、只吃文案，接上就是每条消息底下都能冒出一句「输出被截断」，那是言之
+        凿凿的空壳（同 NOTICE 里 ask-question-row 不接的理由）。
+      */
+      extraBlock: "这条消息里还有一块没认出来的内容",
+      jsonTruncated: (total: number) => `…（共 ${total} 字符，已截断）`,
+      turnError: "本回合失败",
+      authFailure: "登录已失效，请重新连接后再试。",
+      maxTokens: "输出被截断",
+      maxTokensHint: "这一回合到达了输出长度上限，后面的内容没有生成。",
     },
   media: {
     imageFailed: "图片加载失败",

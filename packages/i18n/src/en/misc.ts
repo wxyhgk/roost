@@ -165,6 +165,9 @@ export const misc = {
     },
     detail: {
       back: "Back to list",
+      hierarchy: "Conversation location",
+      details: "Conversation details",
+      more: "More",
       loading: "Loading the conversation…",
       loadOlder: "Load earlier messages",
       noMessages: "No saved messages in this conversation",
@@ -407,6 +410,13 @@ export const misc = {
       sourcesTruncated: "Sources truncated",
       http: "HTTP",
       contentTruncated: "Content truncated",
+      /* 这六句的去留理由写在中文那一份里（`MessageItemLabels` 是闭合接口）。 */
+      extraBlock: "Unrecognized content in this message",
+      jsonTruncated: (total: number) => `… (${total} characters, truncated)`,
+      turnError: "Turn failed",
+      authFailure: "Your session has expired. Reconnect and try again.",
+      maxTokens: "Output truncated",
+      maxTokensHint: "This turn hit the output length limit; the rest was not generated.",
     },
   media: {
     imageFailed: "Failed to load image",

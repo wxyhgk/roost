@@ -180,6 +180,48 @@ flex/inline-flex 容器里，`svg { display: block }` 被 flex item 的 blockify
 图标的区分度本来就低（这句话在我们自己的旧注释里就写着），而上游那一行之所以干净，
 正是因为只有一个前导标记。CLI 名字那段文字一并丢掉——图标已经说了同一件事。
 
+### 第四轮之二：中栏那三层头收成一个
+
+上游那一栏**只有一个** 76px 的头（这个数等于右栏标签条 38 + 窗格头 38，两条规则在栏边
+接得上）。我们原来叠着三层：终端面板头、`ConversationLens` 的历史下拉 + 横幅、
+对话自己的头。现在按上游的五个位重新编排，`ConversationRoot.module.css` 里那一批
+`.crumbs` / `.headerActions` / `.headerUtilities` / `.headerCorner` / `.tabs`
+从空转变成接上了。
+
+**「本终端的历史」那个下拉查过之后确认不能去掉**，收成了动作位里一颗菜单钮：左栏的
+搜索覆盖不了它——`terminalId` 在后端是 `EXISTS(ai_generations …) OR EXISTS(conversation_runs …)`
+的关联查询，而左栏发的 `q` 只 `instr` 标题和正文；而且左栏默认只列 `active`，
+下拉发的是 `state: 'all'`，归档的对话左栏根本看不到。
+
+**告警横幅移到输入座位上方，没有塞进头里。** 头有 76px 的高度契约，塞一个两行的告警
+进去就是把契约作废；而 `.composerSeat` 是滚动容器**内部**的 sticky，永远贴栏底、
+滚到哪儿都在，比原来跟着头走更难错过。缺口那条保留告警配色——它是坏消息，
+降成 `.notice` 那种中性灰等于降一级。
+
+### 第四轮：输入卡与消息体（把我们自己写的那两块换掉）
+
+前几轮是「在我们的外壳上接他们的零件」，这一轮起是**不再保留我们自己那套 UI**。
+
+- `skeleton/InputBar.tsx`——改自上游同名文件，渲染结构一行不动。我们的
+  `ConversationComposer` 的**全部标记退场**，只留 `outgoing.ts` 那条发送路。
+  **一处被迫的元素级改动**：草稿面从 contenteditable 换成 `<textarea>`。上游那层整棵
+  建立在 Lexical 上（芯片是 decorator portal、键位注册到 editor command layer），
+  Lexical 没搬、芯片和 `@`/斜杠也都没数据，剩下的需求就只是「会自己长高的多行框」。
+  三层包装的类名和 `data-*` 原样保留；连带 `.input p { margin: 0 }` 和
+  `.input p:last-child::after`（幽灵提示）在我们这儿永远命中不了，CSS 逐字留着。
+- `chat/MessageItem.tsx` 接上了（第二轮搬进来、一直没接）。我们自己写的 `TextBlock`
+  退场。真正换来的：气泡底色走 `--dsw-specific-bubble`、宽度跟内容轴联动
+  （`min(轴 × 0.702, 82%)`，换掉写死的 `max-w-[85%]`）、以及 `@文件` 引用芯片。
+
+**`textarea` 上三条内联样式是 preflight 逼出来的第三例**（前两例见上面第 3 条）：
+`resize: none`——Tailwind preflight 有 `textarea { resize: vertical }`，不压就是胶囊右下角
+一个能把它拽变形的把手。同样是 typecheck 和单测看不见、只有画出来才发现的一类。
+
+**一个只有量过才知道的几何陷阱**：消息行的容器必须是 `items-stretch`，右对齐交给
+`.userRow` 自己的 `align-items: flex-end`。改成 `items-end` 的话 `.userRow` 会被压成
+fit-content，气泡 `max-width` 里那个 `82%` 就按自己的宽度又算了一遍——实测短消息的气泡
+从 285px 掉到 234px，白白多折一行。
+
 **其中 `TurnNavigator` 搬了但没接**：它的价值随回合数上涨，而我们是一次读完整段历史、
 不做增量滚动，接上去是个永远指着同一处的导航条。留在目录里是为了将来改成增量加载时不用重搬。
 
@@ -205,6 +247,15 @@ flex/inline-flex 容器里，`svg { display: block }` 被 flex item 的 blockify
   结构（搜索结果条目、匹配行），而我们的 `ToolBlock.result` 是各家 CLI 落盘的原始文本，
   对不对得上没验过。**接之前先拿真实记录跑一遍 model，对不上再按规矩不接、回来补记。**
   `todo-row` 只读 `argsRaw`（就是我们的 `ToolBlock.args`），数据是够的。
+- **输入卡上喂不满的控件**：左下角那颗 `+` 圆钮（查清楚了它在上游**不是附件**，是
+  `aria-haspopup="listbox"` 绑斜杠/`@` 命令菜单的，两样我们都没有）、附件轨、
+  模式芯片、模型选择、**停止钮**（`shared/api/conversations` 里没有中断某一轮的接口——
+  `cancelDelivery` 取消的是还没写进 CLI 的投递，不是已开跑的那轮）、`ContextMeter`。
+  prop 全留着。
+- **`MessageItem` 的另外四个视图**：`ModelRetryRow`（5 个必填字段全要编）、
+  `TurnErrorRow`、`UnknownSurfaceRow`，以及**尤其是 `TurnMaxTokensRow`——它不吃数据、
+  只吃文案，接上就是每条消息底下都能冒出一句「输出被截断」**，是言之凿凿的空壳。
+  `MessageBody` 里根本没留传 `error` 的口子。
 - **侧栏里喂不满的那些**：`sessionStatuses()` 的五档判定（待审批 / 计划待看 / 待回答 /
   running / 子代理数 / completed——我们一条都没有）、行内 `…` 菜单的三个动作（重命名 /
   分叉 / 归档，我们一个都没有）、`SearchResultItem`（要 `snippet`，`listConversations`

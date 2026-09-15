@@ -116,9 +116,11 @@ function FakeHeader({ tab, onTab }: { tab: string; onTab: (id: string) => void }
   );
 }
 
-/** 假的输入卡。只用 InputBar.module.css 的类名结构，不接我们自己的 ConversationComposer
- *  ——那是下一步的接线。这里要验的是几何（22px 圆角、宽度封顶、336px 的滚动上限）和
- *  preflight 会不会把原生 select / contenteditable 弄坏。 */
+/** 假的输入卡。只用 InputBar.module.css 的类名结构，**故意不接**真正的
+ *  `vendor/dsh/skeleton/InputBar`：那张卡自己的状态（空/长草稿/发送中/禁用、preflight
+ *  对 textarea 和 button 的那几刀）在 `dsh-input-bar.tsx` 里逐个画过了，这一页要验的是
+ *  **壳**——几何（22px 圆角、宽度封顶、336px 的滚动上限跟着座位走）以及 preflight 会不会
+ *  把原生 select / contenteditable 弄坏。两页分开，改一页不会把另一页要验的东西挤掉。 */
 function FakeInputBar({ hero, draft, onDraft }: {
   hero: boolean;
   draft: string;

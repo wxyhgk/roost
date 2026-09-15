@@ -457,4 +457,38 @@ html[data-theme="light"] {
     让那几条重绑不至于拿到空值。
   */
   --dsw-alias-scrollbar-hover-l2: var(--dsw-alias-scrollbar-hover-l1);
+
+  /* ---- 输入卡与 hero ---------------------------------------------------
+     第四轮接 InputBar / HeroShell 才需要的。 */
+
+  /*
+    「比页面底挪开一档」的那种面，输入卡上 `+` 圆钮用它。上游浅色
+    `neutral-bluish-60`、深色 `neutral-bluish-800`——都是这个角色。
+    **不补的话那颗圆钮是透明的**，只剩一个图标浮在卡片上。
+  */
+  --dsw-specific-selector: var(--color-bg-hover);
+
+  /*
+    发送钮 hover。上游浅色往亮走（deepseek-400）、深色往深走（deepseek-500）——
+    因为静息色两边不同。我们的静息是 `--dsw-alias-state-business-primary`
+    （= deepseek-450），两个主题同一个值，所以 hover 统一往深一档走。
+  */
+  --dsw-alias-button-info-hover: var(--dsw-static-deepseek-500);
+
+  /*
+    **[猜]** 强调色的最浅一档，hero 上那个预览角标的底。上游浅色 `deepseek-100`、
+    深色 `deepseek-800`——「把强调色稀释到能当底」。我们没有这两档，用 color-mix
+    从 450 兑到背景里，两个主题下都自动成立。
+  */
+  --dsw-alias-state-business-tertiary: color-mix(in srgb, var(--dsw-static-deepseek-450) 18%, var(--color-bg));
+
+  /*
+    画在上面那个底上的字。上游浅色是深蓝、深色是近白——**跟着主题走**（和
+    `--dsw-alias-label-primary-inverted` 那个反着走的不一样，因为这个底本身跟着主题翻）。
+    我们是单色主题，直接用正文色。
+  */
+  --dsw-alias-label-primary-bluish: var(--color-text);
+
+  /* 禁用态的字。比三档里最淡的再淡一步。 */
+  --dsw-alias-label-dimmed: color-mix(in srgb, var(--dsw-alias-label-tertiary) 70%, var(--color-bg));
 }
