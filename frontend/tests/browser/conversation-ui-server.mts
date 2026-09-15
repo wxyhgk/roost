@@ -71,6 +71,7 @@ say('user', [{ type: 'tool_result', toolCallId: 't9', text: '' }]);
 // 还在跑：没有结果。
 say('assistant', [{ type: 'tool_call', toolCallId: 't10', name: 'Bash', text: 'Bash: {"command":"npm run build --workspace frontend"}' }]);
 
+say('user', [{ type: 'compaction', text: '## 这段对话的摘要\n\n用户要求删掉 `parse.ts` 里的空行兜底。经查有两处相关逻辑：\n\n1. 文件末尾的空行——3Dmol 崩溃的直接原因\n2. 原子块中间的空行——手写文件常见的分节写法\n\n已确认第 2 处不能删。' }]);
 say('assistant', [{ type: 'text', text: '空行那条兜底**不能删**：`parse.ts` 里它挡的是原子块中间的空行。删掉之后 `break` 会让后面的原子整片消失，`xyz-parse.test.ts` 里那条「原子块中间的空行跳过」当场就红了。\n\n我把它改回 `continue` 了，测试重新全绿。' }]);
 
 bridge.unbind('fixture-shell');

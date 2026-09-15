@@ -10,6 +10,8 @@ import {
 import { ApiError } from "../../shared/api/errors";
 import { IconChevron } from "../../shared/icons";
 import { ReasoningRow } from "../../vendor/dsh";
+import { MessageIconActions } from "../../vendor/dsh/chat/MessageIconActions";
+import { CompactionItem } from "../../vendor/dsh/chat/CompactionItem";
 import { TurnProcessNodeView } from "../../vendor/dsh/chat/TurnProcessNodeView";
 import { useSearchableHidden } from "../../vendor/dsh/chat/searchable-hidden";
 import { ToolView } from "./tools/registry";
@@ -369,6 +371,19 @@ function useFollowBottom(host: RefObject<HTMLElement | null>, dep: unknown) {
   }, [host, dep]);
 }
 
+/*
+  消息动作行的文案。**提到模块顶层**：组件本身没 memo，每次渲染新建一个 labels 会让内部的
+  时刻格式化白算一遍；将来真把消息行 memo 起来时，一个新对象会让 memo 彻底失效。
+*/
+const ACTION_LABELS = {
+  copy: t.misc.conversations.detail.copy,
+  copied: t.misc.conversations.detail.copied,
+  branch: t.misc.conversations.detail.branch,
+  branchUnavailable: t.misc.conversations.detail.branchUnavailable,
+  clockDate: (key: "clock.md" | "clock.ymd", p: { y: number; m: number; d: number }) =>
+    key === "clock.md" ? t.misc.conversations.detail.clockMd(p.m, p.d) : t.misc.conversations.detail.clockYmd(p.y, p.m, p.d),
+};
+
 function roleName(role: string) {
   return role === "user" ? t.misc.conversations.detail.roleUser
     : role === "assistant" ? t.misc.conversations.detail.roleAssistant
@@ -449,37 +464,20 @@ function TurnDiffItem({ diff }: { diff: TurnDiff }) {
   );
 }
 
-/**
- * `/compact` 留下的上下文摘要：一条横贯的分隔行，点开才看内容。
- *
- * **不替换历史，也不藏内容。** 上面被压缩掉的那些消息该显示照样显示——压缩是模型侧的
- * 事，不是「这段没发生过」；而摘要本身是那段历史唯一剩下的东西，藏掉比画错更糟。
- * 默认折起来只是因为它实测有一万四千字起。
- */
-function CompactionItem({ text }: { text: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="my-1">
-      <button type="button" aria-expanded={open} onClick={() => setOpen(value => !value)}
-        className="flex w-full items-center gap-2 text-caption text-text-dim hover:text-text">
-        <span className="h-px flex-1 bg-border/60" />
-        <span className="shrink-0"><IconChevron open={open} /></span>
-        <span className="shrink-0">{t.misc.conversations.detail.compacted}</span>
-        <span className="h-px flex-1 bg-border/60" />
-      </button>
-      {open && (
-        <div className="mt-1.5 max-h-96 overflow-auto rounded-lg border border-border/60 bg-bg px-2.5 py-2 text-body leading-[1.55] text-text-dim">
-          <Prose value={text} />
-        </div>
-      )}
-    </div>
-  );
-}
-
 /* 一个回合从用户说话开始；边界靠上方的留白和一条细线，而不是给每条消息加框。 */
 function TranscriptItem({ item, showRole }: { item: Item; showRole: boolean }) {
   if (item.kind === "diff") return <li className="flex flex-col items-start"><TurnDiffItem diff={item.diff} /></li>;
-  if (item.kind === "compaction") return <li className="flex flex-col items-stretch"><CompactionItem text={item.text} /></li>;
+  /*
+    压缩标记行换成 deepseek-harness 的（vendor/dsh/chat/CompactionItem）。
+    **`renderSummary` 是我们加的**：它默认用纯文本替身画正文，而压缩摘要是一万多字的
+    markdown，丢掉渲染是实打实的退步——所以塞我们自己的 Prose 进去。
+  */
+  if (item.kind === "compaction") return (
+    <li className="flex flex-col items-stretch">
+      <CompactionItem summary={item.text} renderSummary={value => <Prose value={value} />}
+        title={t.misc.conversations.detail.compacted} detail={t.misc.conversations.detail.compactedDetail} />
+    </li>
+  );
   /*
     思考单独成一条折叠行，不和正文混在一起——它是过程不是结论。收起时只显示第一行，
     组件抄自 deepseek-harness（见 vendor/dsh/ReasoningRow.tsx）。
@@ -500,7 +498,8 @@ function TranscriptItem({ item, showRole }: { item: Item; showRole: boolean }) {
           每条上面都顶一个「AI」纯属噪音，而且把真正的分界（换人说话）淹掉了。
         */}
         {showRole && <span>{roleName(item.role)}</span>}
-        {item.message.event.createdAt && (
+        {/* 时刻挪到了下面那行动作里（文字消息才有），这里只在没有动作行时兜底。 */}
+        {item.kind !== "text" && item.message.event.createdAt && (
           <time dateTime={new Date(item.message.event.createdAt).toISOString()}>{formatTime(item.message.event.createdAt)}</time>
         )}
         {item.message.bodyState !== "stored" && <span className="text-warning/80">{t.misc.conversations.detail.preview}</span>}
@@ -508,6 +507,16 @@ function TranscriptItem({ item, showRole }: { item: Item; showRole: boolean }) {
       {item.kind === "tools"
         ? <ToolsItem item={item} />
         : <TextBlock text={item.text} mine={mine} role={item.role} />}
+      {/*
+        消息尾部那行：复制 + 时刻。抄自 deepseek-harness（vendor/dsh/chat/MessageIconActions）。
+        **`onBranch` 不传**——分支我们还没实现，传了就会冒出一个点不动的按钮；组件里那条
+        渲染路径原样留着，将来实现了接上即可。
+        用户那侧时刻在前、AI 那侧在后，跟上游一致（`clock`）。
+      */}
+      {item.kind === "text" && (
+        <MessageIconActions text={item.text} time={item.message.event.createdAt}
+          clock={mine ? "start" : "end"} labels={ACTION_LABELS} />
+      )}
     </li>
   );
 }

@@ -117,3 +117,75 @@ html[data-theme="light"] {
   --shiki-token-punctuation: #495057;
   --shiki-token-link: #1971c2;
 }
+
+/*
+  ---- chat/TurnNavigator 追加的一批 -------------------------------------
+  回合导轨用到、上面那张表里没有的令牌。单独一块，不并进上面，是为了将来谁搬走了
+  导轨就知道该删哪几行。
+*/
+:root {
+  /* 预览卡的字号两档。上游 ui-theme 的原值是 `500 13px/20px` 和 `12px/18px`，
+     和我们的 --text-body / --text-caption 同号，所以只换字族。 */
+  --dsw-font-xs-strong-13: 500 13px/20px var(--dsw-font-family);
+  --dsw-font-xxs-12: 12px/18px var(--dsw-font-family);
+
+  /* 预览卡的底色。上游 layer-1 在深色是 rgb(35,35,36)、浅色是纯白，比 layer-2
+     再往「浮起来的面板」方向走一档——正是我们 --color-bg-panel 的位置。 */
+  --dsw-alias-bg-layer-1: var(--color-bg-panel);
+
+  /*
+    **[猜]** 最重的一档发丝线（上游浅色 16% 黑、深色 20% 白），用在刻度的静息色和
+    预览卡的描边上。上面 l1/l2 是按上游 4%/10% 的相对关系兑成 --color-border 的
+    35%/70%，顺着这条线 l4 就是整根 --color-border。
+  */
+  --dsw-alias-border-l4: var(--color-border);
+
+  /*
+    **[猜]** 键盘焦点环。上游取品牌蓝，理由是「导轨其余部分从不用这个色相」——
+    这一点在我们这儿更要紧：单色主题里 --color-accent 和活动刻度的
+    --dsw-alias-label-primary 是同一个颜色，拿它画焦点环等于没画。所以沿用上面
+    已经留着的那支 deepseek 蓝（深浅两个主题下都够亮）。
+  */
+  --dsw-alias-state-business-primary: var(--dsw-static-deepseek-450);
+
+  /*
+    **[猜]** 浮层阴影。上游是 0.5px 描边 + 两层极淡的黑（3%/2%），那是为浅色背景配的，
+    在我们深色的默认主题上等于不存在。描边照抄，两层黑按深色底加重到能看出边界为止。
+  */
+  --dsw-elevation-panel:
+    0 0 0 0.5px var(--dsw-alias-border-l4), 0 3px 8px 0 rgba(0, 0, 0, 0.24), 0 0 16px 0 rgba(0, 0, 0, 0.16);
+
+  /*
+    这个不是 --dsw-* 而是上游应用外壳发布在滚动容器上的实测值：导轨靠它把自己
+    右移到滚动条外侧。另外两个（viewport-height / composer-height）在 module.css
+    里自带兜底，只有它没有——而 calc() 里碰上未定义变量是**整条属性作废**，导轨会
+    贴着容器左边缘。这里给 0 当默认，接进去的时候由外壳覆盖。
+  */
+  --dsh-composer-side-clearance: 0px;
+}
+
+/*
+  ---- chat/CompactionItem + chat/GenericCommandCard 追加的一批 -----------
+  压缩标记行和斜杠命令卡用到、上面那张表里没有的三个。同样单独一块，好知道谁带进来的。
+*/
+:root {
+  /*
+    **[猜]** 比 label-primary 往背景方向淡一步：上游 primary 是 bluish-1000/50，
+    dimmed 是 bluish-950/100，差的就是一档。压缩标记行的标题用它——那一行是边界通知，
+    不是对话内容，不该和正文一样重。
+  */
+  --dsw-alias-label-primary-dimmed: color-mix(in srgb, var(--color-text) 88%, var(--color-bg));
+
+  /*
+    不透明的 hover 面。上游的 interactive-bg-hover 是半透明的（浅色 6% 黑、深色 8% 白），
+    展开后那行按钮会 sticky 在滚动容器顶上，半透明会让底下滚过去的正文透出来，所以上游
+    另给了一支实色的。**我们上面那支本来就是实色**（--color-bg-hover 是 #38383b / #ededf0），
+    所以这里指同一个值，不是猜的。
+  */
+  --dsw-alias-interactive-bg-hover-solid: var(--color-bg-hover);
+
+  /* 命令卡展开后那段结算文本的字体。上游原值是 `11px/16px var(--ds-font-family-code)`，
+     11px 与我们的 --text-caption 同号，所以只换字族——和上面的
+     --dsw-font-markdown-code-block 是同一手法，只是行高矮一档。 */
+  --dsw-font-markdown-code-block-small: 11px/16px var(--font-mono);
+}

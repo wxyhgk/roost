@@ -169,9 +169,19 @@ export const misc = {
       toolNoResult: "没有结果",
       /** `/compact` 的摘要：一条分隔行，点开才看。它不是用户说的话。 */
       compacted: "上下文已压缩",
+      /** 收起时标题右边那句。上游放「压缩了 N 条 · 约 M tokens」，那两个数我们算不出来。 */
+      compactedDetail: "点开看摘要",
       /** AI 的思考过程：折叠行，收起时只看第一行。它是过程不是结论。 */
       thinking: "思考",
       thinkingRunning: "正在思考",
+      /** 消息尾部那行图标：复制、时刻。分支我们还没实现，但组件里那条路留着。 */
+      copy: "复制",
+      copied: "已复制",
+      branch: "从这里分支",
+      branchUnavailable: "这条不能分支",
+      /** 非当天的消息才显示日期：同年只给月日，跨年才给年份。 */
+      clockMd: (m: number, d: number) => `${m} 月 ${d} 日`,
+      clockYmd: (y: number, m: number, d: number) => `${y} 年 ${m} 月 ${d} 日`,
       /** 命令输出留尾部：报错和结论都在末尾。 */
       outputClipped: "上面还有更早的输出，已省略",
       /** 「跑完了但没输出」和「结果没拿到」必须分得开。 */
