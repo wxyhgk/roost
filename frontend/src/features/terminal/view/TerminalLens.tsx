@@ -3,8 +3,10 @@ import { fetchConversation, listConversations, type Conversation } from "../../.
 /*
   对话视图不进首屏。
 
-  桌面端默认镜头是 tui（见 defaultLens），`ConversationDetail` 只有切到「对话」才渲染，
-  但它拖着 markdown-it 一起待在首屏 chunk 里。整个组件懒加载省 51.5 KB（gzip，实测）。
+  **默认镜头已经改成对话了**（见 Shell 的 LENS_KEY），所以这条懒加载不再像当初那样
+  「多数人根本不会触发」。它仍然值得留着：首屏落点是画布（`loadMode` 默认 canvas），
+  中栏这时一个终端都没打开，对话那 51.5 KB（gzip，实测）照样不该堵在首屏 chunk 里。
+  代价从「切过去才付」变成「进终端就付」，但仍然晚于首次绘制。
 
   **另一处 import 必须一起改**：BookmarksDialog 也静态 import 它，而 LeftRail 又静态
   import BookmarksDialog。只改这一处实测一个字节都省不下来——一个模块只要还有一条静态
@@ -26,11 +28,6 @@ import { t } from "@roost/i18n";
  * 对话视角提供当前 CLI 与本终端历史的选择；历史选择不会向终端投递。
  */
 
-
-/** 手机上默认看对话：13px 等宽的终端在手机上没法用，而你多半只是想读一眼。 */
-export function defaultLens(): Lens {
-  return typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches ? "gui" : "tui";
-}
 
 export function LensSwitch({ lens, onChange, available, fallbackTitle }: {
   lens: Lens;

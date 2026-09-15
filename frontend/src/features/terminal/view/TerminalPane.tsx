@@ -1,10 +1,9 @@
-import { useState } from "react";
 import { IconChevron, IconDownload, IconSearch, IconTerminal } from "../../../shared/icons";
 import { downloadTerminalLog } from "../exportLog";
 import { useTerminalHandle } from "../useTerminalHandle";
 import { SessionLogo } from "../../../shared/ui/SessionLogo";
 import { TermView } from "./TermView";
-import { ConversationLens, LensSwitch, defaultLens } from "./TerminalLens";
+import { ConversationLens, LensSwitch } from "./TerminalLens";
 import { useTerminalConversation } from "../../conversations/useTerminalConversation";
 import { SessionCanvas } from "./SessionCanvas";
 import { TerminalSearchBar, useTerminalSearch } from "./TerminalSearch";
@@ -22,6 +21,8 @@ export function TerminalPane({
   scope,
   mode: requestedMode,
   onMode,
+  lens,
+  onLens,
   leftCollapsed,
   rightCollapsed,
   onExpandLeft,
@@ -32,6 +33,9 @@ export function TerminalPane({
   /** 画布还是某一个终端。**存在 Shell 里**：侧栏点一个终端也要能切过来。 */
   mode: Mode;
   onMode: (mode: Mode) => void;
+  /** TUI 还是对话。**同样存在 Shell 里**并持久化，理由见那边的 LENS_KEY。 */
+  lens: Lens;
+  onLens: (lens: Lens) => void;
   leftCollapsed: boolean;
   rightCollapsed: boolean;
   onExpandLeft: () => void;
@@ -68,8 +72,8 @@ export function TerminalPane({
     onMode("terminal");
   }
 
-  // 视角是「看同一件事的两种方式」，所以按设备定默认：手机上默认看对话。
-  const [lens, setLens] = useState<Lens>(defaultLens);
+  // 视角由 Shell 持有并持久化（默认是对话，理由写在 Shell 的 LENS_KEY 那段）。
+  //  这里不再自己拿默认值：局部 useState 会让刷新回到默认，正在读对话的人会被扔回 TUI。
   // 有关联对话就能看（哪怕只是历史）；能不能发消息由对话详情自己判断。
   const { conversationId, current: currentConversation } = useTerminalConversation(session?.id ?? null);
   // 一条对话都没有就没有 GUI 可看，切换器不出现，也不会误停在 gui 上。
@@ -93,7 +97,7 @@ export function TerminalPane({
           </>
         )}
         title={mode === "canvas" ? t.terminal.canvas.title : (
-          <LensSwitch lens={lens} onChange={setLens} available={!!session} fallbackTitle={t.terminal.pane.title} />
+          <LensSwitch lens={lens} onChange={onLens} available={!!session} fallbackTitle={t.terminal.pane.title} />
         )}
         sub={mode === "canvas" ? t.terminal.canvas.count(scoped.length) : session?.cwd}
         actions={

@@ -14,6 +14,7 @@ import { ChatView, ChatFlowItem } from "../../vendor/dsh/chat/ChatView";
 import { TurnUsagePanel, TurnTimePanel } from "../../vendor/dsh/chat/TurnUsagePanel";
 import { turnStatsByItemKey } from "./turn-usage";
 import { TURN_STAT } from "./turn-stat-labels";
+import seatCss from "./composer-seat.module.css";
 import { MarkdownText } from "../../vendor/dsh/markdown/MarkdownText";
 import assistantCss from "../../vendor/dsh/chat/AssistantMarkdown.module.css";
 import { TurnProcessNodeView } from "../../vendor/dsh/chat/TurnProcessNodeView";
@@ -76,6 +77,23 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
     而且桶不全就整桶不给——缺席和零是两件事。
   */
   const turnStats = useMemo(() => turnStatsByItemKey(items, conversation.source.cliId), [items, conversation.source.cliId]);
+
+  /*
+    把座位的实际高度发布成 `--dsh-composer-height`。`ChatView.module.css` 里「回到底部」
+    那颗按钮的落点是 `calc(var(--dsh-composer-height, 152px) + 16px)`——那个 152px 的默认值
+    是上游输入框静息高度的估计值，草稿一变长就不准。量出来发出去，那条既有规则才成立。
+  */
+  const composerSeat = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const seat = composerSeat.current;
+    const host = listHost.current;
+    if (!seat || !host || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      host.style.setProperty("--dsh-composer-height", `${Math.round(seat.getBoundingClientRect().height)}px`);
+    });
+    observer.observe(seat);
+    return () => { observer.disconnect(); };
+  }, []);
 
   const showRole = useMemo(() => {
     let last: string | undefined;
@@ -251,16 +269,25 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
             </ChatFlowItem>
           ))}
         </ChatView>
-      </div>
 
-      {/* 没有在跑的终端时不给输入框：投递不出去，摆一个能打字的框只会让人白写一段。 */}
-      {jumpTarget && !readOnly ? (
-        <ConversationComposer outgoing={outgoing} />
-      ) : (
-        <div className="shrink-0 border-t border-border px-2.5 py-2 text-caption text-text-dim">
-          {readOnly ? t.bookmarks.readingHistory : t.misc.conversations.detail.send.noRun}
+        {/*
+          输入框**在滚动容器里面**，sticky 贴底——照 deepseek-harness 的摆法（规则抄在
+          composer-seat.module.css 里）。原来它是滚动容器外面的兄弟节点，换过来买到三件事：
+          鼠标停在输入框上滚轮也能滚转录；`ChatView.module.css` 里「回到底部」那颗按钮读的
+          `--dsh-composer-height` 终于有真值可读（此前它按一个凭空的 152px 让位）；
+          空会话和有内容是同一棵树，输入框不重新挂载、草稿和光标不丢。
+        */}
+        <div ref={composerSeat} data-composer-seat className={seatCss.seat}>
+          {/* 没有在跑的终端时不给输入框：投递不出去，摆一个能打字的框只会让人白写一段。 */}
+          {jumpTarget && !readOnly ? (
+            <ConversationComposer outgoing={outgoing} />
+          ) : (
+            <div className="border-t border-border px-2.5 py-2 text-caption text-text-dim">
+              {readOnly ? t.bookmarks.readingHistory : t.misc.conversations.detail.send.noRun}
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

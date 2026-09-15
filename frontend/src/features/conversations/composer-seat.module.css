@@ -1,0 +1,50 @@
+/*
+  输入框的座位。**它在滚动容器里面 sticky，不是滚动容器外面的 flex 底栏。**
+
+  规则取自 deepseek-harness 的 `ConversationRoot.module.css`（MIT，Copyright (c) 2026
+  DeepSeek，`packages/client/ui-conversation/src/client/skeleton/`，提交 0d1f500）里
+  `.composerSeat` 那两条，上游的英文注释逐字保留在下面。这个文件**不在 vendor/dsh 里**：
+  只取了两条规则、选择器换成了我们自己的类名，够不上「逐字拷贝」那套规矩。
+
+  为什么值得这么摆——上游注释之外，这三件事是我们自己也要的：
+
+  1. 鼠标停在输入框上滚轮也能滚转录。底栏挡住滚轮是个天天碰到的小别扭。
+  2. `ChatView.module.css` 已经在用 `--dsh-composer-height` 摆「回到底部」那颗按钮
+     （`bottom: calc(var(--dsh-composer-height, 152px) + 16px)`）。输入框在滚动容器外面时
+     那个 152px 的默认值是**凭空的**——按钮按一个不存在的高度让位。座位进来并发布真实高度，
+     这条既有规则才对得上。
+  3. 空会话和有内容时是同一棵树，输入框不重新挂载——草稿和光标位置不会因为第一条消息
+     发出去而丢。
+*/
+
+.seat {
+  position: sticky;
+  bottom: 0;
+  /* Above markdown CodeBlock sticky banners (z-index 6) so the footer never
+     paints under a sticking code header while scrolling. The pinned compaction
+     header (MessageItem.module.css, ui-chat) and the turn-navigation rail slot
+     (TurnNavigator.module.css, ui-chat) also take 7 to clear the same banners.
+     Among elements of equal rank the later one in DOM order wins, so the
+     composer stays above the pinned header on the extreme small-viewport
+     overlap and the pinned header stays above the rail. */
+  z-index: 7;
+  /* Input mask (figma 1205:27463): transcript fades out under a FIXED 36px
+     band at the seat's top (the figma 24% of the resting ~150px composer),
+     solid below — px stops, not %, so a growing draft only widens the solid
+     region and the fade band never stretches. The 0px stop is bg-base at
+     zero alpha (not white, which the figma export hardcodes) so both themes
+     fade from their own base. */
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-bg) 0%, transparent) 0px,
+    var(--color-bg) 36px
+  );
+}
+
+/*
+  转录的最后一条不能贴着遮罩。上游靠 `.viewArea` 的 `flex: 1 0 auto` 把内容顶上去，
+  我们的滚动容器里还有「加载更早」等零散节点，直接给座位一点上边距更稳。
+*/
+.seat:not(:only-child) {
+  margin-top: 8px;
+}

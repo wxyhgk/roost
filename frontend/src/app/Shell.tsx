@@ -27,7 +27,7 @@ import { EXTERNAL_EDITORS } from '../plugins/external';
 */
 const SettingsDialog = lazy(() => import('./SettingsDialog').then(m => ({ default: m.SettingsDialog })));
 const CommandPalette = lazy(() => import("../features/workspace/CommandPalette").then(m => ({ default: m.CommandPalette })));
-import type { Mode, RightView, Scope } from "../shared/view";
+import type { Lens, Mode, RightView, Scope } from "../shared/view";
 import { t } from "@roost/i18n";
 
 /**
@@ -70,6 +70,21 @@ function loadMode(): Mode {
   try { return localStorage.getItem(MODE_KEY) === "terminal" ? "terminal" : "canvas"; } catch { return "canvas"; }
 }
 
+/*
+  终端里看的是 TUI 还是对话。**默认是对话。**
+
+  以前默认 tui、只有手机（`pointer: coarse`）才默认 gui，理由是「终端才是这个产品」。
+  现在反过来：对话是主界面，终端是它的底层。读一段 AI 干了什么，排版过的转录几乎总是
+  比一屏 13px 等宽的回滚缓冲更好读；真要盯着 TUI 或者自己敲命令时再切过去。
+
+  **状态和 mode 一样提到 Shell 并持久化**。原来它是 `TerminalPane` 的局部 useState，
+  刷新就回默认值——正在读对话的人刷一下被扔回 TUI，和刷新被扔回画布是同一种烦。
+*/
+const LENS_KEY = "roost-terminal-lens-v1";
+function loadLens(): Lens {
+  try { return localStorage.getItem(LENS_KEY) === "tui" ? "tui" : "gui"; } catch { return "gui"; }
+}
+
 export function Shell() {
   const layoutRef = useRef<ImperativePanelGroupHandle>(null);
   const leftRef = useRef<ImperativePanelHandle>(null);
@@ -82,12 +97,16 @@ export function Shell() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [scope, setScope] = useState<Scope>(loadScope);
   const [mode, setMode] = useState<Mode>(loadMode);
+  const [lens, setLens] = useState<Lens>(loadLens);
   useEffect(() => {
     try { localStorage.setItem(SCOPE_KEY, scope === null ? "" : scope); } catch { /* 存不了就下次从「全部」开始 */ }
   }, [scope]);
   useEffect(() => {
     try { localStorage.setItem(MODE_KEY, mode); } catch { /* 存不了就下次从画布开始 */ }
   }, [mode]);
+  useEffect(() => {
+    try { localStorage.setItem(LENS_KEY, lens); } catch { /* 存不了就下次从对话开始 */ }
+  }, [lens]);
 
   /*
     换工作区**不动**中间栏在看什么。
@@ -210,6 +229,8 @@ export function Shell() {
               scope={scope}
               mode={mode}
               onMode={setMode}
+              lens={lens}
+              onLens={setLens}
               leftCollapsed={leftCollapsed}
               rightCollapsed={rightCollapsed}
               onExpandLeft={() => leftRef.current?.expand()}
