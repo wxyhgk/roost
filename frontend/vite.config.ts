@@ -56,6 +56,46 @@ function ketcherRaphaelInterop(): Plugin {
 }
 
 /**
+ * 把 ketcher 的高分子单体库换成空库。
+ *
+ * `application/editor/data/monomers.modern.js` 是一个 **3.9 MB 的 JSON 字符串**（gzip 后
+ * 仍有 193 KB）：氨基酸、核苷酸、糖、磷酸骨架的模板表。它被 `CoreEditor` 的构造函数吃掉
+ * （`this.setMonomersLibrary(monomersDataRaw)`），而 CoreEditor 就是**大分子编辑器**——
+ * 我们在 frame.tsx 上传了 `disableMacromoleculesEditor`，那个模式根本进不去。
+ *
+ * 也就是说这 3.9 MB 是整个 frame chunk 里最大的一块，而且一个字节都用不上。
+ *
+ * 替换内容不是我编的：`application/editor/helpers` 里 ketcher 自己有一个
+ * `getEmptyMonomersLibraryJson()`，返回的就是下面这个形状。走的是它自己认的「空库」，
+ * 不是一个它没见过的值。
+ *
+ * **只在构建时生效**（`apply: "build"`）。dev 下 ketcher 走 optimizeDeps 的 esbuild 预打包，
+ * Rollup 的 load 钩子够不着；而且开发时留着真库，万一要看大分子模式还能看。
+ *
+ * 匹配不上就**直接让构建失败**：ketcher 升级后换了路径的话，静默跳过的症状是「包又胖了
+ * 3.9 MB」，而那种事没人会注意到。
+ */
+function ketcherWithoutMonomers(): Plugin {
+  const target = /ketcher-core[\\/]dist[\\/]application[\\/]editor[\\/]data[\\/]monomers(\.modern)?\.js$/;
+  const empty = JSON.stringify({ root: { templates: [], nodes: [], connections: [] } });
+  let replaced = false;
+  return {
+    name: "roost:ketcher-without-monomers",
+    apply: "build",
+    load(id) {
+      if (!target.test(id)) return null;
+      replaced = true;
+      return `export default ${JSON.stringify(empty)};`;
+    },
+    buildEnd() {
+      if (!replaced) {
+        this.error("没找到 ketcher-core 的单体库数据模块：升级后路径可能变了，请核对这个替换还生效不生效（不修的话产物会白胖 3.9 MB）");
+      }
+    },
+  };
+}
+
+/**
  * 给 dev server 加 gzip。
  *
  * 开发模式下依赖是**逐个 chunk** 发的，不像构建产物那样合并压缩过。ketcher（分子
@@ -81,7 +121,7 @@ function devCompression(): Plugin {
 const hmrClientPort = Number(process.env.VITE_HMR_CLIENT_PORT) || undefined;
 
 export default defineConfig({
-  plugins: [devCompression(), react(), tailwindcss(), fileIconSubset(), ketcherRaphaelInterop()],
+  plugins: [devCompression(), react(), tailwindcss(), fileIconSubset(), ketcherRaphaelInterop(), ketcherWithoutMonomers()],
   resolve: {
     alias: [
       { find: 'events', replacement: 'events/' },

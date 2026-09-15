@@ -28,7 +28,8 @@
     "desktop:test": "node --test desktop/tests/*.test.mjs",
     "version:set": "npm version --include-workspace-root --workspace frontend --workspace backend --no-git-tag-version",
     "check:syntax": "find scripts deploy desktop -name \"*.mjs\" -not -path \"*/node_modules/*\" -print0 | xargs -0 -n1 node --check",
-    "publish": "node deploy/publish.mjs"
+    "publish": "node deploy/publish.mjs",
+    "smoke:molecule": "node scripts/smoke-molecule.mjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.4",
