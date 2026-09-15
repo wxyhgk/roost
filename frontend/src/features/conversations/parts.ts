@@ -127,7 +127,17 @@ export type ToolBlock = Extract<Block, { kind: "tool" }>;
  */
 export type Item =
   | { kind: "text"; key: string; role: string; text: string; message: HistoryMessage; turnStart: boolean }
-  | { kind: "tools"; key: string; role: string; tools: ToolBlock[]; status: ToolsStatus; message: HistoryMessage; turnStart: boolean }
+  /*
+    `message` 是这一组的**第一条**消息（标题上的时刻、bodyState 都读它）。
+    `messages` 是这一组**跨过的全部消息**，去重、按出现顺序。
+
+    **两个都要，不是冗余。** 一组连续的工具调用是跨消息的（一次回合里 AI 往往是
+    「调用 → 下一条消息里的结果 → 再调用」），而按用量计费的是**每一条**消息。
+    只留第一条的话，`turn-usage.ts` 按 messageId 求和就会把后面几条整个丢掉——
+    实测 fixture 里 5 条带 usage 的记录被缩成 1 条，总量从 995,740 掉到 199,148。
+  */
+  | { kind: "tools"; key: string; role: string; tools: ToolBlock[]; status: ToolsStatus;
+      message: HistoryMessage; messages: HistoryMessage[]; turnStart: boolean }
   /** 一个回合改了什么的汇总，摆在这个回合的末尾。 */
   | { kind: "compaction"; key: string; text: string; turnStart: false }
   | { kind: "thinking"; key: string; text: string; turnStart: false }
@@ -191,18 +201,22 @@ export function buildItems(rows: readonly Row[]): Item[] {
     turnTools = [];
     if (diff) items.push({ kind: "diff", key: `${turnKey}:diff`, diff, turnStart: false });
   };
-  let pendingTools: { tools: ToolBlock[]; message: HistoryMessage; key: string; role: string } | null = null;
+  let pendingTools: { tools: ToolBlock[]; message: HistoryMessage; messages: HistoryMessage[]; key: string; role: string } | null = null;
   const flush = () => {
     if (!pendingTools) return;
-    const { tools, message, key, role } = pendingTools;
+    const { tools, message, messages, key, role } = pendingTools;
     pendingTools = null;
     if (tools.length >= MIN_GROUPED_TOOLS) {
-      items.push({ kind: "tools", key, role, tools, status: toolsStatus(tools), message, turnStart: false });
+      items.push({ kind: "tools", key, role, tools, status: toolsStatus(tools), message, messages, turnStart: false });
       return;
     }
     // 太少就不成组：一条条摊开，各自是一个单元素的组，渲染上不带组的外壳。
+    /*
+      太少就不成组，一条条摊开。**每条仍然带整组跨过的消息**——摊开只改渲染，不该让
+      用量少算：这几条工具本来就可能来自不同的消息。
+    */
     tools.forEach((tool, i) => items.push({ kind: "tools", key: `${key}:${i}`, role, tools: [tool],
-      status: toolsStatus([tool]), message, turnStart: false }));
+      status: toolsStatus([tool]), message, messages, turnStart: false }));
   };
   for (const row of rows) {
     const isUser = row.role === "user";
@@ -220,11 +234,15 @@ export function buildItems(rows: readonly Row[]): Item[] {
         if (block.patch?.hunks.length) {
           flush();
           items.push({ kind: "tools", key: `${row.message.messageId}:patch:${index}`, role: TOOL_ROLE,
-            tools: [block], status: toolsStatus([block]), message: row.message, turnStart: false });
+            tools: [block], status: toolsStatus([block]), message: row.message,
+            messages: [row.message], turnStart: false });
           continue;
         }
-        pendingTools ??= { tools: [], message: row.message, key: `${row.message.messageId}:tools`, role: TOOL_ROLE };
+        pendingTools ??= { tools: [], message: row.message, messages: [],
+          key: `${row.message.messageId}:tools`, role: TOOL_ROLE };
         pendingTools.tools.push(block);
+        // 跨过的每一条消息都要记下来（去重）——组是跨消息的，而用量是按消息计的。
+        if (pendingTools.messages.at(-1) !== row.message) pendingTools.messages.push(row.message);
         continue;
       }
       flush();

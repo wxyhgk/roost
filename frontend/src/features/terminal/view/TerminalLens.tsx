@@ -22,7 +22,7 @@ const ConversationDetail = lazy(() => import("../../conversations/ConversationDe
 */
 const ConversationColumnEmpty = lazy(() => import("../../conversations/ConversationDetail").then(m => ({ default: m.ConversationColumnEmpty })));
 /* 只要类型，不建运行时引用边——否则那条懒加载立刻失效。 */
-import type { ColumnChrome } from "../../conversations/ConversationDetail";
+import type { ColumnChrome, ColumnCrumb, ColumnTab } from "../../conversations/ColumnHeader";
 import { IconChevron } from "../../../shared/icons";
 import type { Lens } from "../../../shared/view";
 import { t } from "@roost/i18n";
@@ -37,42 +37,9 @@ import { t } from "@roost/i18n";
  */
 
 
-export function LensSwitch({ lens, onChange, available, fallbackTitle }: {
-  lens: Lens;
-  onChange: (lens: Lens) => void;
-  available: boolean;
-  /** 没有对话可看时退回普通标题——不显示一个只有一项的「切换器」。 */
-  fallbackTitle: string;
-}) {
-  if (!available) return <span className="truncate">{fallbackTitle}</span>;
-  return (
-    // 放在面板标题位，成为横跨顶部的一条 tab 栏，而不是挤在图标堆里的小控件：
-    // 这两个视角是「同一件事的两种看法」，地位对等，理应是主导航。
-    <nav role="tablist" aria-label={fallbackTitle} className="-mb-px flex h-9 shrink-0 items-stretch gap-3">
-      {(["tui", "gui"] as const).map(value => (
-        <button
-          key={value}
-          type="button"
-          role="tab"
-          aria-selected={lens === value}
-          title={value === "gui" ? t.terminal.lens.switchToGui : t.terminal.lens.switchToTui}
-          onClick={() => onChange(value)}
-          className={`relative border-b-2 px-0.5 text-body transition-colors ${
-            lens === value
-              ? "border-accent font-semibold text-text"
-              : "border-transparent font-normal text-text-dim hover:text-text"
-          }`}
-        >
-          {value === "tui" ? t.terminal.lens.tui : t.terminal.lens.gui}
-        </button>
-      ))}
-    </nav>
-  );
-}
-
 /** 当前身份与历史选择分开：历史永远只读，跟随时身份变化会卸载旧详情。 */
 export function ConversationLens({
-  terminalId, conversationId, current, pinned, terminalLabel, cwd, onBackToCanvas, utilities, lens, onLens,
+  terminalId, conversationId, current, pinned, crumbs, utilities, tabs, onLens,
 }: {
   terminalId: string;
   conversationId: string | null;
@@ -84,14 +51,15 @@ export function ConversationLens({
    * 只读：它未必是这个终端正在跑的对话，往这里发消息会发错地方。
    */
   pinned: string | null;
-  /** 面包屑第一格：这个终端。点它回画布——就是原来 PanelHeader 上那颗返回箭头。 */
-  terminalLabel: string;
-  /** 工作目录。原来在 PanelHeader 的 `sub` 位，现在进 `.headerUtilities`。 */
-  cwd: string | null | undefined;
-  onBackToCanvas: () => void;
-  /** 主题 / 搜索 / 下载那一撮，由 TerminalPane 组好传进来（TUI 那个头用的是同一个节点）。 */
+  /**
+   * 面包屑的前缀（画布 / 这个终端），由 TerminalPane 给——**和 TUI 那个头用的是同一份**，
+   * 所以切视角时前缀一个字都不变，只在末尾多出对话标题那一格。
+   */
+  crumbs: readonly ColumnCrumb[];
+  /** 工作目录 / 主题 / 搜索 / 下载那一撮，同样由 TerminalPane 组好（TUI 用的是同一个节点）。 */
   utilities: ReactNode;
-  lens: Lens;
+  /** 视角标签条，同上：两个视角共用同一份定义。 */
+  tabs: readonly ColumnTab[];
   onLens: (lens: Lens) => void;
 }) {
   const [selected, setSelected] = useState('');
@@ -125,24 +93,20 @@ export function ConversationLens({
   const active = selected || pinnedOther || conversationId;
 
   /*
-    中栏那一个头的几个位，由这里填好交给对话壳画（`ConversationDetail` 的 ColumnHeader）。
+    这一栏那个头的几个位。前缀面包屑、工具位、标签条都是 TerminalPane 给的同一份
+    （TUI 那个头用的就是它们），这里只补上本视角自己的那一样：`.headerActions` 里的
+    「本终端历史」。填好交给 `ConversationDetail`，由 `ConversationShell` 包 `<header>`。
+
     **空态也要用同一份**——没有对话可画时头仍然得在，否则返回画布、切视角、翻本终端历史
     三条路一起断掉。
   */
   const chrome = {
-    crumbs: [{ key: 'terminal', label: terminalLabel, title: t.terminal.canvas.back, onClick: onBackToCanvas }],
+    crumbs,
     actions: <TerminalHistoryMenu
       items={items} selected={selected} onSelect={setSelected} current={current}
       hasMore={cursor !== null} error={error} loading={loading} onMore={() => void more()} />,
-    utilities: <>
-      {/* `.headerUtilities` 是 flex:none，不会被挤掉，所以路径必须自己封顶再截断。 */}
-      {cwd && <span className="max-w-[220px] truncate font-mono text-xs text-text-dim" title={cwd}>{cwd}</span>}
-      {utilities}
-    </>,
-    tabs: [
-      { id: 'tui', label: t.terminal.lens.tui, title: t.terminal.lens.switchToTui, active: lens === 'tui' },
-      { id: 'gui', label: t.terminal.lens.gui, title: t.terminal.lens.switchToGui, active: lens === 'gui' },
-    ],
+    utilities,
+    tabs,
     tabsLabel: t.terminal.pane.title,
     onSelectTab: (id: string) => { onLens(id as Lens); },
   } as const;

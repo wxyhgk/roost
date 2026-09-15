@@ -132,7 +132,37 @@ if (process.env.FIXTURE_GAP === '1') {
     { cursor: seq, hasGap: true });
 }
 
-bridge.unbind('fixture-shell');
+/*
+  `FIXTURE_LIVE=1` 时**不解绑，并且补一条 active 的 run**：`snapshot.run` 于是非空，
+  对话详情给的是真的输入卡（`vendor/dsh/skeleton/InputBar`）而不是「没有在跑的终端」那条
+  兜底。默认仍旧解绑——默认 fixture 钉的是「左栏点了一条历史」那个只读场景。
+
+  run 要单独开一次：`snapshot.run` 读的是 `conversation_runs`，而那张表平时由终端守护进程
+  在认到活 PTY 之后才写（`conversationRuns.observe`），光 bind 不会有。这里拿存回去的那份
+  binding 原样喂进去——`observe` 会逐字段比对 `ai_session_records` 里的当前值，编一个是过不去的。
+*/
+if (process.env.FIXTURE_LIVE === '1') {
+  const record = store.aiSessions.list().find(item => item.binding.webSessionId === 'fixture-shell');
+  if (record) store.conversationRuns.observe(record.binding, 'fixture-daemon');
+} else {
+  bridge.unbind('fixture-shell');
+}
+
+/*
+  `FIXTURE_EMPTY=1` 时再造一条**一条消息都没有**的活对话。
+
+  这不是编出来的形状：`observeConversation` 看到一次 generation 就建目录行，而
+  `last_message_at` 要等第一条记录落库才写。所以「CLI 挂上了终端、但一条记录都没产出」
+  就是一条 `lastMessageAt` 为 null 的活对话——本机库里 6 条有 1 条是这样。这里只 bind
+  不 publish，复现的就是它。**不解绑**，这样输入卡是真卡（hero 的看点正是那张卡居中）。
+*/
+if (process.env.FIXTURE_EMPTY === '1') {
+  store.upsertSession({ id: 'fixture-empty', cwd: dir });
+  bridge.bind({ webSessionId: 'fixture-empty', terminalInstanceId: 'fixture-pty-empty',
+    cliId: 'claude', nativeSessionId: 'fixture-native-empty' });
+  const record = store.aiSessions.list().find(item => item.binding.webSessionId === 'fixture-empty');
+  if (record) store.conversationRuns.observe(record.binding, 'fixture-daemon');
+}
 
 const runtime = createTerminalRuntime({ defaultCwd: dir, shell: '/bin/sh', env: {}, historyStore: store });
 /*

@@ -233,6 +233,19 @@ export const misc = {
         speed: "Speed",
         ttft: "Time to first token",
       },
+      /* 会话级的两颗药丸。四条计时文案当前画不出来，理由同 turnTime.speed/ttft。 */
+      sessionStats: {
+        counts: (turns: number, steps: number) => `${turns} turns ${steps} steps`,
+        cacheHit: (percent: string) => `Cache hit ${percent}%`,
+        title: "Session statistics",
+        usageTitle: "Token usage",
+        llmTime: "LLM time",
+        toolTime: "Tool time",
+        ttft: "Avg time to first token (TTFT)",
+        speed: "Tokens per second (TPS)",
+        compactSeconds: (seconds: number) => `${seconds}s`,
+        compactMinutes: (minutes: number, seconds: number) => `${minutes}m${seconds}s`,
+      },
       ranFor: (duration: string) => `Ran for ${duration}`,
       tokensPerSecond: (tps: string) => `${tps} tokens/s`,
       number: {

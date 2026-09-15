@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { buildItems, groupMessages, MIN_GROUPED_TOOLS, type Item, type TurnDiff } from "./parts";
 import { afterGesture, afterScroll, initialFollowIntent, isViewportScrollKey } from "../../shared/followBottom";
 import {
@@ -12,16 +12,21 @@ import { CompactionItem } from "../../vendor/dsh/chat/CompactionItem";
 import { ChatView, ChatFlowItem } from "../../vendor/dsh/chat/ChatView";
 import { ConversationShell } from "../../vendor/dsh/skeleton/ConversationShell";
 /*
-  头的那几个位（面包屑 / 动作 / 工具 / 角落 / 标签条）和上游是同一套类。这两份 CSS 在
-  vendor 里逐字躺着，在此之前**一条规则都没生效**——我们的头是自己拿 Tailwind 拼的。
   `InputBar.module.css` 只取 `.notice` 一条：上游把「机器状态」这类 role=status 的短句
   放在输入卡上方（InputBar.tsx 第 345 行），不放进头里，正是因为头有 76px 的高度契约。
 */
-import shellCss from "../../vendor/dsh/skeleton/ConversationRoot.module.css";
 import inputCss from "../../vendor/dsh/skeleton/InputBar.module.css";
+/*
+  头的那五个位（面包屑 / 动作 / 工具 / 角落 / 标签条）住在 `./ColumnHeader`——**三个
+  视角共用同一份**，画布和 TUI 那边由 TerminalPane 直接画。放在这个特性目录下的理由
+  （terminal 有 public.ts，反向 import 过不了边界检查）写在那个文件顶上。
+*/
+import { ColumnHeader, type ColumnChrome } from "./ColumnHeader";
 import { TurnUsagePanel, TurnTimePanel } from "../../vendor/dsh/chat/TurnUsagePanel";
-import { turnStatsByItemKey } from "./turn-usage";
-import { TURN_STAT } from "./turn-stat-labels";
+import { StatsPills } from "../../vendor/dsh/chat/StatsPills";
+import { collectSessionStats, turnStatsByItemKey } from "./turn-usage";
+import { SESSION_STAT, TURN_STAT } from "./turn-stat-labels";
+import { ConversationHero } from "./ConversationHero";
 import { MarkdownText } from "../../vendor/dsh/markdown/MarkdownText";
 import assistantCss from "../../vendor/dsh/chat/AssistantMarkdown.module.css";
 import { TurnProcessNodeView } from "../../vendor/dsh/chat/TurnProcessNodeView";
@@ -186,8 +191,41 @@ export function ConversationDetail({
     **历史回放期间用 `settling`，不是 `hero` 也不是 `active`。** 座位这时是
     `visibility: hidden` 挂着——不是不渲染——所以输入框不重新挂载、草稿不丢，也不会
     先闪一个居中的 hero 再啪地落到底部。
+
+    **hero 是真实存在的一档，不是补形状。** 我们的对话是从 CLI 的 transcript 观察来的：
+    `observeConversation` 在**看到一次 generation 就**建目录行，而
+    `last_message_at` 要等第一条记录落库才写（`workspace-store/src/ai-history.ts`）。
+    于是「CLI 挂上了终端、但一条记录都没产出」就是一条 `lastMessageAt` 为 null 的活对话。
+    [实测] 本机库里 6 条对话有 1 条是这样（未归档、未回收，左栏默认就列得出来，
+    `sort=activity` 用 `COALESCE(last_message_at, created_at)` 排，它还排在中间）；
+    隔离 fixture 里只 bind 不 publish 也稳定复现。所以这一档看得见，值得画。
+
+    判据用**已加载的条目数**而不是 `conversation.lastMessageAt`：后者是目录行上的快照，
+    而这里要说的是「此刻这一栏里什么都没有」。四个条件缺一不可——`hasMore` 为真时空只是
+    还没翻到（不该居中之后又被填满），有待发消息时流里已经有东西了，出错时该让错误占位。
   */
-  const phase = loading && history.items.length === 0 ? "settling" : "active";
+  const blank = !loading && !error && history.items.length === 0
+    && !history.hasMore && outgoing.pending.length === 0;
+  const phase = loading && history.items.length === 0 ? "settling" : blank ? "hero" : "active";
+  /*
+    会话级的两颗药丸要的读数。**和回合级共用一次条目遍历的输入**，但求和边界不同（整段 vs
+    一个回合），折算在 turn-usage.ts 里，纯 TS 带单测。
+
+    六个计时字段传 0：那是上游给它们写的语义（`0 when no node carries timing`），不是把
+    未知当成 0 显示——`TimePill` 对每一项都有 `> 0` 的闸门，全 0 时它自己退化成一个不可点的
+    静态读数。我们算不出模型用时/工具用时/TTFT/输出速度，理由和 `turnRunMs` 上那段一样。
+
+    整个对象放进同一个 `useMemo`：`StatsPills` 是 `memo` 的，每次渲染新建一份对象等于把
+    memo 作废。
+  */
+  const sessionStats = useMemo(() => {
+    const folded = collectSessionStats(items, history.items);
+    return {
+      stats: { turns: folded.turns, steps: folded.steps,
+        llmMs: 0, toolMs: 0, ttftMs: 0, ttftSteps: 0, decodeMs: 0, decodeTokens: 0 },
+      usage: folded.usage,
+    };
+  }, [items, history.items]);
 
   return (
     <ConversationShell
@@ -245,6 +283,12 @@ export function ConversationDetail({
           横幅没有自己的封顶，所以仍然要这一层，宽度按同一个变量给，和卡片对齐。
         */
         <>
+        {/*
+          hero 的标题在**输入卡上方、同一个 `.composerStack` 里**，和上游一样
+          （`ConversationContent.tsx` 第 242 行 `{hero && <HeroShell …>}`）——不是另起一层。
+          栈的 gap 和居中都由 `.composerHero` 管，所以摆位这件事这里一个字都不用写。
+        */}
+        {phase === "hero" && <ConversationHero headline={t.misc.conversations.detail.noMessages} />}
         <div style={{ width: "100%", maxWidth: "var(--dsh-composer-card-max-width)", marginInline: "auto" }}>
           {/*
             **缺口横幅落在这里，不在头里。**
@@ -267,9 +311,22 @@ export function ConversationDetail({
           {/* 断线 / 重同步 / 调用方那句，都是「机器状态」，走上游的 `.notice`。 */}
           {notices.map(text => <div key={text} className={inputCss.notice} role="status">{text}</div>)}
         </div>
-        {/* 没有在跑的终端时不给输入框：投递不出去，摆一个能打字的框只会让人白写一段。 */}
+        {/*
+          没有在跑的终端时不给输入框：投递不出去，摆一个能打字的框只会让人白写一段。
+
+          会话级那两颗药丸走 `dock`——卡片**内部**的最后一格，和上游同一个位置。
+          摆成卡片的兄弟节点也画得出来，但 `InputBar.module.css` 的
+          `.root:has([data-composer-stats])` 就不命中了：那条在命中时把卡片底距从 8 收到 4，
+          不命中就变成「卡片 8 + 栈 gap 6 + 药丸 4 = 18px」，比上游多 10px。
+
+          hero 下不画：一条消息都没有的对话没有统计可言；上游的 dock 本身也只在
+          `variant === 'composer'` 时渲染。
+        */}
         {jumpTarget && !readOnly ? (
-          <ConversationComposer outgoing={outgoing} />
+          <ConversationComposer outgoing={outgoing}
+            {...(phase !== "hero"
+              ? { dock: <StatsPills stats={sessionStats.stats} usage={sessionStats.usage} t={SESSION_STAT} /> }
+              : {})} />
         ) : (
           <div style={{ width: "100%", maxWidth: "var(--dsh-composer-card-max-width)", marginInline: "auto" }}
             className="border-t border-border px-2.5 py-2 text-caption text-text-dim">
@@ -279,6 +336,14 @@ export function ConversationDetail({
         </>
       }
     >
+      {/*
+        **hero 态必须传 `null`，不能传一棵空的树。** `ConversationContent` 只在 children 为
+        null/undefined 时才不渲染 `.viewArea`，而 `.viewArea` 是撑满高度的——留一个空的在那儿，
+        `.root[data-phase='hero'] .scrollBody` 的 `justify-content: center` 就没有空间可居中，
+        输入卡照样贴底。这条是那个文件 `children` 注释里点过名的。
+      */}
+      {phase === "hero" ? null : (
+        <>
         {loading && <div className="px-2.5 py-2 text-caption text-text-dim">{t.misc.conversations.detail.loading}</div>}
         {error && <div role="alert" className="px-2.5 py-2 text-caption text-danger">{error}</div>}
         {!loading && !error && history.items.length === 0 && <Empty title={t.misc.conversations.detail.noMessages} />}
@@ -328,152 +393,19 @@ export function ConversationDetail({
             </ChatFlowItem>
           ))}
         </ChatView>
-
+        </>
+      )}
     </ConversationShell>
   );
 }
 
-/** 面包屑的一格。没有 `onClick` 的那格是「当前位置」，disabled 且加粗。 */
-export type ColumnCrumb = { key: string; label: string; title?: string | undefined; onClick?: (() => void) | undefined };
-/** 标签条的一格。上游只在**多于一个**视图时才画这条，所以只有一格等于不画。 */
-export type ColumnTab = { id: string; label: string; title?: string | undefined; active: boolean };
+/*
+  头本身搬到了 `./ColumnHeader`——它只吃插槽，三个视角（画布 / TUI / 对话）共用同一份。
+  搬走的理由和「为什么不用提 state」写在那个文件顶上。这里再导出一次类型，是因为
+  `ColumnChrome` 是这个模块两个导出组件的 prop 形状的一部分。
+*/
+export type { ColumnCrumb, ColumnTab, ColumnChrome } from "./ColumnHeader";
 
-/**
- * 中栏那一个头的四个位加一条标签条，由调用方填。
- *
- * 分成 prop 而不是一整块 ReactNode，是因为**位是有语义的**：`.headerActions` 是
- * 「此刻能对这条对话做什么」，`.headerUtilities` 是「属于这一栏而不是这条对话的控件」，
- * `.headerCorner` 是单个收尾控件。传一整块进来，位就退化成了一个 div。
- */
-export type ColumnChrome = {
-  /** 对话标题**之前**的几格。最后一格由 ColumnHeader 自己补。 */
-  crumbs?: readonly ColumnCrumb[] | undefined;
-  /** 追加进 `.headerActions` 的动作，排在书签之前。 */
-  actions?: ReactNode;
-  /** `.headerUtilities`：工作目录、主题、搜索、下载这些属于栏的东西。 */
-  utilities?: ReactNode;
-  tabs?: readonly ColumnTab[] | undefined;
-  tabsLabel?: string | undefined;
-  onSelectTab?: ((id: string) => void) | undefined;
-};
-
-/**
- * **中栏唯一的那个头**，形状逐条对着上游的 `ConversationSessionHeader`
- * （`ui-conversation/src/client/skeleton/ConversationSession.tsx` 71-158 行）：
- *
- *     .titleRow
- *       .titleCluster [ nav.crumbs | .headerActions ]
- *       .headerUtilities            （:empty 时自己消失）
- *       .headerCorner               （单个控件，伸进右边距 16px）
- *     .tabs                         （**只在多于一格时出现**，和上游同一个判据）
- *
- * 类全部来自 `vendor/dsh/skeleton/ConversationRoot.module.css`。这些规则在此之前
- * 是空转的——那份 CSS 逐字搬进来了，但没有任何 DOM 喂它们。
- *
- * **不要在这里加行。** `.header` 的 `min-height: 76px` 等于右栏的标签条 38 + 窗格头 38，
- * 两条规则在栏边接得上；上游把 76 拆成 10 + 30 + 10 + 16 + 9，每一档都没有余量。
- * 需要更多地方的东西（告警、状态、展开的面板）要么去输入座位，要么绝对定位挂在头下面。
- */
-function ColumnHeader({ crumbs, current, actions, utilities, corner, tabs, tabsLabel, onSelectTab }: {
-  crumbs: readonly ColumnCrumb[];
-  current: ColumnCrumb;
-  corner?: ReactNode;
-} & Omit<ColumnChrome, "crumbs">) {
-  const chain = [...crumbs, current];
-  const [row, width] = useRowWidth();
-  /*
-    **两档收纳。** 只有一行 30px 可用，而我们要放的东西比上游那个头多：面包屑、本终端
-    历史、书签、只读徽章、跳到终端、工作目录、主题/搜索/下载、角落。全排开大约要 750px，
-    而中栏的下限是 400（`vendor/dsh/layout/columns.ts` 的 CENTER_MIN，窗口再窄还会破）。
-
-    **这条是截图才看出来的**：`.headerActions` 和 `.headerUtilities` 都是 `flex: none`，
-    挤不下时不是换行也不是截断，而是直接压到彼此身上——400px 下三段文字叠在一起。
-    typecheck 和单测对此一无所知（NOTICE 第 3 条记的就是这一类）。
-
-    收的顺序按「离这条对话有多远」：工具位（栏的东西）先收，动作位（这条对话的东西）后收。
-    收进去的是一颗「更多」菜单，**一样都不删**。
-  */
-  const foldUtilities = width !== null && width < 900;
-  const foldActions = width !== null && width < 620;
-  // 渲染成片段而不是数组：数组会要 key，而这两块是固定的两块，不是列表。
-  const overflowing = (foldActions && !!actions) || (foldUtilities && !!utilities);
-  return (
-    <>
-      <div ref={row} className={shellCss.titleRow}>
-        <div className={shellCss.titleCluster}>
-          <nav className={shellCss.crumbs} aria-label={t.misc.conversations.detail.hierarchy}>
-            {chain.map((crumb, index) => (
-              <span key={crumb.key} className={shellCss.crumbSeg}>
-                {index > 0 && <span className={shellCss.crumbSep}>/</span>}
-                <button type="button" disabled={!crumb.onClick} title={crumb.title ?? crumb.label}
-                  className={`${shellCss.crumb} ${crumb.onClick ? "" : shellCss.crumbCurrent}`}
-                  onClick={crumb.onClick}>{crumb.label}</button>
-              </span>
-            ))}
-          </nav>
-          {(!foldActions && actions) || overflowing ? (
-            <div className={shellCss.headerActions}>
-              {!foldActions && actions}
-              {/*
-                「更多」面板**不加 `relative`**：让它挂到 `.root` 上（那一份 CSS 的第一条
-                就是 `position: relative`），于是能横跨整栏摊开。挂在按钮自己身上试过——
-                按钮在头的左半边，面板往哪边长都会有一半掉到栏外（截图里「本终端历史」和
-                「只读历史」被切掉了半截）。`top-[78px]` 是头的 76 加一点缝。
-              */}
-              {overflowing && (
-                <details className="shrink-0">
-                  <summary className="flex cursor-pointer list-none items-center rounded-md border border-border px-2 py-1 text-caption text-text hover:bg-bg-hover">
-                    {t.misc.conversations.detail.more}
-                  </summary>
-                  {/* 收起来的东西横着摆一排、允许换行：它们本来就是一行控件，竖排会变成一张假菜单。 */}
-                  <div className="absolute inset-x-2 top-[78px] z-30 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-bg-panel p-2 shadow-lg">
-                    {foldActions && actions}
-                    {foldUtilities && utilities}
-                  </div>
-                </details>
-              )}
-            </div>
-          ) : null}
-        </div>
-        <div className={shellCss.headerUtilities}>{!foldUtilities && utilities}</div>
-        <div className={shellCss.headerCorner}>{corner}</div>
-      </div>
-      {/* 上游的判据逐字照搬：`tabs.length > 1`。只有一个视图时一条标签条什么也没在选。 */}
-      {tabs && tabs.length > 1 && (
-        <div className={shellCss.tabs} role="tablist" aria-label={tabsLabel}>
-          {tabs.map(tab => (
-            <button key={tab.id} type="button" role="tab" aria-selected={tab.active} title={tab.title}
-              className={`${shellCss.tab} ${tab.active ? shellCss.tabActive : ""}`}
-              onClick={() => onSelectTab?.(tab.id)}>{tab.label}</button>
-          ))}
-        </div>
-      )}
-    </>
-  );
-}
-
-/**
- * 量标题行的实际宽度。
- *
- * **不是视口宽度**：中栏的宽由左右两栏让出来，窗口 1600 而中栏 400 是常态
- * （`AppFrame` 的栏宽契约），按视口断点收纳会在那种布局下完全不起作用。
- *
- * 量到之前返回 `null`，按「不收」渲染——第一帧就摆出收起态，再在观察者回调里展开，
- * 会让每次挂载都闪一下。ResizeObserver 的首次回调在首帧绘制前就到。
- */
-function useRowWidth(): [(node: HTMLDivElement | null) => void, number | null] {
-  const [width, setWidth] = useState<number | null>(null);
-  const observer = useRef<ResizeObserver | null>(null);
-  const ref = useCallback((node: HTMLDivElement | null) => {
-    observer.current?.disconnect();
-    observer.current = null;
-    if (node === null) return;
-    observer.current = new ResizeObserver(() => { setWidth(node.offsetWidth); });
-    observer.current.observe(node);
-    setWidth(node.offsetWidth);
-  }, []);
-  return [ref, width];
-}
 
 /**
  * 对话属性收进角落那颗 `…`。

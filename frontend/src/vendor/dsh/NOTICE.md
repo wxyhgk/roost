@@ -84,7 +84,17 @@ Copyright (c) 2026 DeepSeek
    **这是 NOTICE 第 3 条那个模式的新变种**：前两次是 Tailwind 的 preflight 撞车，这次肇事者
    是我们自己写的全局规则。同样是 typecheck 和单测看不见的一类。
 
-5. **布局状态我们持久化，上游故意不。** 上游 README 写着 "Layout state resets on reload"，
+5. **令牌表只挂在懒加载链上，首屏拿到的是空串。** `tokens.css` 原来只随
+   `vendor/dsh/index.ts` 一起进来，而那条链的唯一入口是**懒加载**的对话模块。第四轮把栏头
+   提到首屏（画布和 TUI 也用同一个头）之后，对话 chunk 下载前整套 `--dsw-*` 是空的——
+   `.header` 的下边框从暗线变成纯白、`.tab` 丢掉三档灰和选中态那点蓝。修法是让用到
+   vendor CSS 的首屏组件自己 `import "../../vendor/dsh/tokens.css"`。
+
+   **这是那个模式的第五次**，而且肇事者第一次不是某条 CSS 规则，是**模块图**：
+   「谁 import 谁」决定了令牌到不到得了，而 typecheck 和单测对此一无所知。
+   以后把任何 vendor 组件挪进首屏，先确认令牌表跟着走。
+
+6. **布局状态我们持久化，上游故意不。** 上游 README 写着 "Layout state resets on reload"，
    刷新即重置栏宽和折叠态（只有对话内容宽存 localStorage）。我们不跟这一条——口子是
    `layout-state.ts` 的 `LayoutPersistence`，默认不启用。**只存 `sidebar` / `rightbar` 两个
    字段**：`viewportWidth` 是实测值；`narrowExpanded` 上游自己跨断点就清，存下来等于把临时
@@ -92,10 +102,10 @@ Copyright (c) 2026 DeepSeek
    刷新后变成「框以为开着、占位者以为关着」。读回来的值重新夹逼一次——存储里可能躺着旧版本
    写的或手改的值，一个 NaN 进 `gridTemplateColumns` 就是一条永远修不好的坏栏。
 
-6. **`MessageItem.module.css` 删掉了上游的 52–193 行**——那 20 条 `.compaction*` 已经在
+7. **`MessageItem.module.css` 删掉了上游的 52–193 行**——那 20 条 `.compaction*` 已经在
    `chat/CompactionItem.module.css` 里，搬第二份会让两处各自漂移。
 
-7. **`WebBlock` 在 `highlighted.ts` 而不是 `index.ts`。** 它自己不碰 shiki，但它用
+8. **`WebBlock` 在 `highlighted.ts` 而不是 `index.ts`。** 它自己不碰 shiki，但它用
    `MarkdownText` 画搜索结果正文，而完整树里 `render.tsx → CodeBlock → markdown/highlight.ts`
    是静态引用——「谁 import 谁」的隔离只要有一次间接引用就破。实测：桶里只取一个
    `TerminalBlock`，挪之前 shiki 会跟着进来，挪之后 shiki 和 katex 都是 0 次、产物 154 KB。
@@ -221,6 +231,53 @@ flex/inline-flex 容器里，`svg { display: block }` 被 flex item 的 blockify
 `.userRow` 自己的 `align-items: flex-end`。改成 `items-end` 的话 `.userRow` 会被压成
 fit-content，气泡 `max-width` 里那个 `82%` 就按自己的宽度又算了一遍——实测短消息的气泡
 从 285px 掉到 234px，白白多折一行。
+
+### 第四轮之三：输入卡下面那两颗**会话级**药丸
+
+- `chat/StatsPills.module.css`（69 行）——**逐字**，零处 ROOST-CHANGE。
+- `chat/StatsPills.tsx`——改自上游同名文件。**五个函数体（`TimePill` / `UsagePill` /
+  `formatDuration` / `cacheHitPercent` / `billedInputTokens`）一行未动**，改动全在数据接口：
+  `deriveStats` 整个删掉（它遍历上游的 `ChatSnapshot` 节点信封，我们的折算在
+  `features/conversations/turn-usage.ts` 里、纯 TS 带单测），两个投影 hook 换成两个值 prop，
+  `TokenUsageProjection` 换成本文件自带的 `SessionTokenUsage`（多一档 `null`），
+  `t` 换成本地的 `SessionStatTranslate`。逐条写在文件头。
+
+**两颗药丸只有一颗是活的，这是查过数据之后的结论**：
+
+| | 上游要什么 | 我们有没有 |
+| --- | --- | --- |
+| 数据库药丸（总 token + 缓存命中） | 四个计费桶 | **有**，`MessageUsage` 求和即可 |
+| 仪表盘药丸的标签（回合数/步数） | 回合数、步数 | **有**，步＝带 `usage` 的记录数 |
+| 仪表盘药丸的弹层（模型用时/工具用时/TTFT/TPS） | 四项计时 | **一项都没有** |
+
+transcript 里没有 step 开始时刻、没有首 token 时刻，工具调用和结果也没有配对时刻——
+拿两条落盘记录的时间差冒充「模型用时」是撒谎，这条在 `turn-usage.ts` 的 `turnRunMs`
+上已经记过一次。所以六个计时字段一律喂 0，**而 0 正是上游给它们写的语义**
+（`0 when no node carries timing`）：`TimePill` 对每一项都有 `> 0` 的闸门，全 0 时它自己
+退化成一个**不可点的静态读数**。那条退化路径是上游写的，我们照走，没有删它的弹层分支——
+和 `InputBar` 里那些喂不满的 prop、`turnTime.speed/ttft` 那两句文案是同一个处置。
+
+**接线上的一处偏差，10px**：上游把这一行挂在 `conversation.composer.dock`（`InputBar` 的
+`dock` prop，卡片内部最后一格），`.root:has([data-composer-stats])` 因此把卡片底距从 8 收到
+4，加药丸自己的 4px 顶距＝8。我们挂成输入卡的**兄弟**（`.composerStack` 里），于是是
+8 + 栈 gap 6 + 4 = 18。喂 `dock` 要改 `ConversationComposer`，那不在这一轮的范围里。
+
+### 第四轮之四：hero 空态接上了
+
+`skeleton/HeroShell.module.css`（231 行）搬进来之后一直没人 import。现在
+`features/conversations/ConversationHero.tsx` 用它的 `.root` / `.stack` / `.headline` /
+`.titleGroup` 四条，DOM 照上游 `EmptyHero.tsx` 的 `HeroShell`。
+
+**鲸鱼标记不画**：`FishLogo` 在下面「没搬什么」里点了名，而自制一个品牌标记比不画更糟。
+`.fish*` / `.workspace*` / `.modal*` / `.previewBadge` 继续空转，CSS 逐字留着。
+
+**上游在 hero 下把头整个藏起来（`.headerHidden`），我们不藏**：上游那一档是「新会话」，
+还没有对象；我们这一档是一条**已经存在**、只是一条记录都没落盘的对话——它有标题、有
+「返回列表」、有属性菜单，藏了头等于把退路一起藏掉。
+
+**这一档在真实数据里存在**：`observeConversation` 看到一次 generation 就建目录行，而
+`last_message_at` 要等第一条记录落库才写。[实测] 本机库 6 条对话里有 1 条是这样
+（未归档、未回收，左栏默认列得出来）。
 
 **其中 `TurnNavigator` 搬了但没接**：它的价值随回合数上涨，而我们是一次读完整段历史、
 不做增量滚动，接上去是个永远指着同一处的导航条。留在目录里是为了将来改成增量加载时不用重搬。

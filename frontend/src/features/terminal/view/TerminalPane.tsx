@@ -1,16 +1,20 @@
-import { IconChevron, IconDownload, IconSearch, IconTerminal } from "../../../shared/icons";
+import { IconChevron, IconDownload, IconSearch } from "../../../shared/icons";
 import { downloadTerminalLog } from "../exportLog";
 import { useTerminalHandle } from "../useTerminalHandle";
-import { SessionLogo } from "../../../shared/ui/SessionLogo";
 import { TermView } from "./TermView";
-import { ConversationLens, LensSwitch } from "./TerminalLens";
+import { ConversationLens } from "./TerminalLens";
 import { useTerminalConversation } from "../../conversations/useTerminalConversation";
 import { SessionCanvas } from "./SessionCanvas";
 import { TerminalSearchBar, useTerminalSearch } from "./TerminalSearch";
 import type { Lens, Mode, Scope } from "../../../shared/view";
 import { Empty } from "../../../shared/ui/Empty";
 import { IconButton } from "../../../shared/ui/IconButton";
-import { PanelHeader } from "../../../shared/ui/PanelHeader";
+/*
+  **中栏只有一个头。** 三个视角（画布 / TUI / 对话）用的是同一个组件、同一条 76px
+  契约，所以切视角时栏头不跳。它住在 conversations 那边，理由（terminal 有 public.ts，
+  反向 import 过不了 check-boundaries）写在那个文件顶上。
+*/
+import { ColumnHeader, ColumnHeaderFrame, type ColumnCrumb } from "../../conversations/ColumnHeader";
 import { useWorkspace } from "../../../shared/store";
 import { sessionTitle } from "../../../shared/sessionTitle";
 import { scopedSessions } from "../sessionOrder";
@@ -81,16 +85,20 @@ export function TerminalPane({
   const showGui = mode === "terminal" && lens === "gui";
 
   /*
-    主题 / 搜索 / 下载这一撮**两个头共用同一个节点**：TUI 下它在 PanelHeader 的 actions 位，
-    对话下它在那一个 76px 头的 `.headerUtilities` 位。写两份必然漂移。
+    工作目录 + 主题 / 搜索 / 下载这一撮**两个视角共用同一个节点**，都落在那一个
+    76px 头的 `.headerUtilities` 位——它们属于「这一栏」，不属于「你正在看的那条对话」，
+    上游把这类东西和 `.headerActions` 分开正是这个分工。写两份必然漂移。
 
     查找按钮多做一件事：**先切回 TUI**。它驱动的是 xterm 上那条查找条，而对话视角下
     xterm 整个被盖住——在那里开一条看不见的查找条是个假动作。对话本身用浏览器自带的
     Cmd+F 就能搜（折叠的工具组特意用了 `hidden="until-found"`，见 ConversationDetail）。
     lens 已经是 tui 时这一步是空操作，所以 TUI 那边的行为一个字没变。
   */
-  const paneUtilities = mode === "terminal" && session && (
+  const paneUtilities = mode === "terminal" && session ? (
     <>
+      {/* `.headerUtilities` 是 flex:none，不会被挤掉，所以路径必须自己封顶再截断。 */}
+      {session.cwd && <span className="max-w-[220px] truncate font-mono text-xs text-text-dim"
+        title={session.cwd}>{session.cwd}</span>}
       <TerminalAppearanceSettings />
       <IconButton title={t.terminal.pane.search} onClick={() => { onLens("tui"); search.toggle(); }}>
         <IconSearch />
@@ -100,37 +108,61 @@ export function TerminalPane({
         <IconDownload />
       </IconButton>
     </>
-  );
+  ) : null;
+
+  /*
+    面包屑是**一条链，三个视角共用同一个前缀**：画布 →「终端」这一格；点进某个终端
+    多一格会话名；再切到对话视角，由 ConversationDetail 在末尾补上对话标题。
+    定义在这里而不是各视角各写一份，正是为了保证切视角时前缀一个字都不变。
+
+    第一格永远指回画布——它就是原来 PanelHeader 上那颗返回箭头。第二格在对话视角下
+    指回 TUI（「看这个终端本身」），在 TUI 视角下它已经是当前位置，disabled。
+  */
+  const canvasCrumb: ColumnCrumb = {
+    key: "canvas", label: t.terminal.canvas.title, title: t.terminal.canvas.back, onClick: toCanvas,
+  };
+  const sessionCrumb: ColumnCrumb | null = session
+    ? { key: "session", label: sessionTitle(session), title: sessionTitle(session) }
+    : null;
+  /*
+    两个视角的标签条。`ColumnHeader` 照上游的判据只在多于一格时才画这条，所以画布
+    （没有会话、没有视角可切）自然就没有标签条——不用在这里再判一次。
+  */
+  const lensTabs = [
+    { id: "tui", label: t.terminal.lens.tui, title: t.terminal.lens.switchToTui, active: lens === "tui" },
+    { id: "gui", label: t.terminal.lens.gui, title: t.terminal.lens.switchToGui, active: lens === "gui" },
+  ] as const;
 
   return (
     <section className="flex h-full flex-col bg-bg-panel">
       {/*
-        **对话视角下这个头不画。** 中栏原来叠着三层头（这一层 + 镜头里的历史下拉横幅 +
-        对话详情自己的头），而上游那一栏只有一个 76px 的头。现在这一层的全部内容——返回
-        画布、终端身份、工作目录、视角切换、主题/搜索/下载——都进了那一个头的四个位里，
-        由 ConversationLens 填、对话壳画。画布和 TUI 仍旧用这一层，它们本来就只有一个头。
+        **对话视角下这个头不画在这儿**，但画的是同一个组件：对话那条路要把头交给
+        `ConversationShell`（vendor 里逐字的一份，`<header class=.header>` 由它包），
+        所以那边走 `ColumnHeader` 的内容 + 壳的框，这边走 `ColumnHeaderFrame` 自己包。
+        两条路同一份 CSS、同一条 `min-height: 76px`，实测三个视角都是 76——上一轮
+        这里还是 36px 的 `PanelHeader`，切一次视角栏头跳 47px（实测 29.3 → 76）。
+
+        **CLI 图标和那颗返回箭头没有各自的位了**：上游这个头没有图标槽，返回改由第一格
+        面包屑承担（点「终端」回画布），和侧栏那次「一行只留一个前导标记」是同一个取舍。
       */}
-      {!showGui && <PanelHeader
-        icon={mode === "canvas" ? <IconTerminal /> : (
-          <>
-            <button
-              type="button"
-              onClick={toCanvas}
-              title={t.terminal.canvas.back}
-              aria-label={t.terminal.canvas.back}
-              className="grid h-5 w-5 shrink-0 place-items-center rounded text-text-dim hover:bg-bg-hover hover:text-text"
-            >
-              <span className="rotate-180"><IconChevron open={false} /></span>
-            </button>
-            <SessionLogo cli={session?.cli} cliId={session?.cliId} />
-          </>
-        )}
-        title={mode === "canvas" ? t.terminal.canvas.title : (
-          <LensSwitch lens={lens} onChange={onLens} available={!!session} fallbackTitle={t.terminal.pane.title} />
-        )}
-        sub={mode === "canvas" ? t.terminal.canvas.count(scoped.length) : session?.cwd}
-        actions={paneUtilities}
-      />}
+      {!showGui && <ColumnHeaderFrame>
+        <ColumnHeader
+          crumbs={mode === "canvas" || !sessionCrumb ? [] : [canvasCrumb]}
+          current={mode === "canvas" || !sessionCrumb
+            ? { key: "canvas", label: t.terminal.canvas.title }
+            : sessionCrumb}
+          /* 画布上「有几个终端」是这一栏的计数，不是能对某个终端做的动作，所以在工具位。 */
+          utilities={mode === "canvas"
+            ? <span className="text-caption text-text-dim">{t.terminal.canvas.count(scoped.length)}</span>
+            : paneUtilities}
+          /* 画布那一句是纯标签，窄屏也不收——理由见 ColumnChrome 上那段。 */
+          utilitiesFoldable={mode !== "canvas"}
+          {...(mode === "canvas" ? {} : {
+            tabs: lensTabs, tabsLabel: t.terminal.pane.title,
+            onSelectTab: (id: string) => { onLens(id as Lens); },
+          })}
+        />
+      </ColumnHeaderFrame>}
       {/* 查找条跟着它的头走：对话视角下那个头不在，这条也不该冒出来。 */}
       {mode === "terminal" && search.open && session && !showGui && <TerminalSearchBar search={search} />}
       <div className="relative flex flex-1 flex-col overflow-hidden bg-bg shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
@@ -165,8 +197,9 @@ export function TerminalPane({
           <div className="absolute inset-0 z-[5] flex flex-col bg-bg-panel">
             <ConversationLens key={session.id} terminalId={session.id} conversationId={conversationId}
               current={currentConversation} pinned={selectedConversationId}
-              terminalLabel={sessionTitle(session)} cwd={session.cwd} onBackToCanvas={toCanvas}
-              utilities={paneUtilities} lens={lens} onLens={onLens} />
+              /* 前缀两格和 TUI 那边逐字同一份；第二格在这里指回 TUI。 */
+              crumbs={sessionCrumb ? [canvasCrumb, { ...sessionCrumb, onClick: () => onLens("tui") }] : [canvasCrumb]}
+              utilities={paneUtilities} tabs={lensTabs} onLens={onLens} />
           </div>
         )}
         {/*

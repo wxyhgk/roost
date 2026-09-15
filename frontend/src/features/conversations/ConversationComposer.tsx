@@ -1,6 +1,7 @@
 import type { PeerDetail } from "../../shared/api/conversations";
 import { MAX_PEER_TEXT_BYTES, textBytes, viewOf, type Delivery } from "./outgoing";
 import type { Outgoing } from "./useOutgoing";
+import type { ReactNode } from "react";
 import { InputBar } from "../../vendor/dsh/skeleton/InputBar";
 // 复用资料库那份 uid：它带了非安全上下文的 fallback（http 访问时 crypto.randomUUID
 // 不存在），重写一份只会漏掉这个已经踩过的坑。
@@ -32,7 +33,17 @@ import { t } from "@roost/i18n";
  * `@` 和斜杠菜单一律不传——按 NOTICE.md「没搬什么」的规矩，喂不满就不画，prop 留在
  * `InputBarProps` 里等数据。
  */
-export function ConversationComposer({ outgoing }: { outgoing: Outgoing }) {
+export function ConversationComposer({ outgoing, dock }: {
+  outgoing: Outgoing;
+  /**
+   * 卡片**内部**下方的坞（上游 `conversation.composer.dock`）。会话级那两颗药丸挂这儿。
+   *
+   * **必须是卡片内部，不能摆成兄弟节点。** `InputBar.module.css` 有一条
+   * `.root:has([data-composer-stats])`，命中时把卡片底距从 8 收到 4——挂成兄弟的话
+   * `:has()` 不命中，间距变成 8 + 6（栈的 gap）+ 4 = 18px，而上游是 8px。
+   */
+  dock?: ReactNode;
+}) {
   const { text, setText, busy, error, submit } = outgoing;
   const s = t.misc.conversations.detail.send;
   const overLimit = textBytes(text) > MAX_PEER_TEXT_BYTES;
@@ -54,6 +65,7 @@ export function ConversationComposer({ outgoing }: { outgoing: Outgoing }) {
         有意义——先报刚发生的那个。
       */
       notice={error ? { level: "error", text: error } : overLimit ? { level: "error", text: s.tooLong } : null}
+      {...(dock ? { dock } : {})}
     />
   );
 }

@@ -266,6 +266,30 @@ export const misc = {
         speed: "速度",
         ttft: "首 token 延迟",
       },
+      /*
+        输入卡下面那两颗**会话级**药丸（vendor/dsh/chat/StatsPills）。和上面那两颗回合级的
+        是同一套皮、不同的统计边界。
+
+        **四条计时文案当前一条都画不出来**，和 `turnTime.speed/ttft` 同一个理由：transcript
+        里没有 step 开始时刻、没有首 token 时刻、工具调用和结果也没有配对时刻。仪表盘那颗
+        药丸因此退化成一个不可点的静态读数（只剩「n 轮 m 步」），弹层不出现。文案照样留着
+        ——`SessionStatTranslate` 的键是个闭合联合，少一个调用方就给不出全覆盖的 `t`。
+      */
+      sessionStats: {
+        /** 药丸上那句。上游写作 `{turns} 轮 {steps} 步`。 */
+        counts: (turns: number, steps: number) => `${turns} 轮 ${steps} 步`,
+        /** `{percent}` 已经是格式化好的百分数（可能带小数，见 formatCacheHitPercent）。 */
+        cacheHit: (percent: string) => `缓存命中 ${percent}%`,
+        title: "会话统计",
+        usageTitle: "Token 用量",
+        llmTime: "模型用时",
+        toolTime: "工具调用用时",
+        ttft: "首 token 平均（TTFT）",
+        speed: "输出速度（TPS）",
+        /** 紧凑时长，和上面那三档不是一套：药丸弹层要的是 `45.2秒` / `2分42秒` 这种短形。 */
+        compactSeconds: (seconds: number) => `${seconds}秒`,
+        compactMinutes: (minutes: number, seconds: number) => `${minutes}分${seconds}秒`,
+      },
       ranFor: (duration: string) => `耗时 ${duration}`,
       tokensPerSecond: (tps: string) => `${tps} tokens/秒`,
       number: {

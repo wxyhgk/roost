@@ -228,3 +228,33 @@ test("every item key in a turn looks up that turn's stats", () => {
   assert.equal(first?.usage?.totalTokens, 3);
   for (const item of items) assert.equal(byKey.get(item.key), first, "同一个回合里查到的是同一份");
 });
+
+/*
+  **一组连续的工具调用是跨消息的，而用量是按每一条消息计的。**
+
+  一次回合里 AI 往往是「调用 → 下一条消息里的结果 → 再调用」，`buildItems` 把这一串收成
+  一个条目。那个条目当时**只记住第一条消息**，于是按 messageId 求和会把后面几条的 `usage`
+  整个丢掉——实测隔离 fixture 里 5 条带 usage 的记录被缩成 1 条，总量从 995,740 掉到
+  199,148，页面上显示成「Used 199K tokens」。
+
+  源头修法是让工具组带上整组跨过的全部消息（`parts.ts` 的 `messages`）。这条用例钉的就是
+  「收拢不许吞掉用量」——它是纯数值的，重构时一眼能看出退回去了。
+*/
+test("grouping consecutive tool calls must not swallow the later messages' usage", () => {
+  const each: MessageUsage = { inputTokens: 1, outputTokens: 100, cacheReadTokens: 1_000, cacheWriteTokens: 10 };
+  const messages = [msg("user", "跑一下测试")];
+  // 三次「调用 → 结果」，每次调用那条都带一份 usage；三条调用会被收成一个组。
+  for (const id of ["c1", "c2", "c3"]) {
+    messages.push(msg("assistant", "", {
+      parts: [{ type: "tool_call", name: "Read", toolCallId: id, text: `Read: ${id}` }], usage: each,
+    }));
+    // 结果落在紧接着的那条 user 消息里（Claude 的合成回合），它自己不带 usage。
+    messages.push(msg("user", "", { parts: [{ type: "tool_result", toolCallId: id, text: "ok" }] }));
+  }
+  const [turn] = stats(messages);
+  assert.ok(turn?.usage, "三次调用都带了 usage，回合就该有一份账");
+  assert.equal(turn.usage.outputTokens, 300, "三条消息的输出要全部算进来，不是只算第一条");
+  assert.equal(turn.usage.uncachedInputTokens, 3);
+  assert.equal(turn.usage.cacheReadTokens, 3_000);
+  assert.equal(turn.usage.totalTokens, 3 * (1 + 100 + 1_000 + 10));
+});
