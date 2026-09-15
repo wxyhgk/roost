@@ -10,8 +10,9 @@ import {
 import { ApiError } from "../../shared/api/errors";
 import { IconChevron } from "../../shared/icons";
 import { ReasoningRow } from "../../vendor/dsh";
+import { TurnProcessNodeView } from "../../vendor/dsh/chat/TurnProcessNodeView";
+import { useSearchableHidden } from "../../vendor/dsh/chat/searchable-hidden";
 import { ToolView } from "./tools/registry";
-import { identifyTool, toolLabel } from "./tools/identify";
 import { emptyHistory, historyOnReload, isLongReply, mergeMessages, type HistoryState } from "./history";
 import { startConversationRecovery } from "./recovery";
 
@@ -366,27 +367,37 @@ function roleName(role: string) {
 */
 function ToolsItem({ item }: { item: Extract<Item, { kind: "tools" }> }) {
   const [open, setOpen] = useState(false);
+  const reveal = useCallback(() => setOpen(true), []);
+  const foldRef = useSearchableHidden(!open, reveal);
   if (item.tools.length < MIN_GROUPED_TOOLS) return <ToolView block={item.tools[0]!} />;
   const dot = item.status === "running" ? "bg-warning" : item.status === "error" ? "bg-danger" : "bg-text-dim/50";
   return (
-    <div className="max-w-[92%] overflow-hidden rounded-lg border border-border/60 bg-bg text-caption">
-      <button type="button" aria-expanded={open} onClick={() => setOpen(value => !value)}
-        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left hover:bg-bg-hover">
-        <span className="shrink-0 text-text-dim"><IconChevron open={open} /></span>
-        <span className={`size-1.5 shrink-0 rounded-full ${dot}`} />
-        <span className="shrink-0 text-text">{t.misc.conversations.detail.toolGroup(item.tools.length)}</span>
-        <span className="min-w-0 flex-1 truncate font-mono text-text-dim">
-          {item.tools.map(tool => toolLabel(identifyTool(tool.name), tool.name)).filter(Boolean).join(" · ")}
-        </span>
+    <div className="flex w-full flex-col items-start gap-1">
+      {/*
+        组头改用 deepseek-harness 的回合过程折叠行（vendor/dsh/chat/TurnProcessNodeView）。
+        原来那行是「8 tool calls」加一串工具名（`Read · Bash · Grep · Glob · Read · Bash…`）
+        ——重复的名字占满一整行，而真正有信息的是「这一步做了多少事、做完没有」。
+      */}
+      <div className="flex items-center gap-2">
+        <TurnProcessNodeView
+          label={t.misc.conversations.detail.toolGroup(item.tools.length)}
+          open={open} onToggle={setOpen}
+          toolCalls={item.tools.length} messages={0}
+        />
         {item.status !== "completed" && (
-          <span className={`shrink-0 ${item.status === "error" ? "text-danger" : "text-warning"}`}>
+          <span className={`shrink-0 text-caption ${item.status === "error" ? "text-danger" : "text-warning"}`}>
+            <span className={`mr-1 inline-block size-1.5 rounded-full align-middle ${dot}`} />
             {item.status === "error" ? t.misc.conversations.detail.toolGroupError : t.misc.conversations.detail.toolGroupRunning}
           </span>
         )}
-      </button>
-      {open && <div className="flex flex-col gap-1 border-t border-border/60 p-1.5">
+      </div>
+      {/*
+        折叠内容用 `hidden="until-found"` 而不是不渲染：浏览器 Cmd+F 仍然搜得到，命中时
+        自动展开（vendor/dsh/chat/searchable-hidden）。我们原来是条件渲染，搜不到。
+      */}
+      <div ref={foldRef} className="flex w-full max-w-[92%] flex-col gap-1">
         {item.tools.map((tool, i) => <ToolView key={i} block={tool} />)}
-      </div>}
+      </div>
     </div>
   );
 }
