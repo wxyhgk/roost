@@ -685,7 +685,13 @@ function ToolsItem({ item }: { item: Extract<Item, { kind: "tools" }> }) {
         <TurnProcessNodeView
           label={t.misc.conversations.detail.toolGroup(item.tools.length)}
           open={open} onToggle={setOpen}
-          toolCalls={item.tools.length} messages={0}
+          /*
+            这两个只喂 `data-*`，不进可见文案（可见那句是上面拼好的 label）。
+            `messages` 是**这一组跨过的消息条数**——一组连续的工具调用是跨消息的
+            （「调用 → 下一条消息里的结果 → 再调用」），所以它和 `toolCalls` 不是一回事。
+            这里曾经写死 0：一个恒为 0 的调试属性比没有更糟，会有人照着它选元素或读数。
+          */
+          toolCalls={item.tools.length} messages={item.messages.length}
         />
         {item.status !== "completed" && (
           <span className={`shrink-0 text-caption ${item.status === "error" ? "text-danger" : "text-warning"}`}>

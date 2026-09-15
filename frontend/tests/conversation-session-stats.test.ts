@@ -158,3 +158,29 @@ test("items before the first user message still count as a turn", () => {
     uncachedInputTokens: 8, outputTokens: 80, cacheReadTokens: 800, cacheWriteTokens: 8,
   });
 });
+
+import { readFileSync } from "node:fs";
+
+/*
+  **我们给会话药丸喂了六个 0，而那不是「把未知当成 0 显示」——是靠上游的一条退化路径。**
+
+  `StatsPills` 的 `TimePill` 在「一项计时都没有」时把药丸渲染成一个**不可点的静态读数**，
+  不开空弹层。所以传 0 是安全的：`0 when no node carries timing` 就是上游给这些字段写的语义
+  （模型用时 / 工具用时 / TTFT / 输出速度我们一项都算不出来，理由同 `turnRunMs`）。
+
+  **但这等于把上游的一个实现细节当成了契约。** 重新同步 vendor 时如果那个闸门变了（比如改成
+  「有 turns 就开弹层」），我们的六个 0 立刻会变成界面上四行「0ms」——一句凭空的假话，
+  而且 typecheck 和别的测试都看不见。
+
+  闸门是内联在组件里的，抽不出来做纯函数测试（那个文件要保持函数体逐字）。所以这里用
+  **锚点断言**：钉住那行条件还在。它一旦不在，这条用例就红，逼下一个人重新决定要不要继续喂 0。
+  手法和 `scripts/check-boundaries.mjs` 里那批规则锚点一样。
+*/
+test("the session time pill still degrades to a static reading when every timing is zero", () => {
+  const source = readFileSync(new URL("../src/vendor/dsh/chat/StatsPills.tsx", import.meta.url), "utf8");
+  assert.match(
+    source,
+    /stats\.llmMs <= 0 && stats\.toolMs <= 0 && stats\.ttftSteps <= 0 && stats\.decodeMs <= 0/,
+    "上游的退化闸门不见了——我们喂的六个 0 会变成界面上四行「0ms」，重新决定要不要继续喂",
+  );
+});
