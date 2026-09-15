@@ -177,3 +177,90 @@ test('a denied tool use is not a failure', async t => {
   assert.deepEqual(types.slice(1, 4), ['tool_denied', 'tool_denied', 'tool_denied']);
   assert.deepEqual(types.slice(4), ['tool_error', 'tool_result', 'tool_error', 'tool_error', 'tool_error']);
 });
+
+/*
+  **用量在源头就有，我们原来一个字段都没带出来。** 本机 28 份 transcript / 5219 条非 sidechain
+  的 assistant 记录，`message.usage` 命中率 100%，而 `TranscriptItem` 上没有它的位置——
+  「这个回合烧了多少上下文」在界面上根本不存在。
+
+  这里钉的是**怎么带不出错**，不是「带了」：坏数据不能崩，缺席的桶不能变成 0。
+*/
+test('Claude usage travels with the assistant record, bucket by bucket', async t => {
+  const file = await fixture(t);
+  const assistant = (uuid: string, usage: any, model: any = 'claude-opus-5') =>
+    encode({ ...row(uuid, 'assistant', 'reply'), message: { role: 'assistant', content: 'reply', usage, model } });
+  // 本机实测的量级：未命中输入个位数，缓存读将近 100 万，输出几百到几千。
+  const real = { input_tokens: 2, cache_creation_input_tokens: 8246, cache_read_input_tokens: 30516,
+    output_tokens: 423, output_tokens_details: { thinking_tokens: 69 }, service_tier: 'standard',
+    iterations: [{ input_tokens: 2, output_tokens: 423, type: 'message' }] };
+  await writeFile(file,
+    encode(row('seed', 'user', 'q'))
+    + assistant('full', real)
+    // 只有两个必需桶：三个可选的**缺席**，不许变成 0。
+    + assistant('bare', { input_tokens: 10, output_tokens: 20 })
+    // 思考桶在本机有 12 条缺席（99.7%），它证明了「缺席不是 0」不是假设。
+    + assistant('nodetails', { input_tokens: 1, output_tokens: 2, cache_read_input_tokens: 3, output_tokens_details: null })
+    // Claude Code 自己塞的报错占位：usage 全零、model 是 `<synthetic>`。零就是零，照带。
+    + assistant('synthetic', { input_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 0 }, '<synthetic>'));
+
+  const items = (await readClaudeTranscript(file, 'native')).items;
+  assert.deepEqual(items[1].data.usage, { inputTokens: 2, outputTokens: 423, cacheReadTokens: 30516,
+    cacheWriteTokens: 8246, reasoningTokens: 69, model: 'claude-opus-5' });
+  assert.deepEqual(items[2].data.usage, { inputTokens: 10, outputTokens: 20, model: 'claude-opus-5' });
+  assert.equal('cacheReadTokens' in items[2].data.usage!, false, '缺席的桶不许出现');
+  assert.deepEqual(items[3].data.usage, { inputTokens: 1, outputTokens: 2, cacheReadTokens: 3, model: 'claude-opus-5' });
+  assert.deepEqual(items[4].data.usage, { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0,
+    cacheWriteTokens: 0, model: '<synthetic>' });
+  // 用户消息没有自己的模型请求，也就没有自己的用量。
+  assert.equal(items[0].data.usage, undefined);
+  // 详情读的是同一条记录，用量必须一致——否则「点开看详情」会看到另一组数。
+  assert.deepEqual((await readClaudeDetail(items[1].data.detail))!.data.usage, items[1].data.usage);
+});
+
+/*
+  **坏数据不能崩，也不能变成一个看着合理的假数。** 字段缺失、类型不对、数值异常三档全走一遍：
+  出路只有一条——那个桶（或整条用量）不出现。截断成上限会造出一个说得通的谎，比缺席更糟。
+*/
+test('Claude usage refuses every malformed shape instead of guessing', async t => {
+  const file = await fixture(t);
+  const assistant = (uuid: string, message: any) => encode({ ...row(uuid, 'assistant', 'reply'), message: { role: 'assistant', content: 'reply', ...message } });
+  await writeFile(file,
+    encode(row('seed', 'user', 'q'))
+    + assistant('nousage', {})
+    + assistant('nullusage', { usage: null })
+    + assistant('strusage', { usage: 'lots' })
+    + assistant('arrusage', { usage: [1, 2] })
+    // 必需桶缺一个 → 整条不给：只有输出没有输入的用量会在总数里少算一块，而界面上看不出来。
+    + assistant('noinput', { usage: { output_tokens: 5 } })
+    + assistant('nooutput', { usage: { input_tokens: 5 } })
+    // 类型不对
+    + assistant('strnum', { usage: { input_tokens: '5', output_tokens: 5 } })
+    + assistant('objnum', { usage: { input_tokens: { n: 5 }, output_tokens: 5 } })
+    // 数值异常：负数、小数、NaN/Infinity（JSON 里写成 null）、超出安全整数、超出上限
+    + assistant('negative', { usage: { input_tokens: -1, output_tokens: 5 } })
+    + assistant('fraction', { usage: { input_tokens: 1.5, output_tokens: 5 } })
+    + assistant('huge', { usage: { input_tokens: 1e13, output_tokens: 5 } })
+    + assistant('unsafe', { usage: { input_tokens: 5, output_tokens: 1e300 } })
+    // 坏掉的只是可选桶 → 只丢那个桶，必需的两个照常带
+    + assistant('badcache', { usage: { input_tokens: 5, output_tokens: 6, cache_read_input_tokens: -3, cache_creation_input_tokens: 'x' } })
+    + assistant('badthink', { usage: { input_tokens: 5, output_tokens: 6, output_tokens_details: { thinking_tokens: 2.5 } } })
+    + assistant('thinkarr', { usage: { input_tokens: 5, output_tokens: 6, output_tokens_details: [] } })
+    // model 的类型与长度：非字符串和空串按没有，超长截断（它只是个标签，不进任何求和）
+    + assistant('nomodel', { usage: { input_tokens: 5, output_tokens: 6 }, model: 42 })
+    + assistant('blankmodel', { usage: { input_tokens: 5, output_tokens: 6 }, model: '' })
+    + assistant('longmodel', { usage: { input_tokens: 5, output_tokens: 6 }, model: 'm'.repeat(500) }));
+
+  const items = (await readClaudeTranscript(file, 'native')).items;
+  const by = (uuid: string) => items.find(item => item.data.nativeMessageId === uuid)!.data.usage;
+  for (const uuid of ['nousage', 'nullusage', 'strusage', 'arrusage', 'noinput', 'nooutput',
+    'strnum', 'objnum', 'negative', 'fraction', 'huge', 'unsafe'])
+    assert.equal(by(uuid), undefined, uuid + ' 不该有用量');
+  assert.deepEqual(by('badcache'), { inputTokens: 5, outputTokens: 6 });
+  assert.deepEqual(by('badthink'), { inputTokens: 5, outputTokens: 6 });
+  assert.deepEqual(by('thinkarr'), { inputTokens: 5, outputTokens: 6 });
+  assert.deepEqual(by('nomodel'), { inputTokens: 5, outputTokens: 6 });
+  assert.deepEqual(by('blankmodel'), { inputTokens: 5, outputTokens: 6 });
+  assert.equal(by('longmodel')!.model!.length, 128);
+  // 一条记录都不许因为用量而丢
+  assert.equal(items.length, 19);
+});

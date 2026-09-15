@@ -328,6 +328,43 @@ export const misc = {
     title: (count: number) => `${count} 个会话在等你`,
   },
 
+    /**
+     * 从 deepseek-harness 搬来的那批积木要的文案（vendor/dsh）。
+     *
+     * 单独一块而不是散进 detail：它们是**组件的契约**，不是我们自己的界面用语——
+     * 上游改了 props，这一块跟着改；我们自己改措辞，不该碰到这里的结构。
+     */
+    blocks: {
+      running: "正在运行",
+      failed: "失败",
+      stopped: "已中断",
+      input: "输入",
+      output: "输出",
+      inspect: "查看",
+      copy: "复制",
+      copied: "已复制",
+      collapse: "收起",
+      collapseAria: "收起",
+      expand: (hidden: number) => `还有 ${hidden} 行`,
+      expandAria: (hidden: number) => `展开其余 ${hidden} 行`,
+      files: (count: number) => `${count} 个文件`,
+      /** 读文件：显示了多少行、一共多少行。 */
+      window: (shown: number, total: number) => `${shown} / ${total} 行`,
+      done: "完成",
+      /** 跑完了但一个字都没输出——必须说出来，否则和「结果没拿到」长得一样。 */
+      noOutput: "执行完成，没有输出",
+      exitCode: (code: number) => `退出码 ${code}`,
+      signal: (signal: string) => `信号 ${signal}`,
+      noResults: "没有结果",
+      truncated: "已截断",
+      pathsSummary: (shown: number, total: number, truncated: boolean) =>
+        `${shown} / ${total} 个文件${truncated ? "（已截断）" : ""}`,
+      matchesSummary: (shown: number, total: number, files: number, truncated: boolean) =>
+        `${shown} / ${total} 处匹配，${files} 个文件${truncated ? "（已截断）" : ""}`,
+      sourcesTruncated: "来源已截断",
+      http: "HTTP",
+      contentTruncated: "内容已截断",
+    },
   media: {
     imageFailed: "图片加载失败",
     binary: "二进制文件",

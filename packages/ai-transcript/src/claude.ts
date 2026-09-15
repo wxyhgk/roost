@@ -3,7 +3,7 @@ import { constants } from "node:fs";
 import { open, opendir, realpath } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 
-import { TranscriptError, type EditPatch, type TranscriptCheckpoint, type TranscriptItem } from "./index.ts";
+import { TranscriptError, type EditPatch, type MessageUsage, type TranscriptCheckpoint, type TranscriptItem } from "./index.ts";
 import { previewToolArgs } from "./truncate.ts";
 const BATCH = 256 * 1024, LINE = 1024 * 1024, PREVIEW = 4000;
 
@@ -58,6 +58,49 @@ function bashEditPatch(value: unknown): EditPatch | undefined {
   if (!patch) return undefined;
   const more = (value as any).moreFiles;
   return { ...patch, truncated: patch.truncated || files.length > 1 || (Number.isSafeInteger(more) && more > 0) };
+}
+
+/**
+ * token 数的上限：见 `MessageUsage` 的说明。超限的桶按缺席处理，不按上限截断——
+ * 截断会造出一个「看着合理」的假数，而缺席至少是诚实的。
+ */
+const TOKENS_MAX = 1e12;
+const tokens = (value: unknown): number | undefined =>
+  typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= TOKENS_MAX ? value : undefined;
+
+/**
+ * 把 `message.usage` 折成 `MessageUsage`。
+ *
+ * **两个必需桶缺一个就整条不给。** `input_tokens` / `output_tokens` 是 Claude 每条记录都写的
+ * （实测 5219/5219），缺了说明这条记录的 usage 本身不可信，硬凑一个「只有输出没有输入」的
+ * 用量比没有更糟——它会在总数里少算一块，而界面上看不出来少了。
+ *
+ * **三个可选桶各自判断**：`cache_read_input_tokens` / `cache_creation_input_tokens` 在本机是
+ * 100% 有的，`output_tokens_details.thinking_tokens` 是 99.7%（5207/5219）——那 12 条缺席的
+ * 恰恰证明了「不能当 0」：思考 token 缺席时写 0，界面会说「这次没思考」，而真相是没报。
+ *
+ * **`usage.iterations` 不用。** 它是每次 attempt 的分项（本机 5207 条**全部长度为 1**），
+ * 顶层 usage 已经是它们的合计（实测 `sum(iterations[].output_tokens) === usage.output_tokens`，
+ * 0 条不符）。多取一份只会多一个要对齐的真相。
+ *
+ * **`model` 照抄不做白名单**，包括 Claude Code 自己塞的 `<synthetic>`（本机 5 条，usage 全零，
+ * 是它生成的报错占位，不是一次模型请求）。零就是零，不必特判；而把 `<synthetic>` 藏起来，
+ * 等于让界面上少掉几条本来存在的记录。
+ */
+function messageUsage(message: Record<string, any>): MessageUsage | undefined {
+  const raw = message.usage;
+  if (!object(raw)) return undefined;
+  const inputTokens = tokens(raw.input_tokens), outputTokens = tokens(raw.output_tokens);
+  if (inputTokens === undefined || outputTokens === undefined) return undefined;
+  const cacheReadTokens = tokens(raw.cache_read_input_tokens);
+  const cacheWriteTokens = tokens(raw.cache_creation_input_tokens);
+  const reasoningTokens = object(raw.output_tokens_details) ? tokens(raw.output_tokens_details.thinking_tokens) : undefined;
+  const model = typeof message.model === "string" && message.model ? message.model.slice(0, 128) : undefined;
+  return { inputTokens, outputTokens,
+    ...(cacheReadTokens !== undefined ? { cacheReadTokens } : {}),
+    ...(cacheWriteTokens !== undefined ? { cacheWriteTokens } : {}),
+    ...(reasoningTokens !== undefined ? { reasoningTokens } : {}),
+    ...(model ? { model } : {}) };
 }
 
 function editPatch(value: unknown): EditPatch | undefined {
@@ -171,7 +214,11 @@ function normalize(row: Record<string, any>, ref: TranscriptItem["data"]["detail
     content: parts.map(part => part.type === "thinking" ? "[已记录的思考]\n" + part.text : part.text ?? "").join("\n"),
     ...(Number.isFinite(timestamp) ? { createdAt: timestamp } : {}),
     data: { source: "transcript", nativeMessageId: row.uuid, parentId: typeof row.parentUuid === "string" ? row.parentUuid : null,
-      parts, truncated, detail: { ...ref, recordId: row.uuid } },
+      parts,
+      // 用量描述的是「产生这条回复的那次模型请求」，所以只挂在 assistant 记录上。工具结果
+      // 记录在 Claude 这里是 `type: "user"`，它没有自己的请求，也就没有自己的用量。
+      ...(row.type === "assistant" ? (usage => usage ? { usage } : {})(messageUsage(message)) : {}),
+      truncated, detail: { ...ref, recordId: row.uuid } },
   } };
 }
 

@@ -318,3 +318,68 @@ html[data-theme="light"] {
   */
   --dsw-alias-markdown-inline-code: var(--color-bg-hover);
 }
+
+/*
+  ---- chat/tool/ToolRow 追加的一批 --------------------------------------
+  工具卡片的外壳用到、上面几张表里没有的。同样单独一块，好知道谁带进来的。
+
+  ToolRow.module.css 引到的其余令牌（label 三档、bg-base、border-l1/l2/l3、
+  markdown-code-block、interactive-bg-hover-solid、state-error-primary、
+  state-business-primary、font-xs-13、font-markdown-code-block-small、
+  ds-font-family-code）上面都已经有了。`--dsh-content-font-size-secondary` 和
+  `--dsh-content-font-delta` 是上游那根「正文字号滑杆」，我们没有，但它们在
+  module.css 里每一处都自带兜底（13px / 0px），所以不必接。
+*/
+:root {
+  /*
+    **[猜]** 图片卡片里那行标签的字体。**上游自己也没定义这个令牌**——在他们 ui-theme
+    里 grep 不到 `--dsw-font-sm-13`，也就是说那条 `font:` 在上游就是作废的、标签继承父级。
+    我们给它一个值：几何照 --dsw-font-xs-13（13/20），这一档在上游是「说明性正文」的位置，
+    而这行标签扮演的正是 ReadBlock 横幅里文件名那个角色。
+
+    吃它的只有图片卡片一处，而图片卡片在 Roost 目前画不出来（没有附件管线，
+    见 chat/tool/models/image-card-model.ts）。真接上附件那天，这一行是第一个该复核的。
+  */
+  --dsw-font-sm-13: 13px/20px var(--dsw-font-family);
+}
+
+/*
+  ---- chat/TurnUsagePanel + chat/stat-dialog 追加的一批 -----------------
+  回合用量 / 回合耗时两个药丸和它们的弹层用到、上面那些表里没有的两个。
+*/
+:root {
+  /*
+    **[猜]** 浮层（菜单、弹层）的底色。上游 `--dsw-specific-menu` 取 bg-layer-3——
+    浅色下是 bluish-00（纯白），深色下是 bluish-800。两个主题下它都是**往亮的方向**
+    离开页面底，靠的是「浮起来的东西更亮」这条，而不是固定的某一档灰。
+
+    我们这边 --color-bg-raised 正是这个位置：浅色 #ffffff 压在 #f4f4f6 的页面上、
+    深色 #2c2c2e 压在 #111113 上，两边都是往亮的方向走。
+
+    **试过 --color-bg-hover，错了**（截图看出来的）：深色下它确实更亮一档，可浅色下
+    它是 #ededf0，比 #f4f4f6 的页面**更暗**——弹层看着像个凹进去的坑。深浅两套里
+    「再亮一档」和「再暗一档」是同一个变量名，只有画出来才知道选错了哪个。
+
+    弹层落在卡片（同样是 raised）之上时，靠下面那条 0.5px 描边 + 投影分开——上游浅色
+    主题本来就是这么干的（白弹层压在白卡片上）。
+  */
+  --dsw-specific-menu: var(--color-bg-raised);
+
+  /*
+    **[猜]** 弹层阴影，比上面的 --dsw-elevation-panel 再重一档。上游两档的黑是
+    3%/2%（panel）和 4%/5%（prominent），那是为浅色背景配的；这里沿用 panel 那条已经
+    定下来的 8 倍换算（深色底上 3% 的黑等于不存在），于是 4%/5% → 32%/40%。
+
+    **描边色直接写死成 l1，不走 --dsw-elevation-stroke-color 那层间接。** 上游让组件
+    重绑那个变量（stat-dialog 的 .panel 就绑了 l1），代价是 elevation 三兄弟必须
+    `body, body *` 逐元素声明一遍——自定义属性是在声明它的那个元素上就把 var() 换掉的，
+    写在 :root 上重绑永远进不来。我们的终端视图动辄上万个 DOM 节点，为一个弹层给每个
+    元素多挂三个属性不值。上面的 --dsw-elevation-panel 早就是这么处理的（写死 l4），
+    这里照同一个办法：写死弹层实际要的那个值。
+    **后果**：`stat-dialog.module.css` 里那行 `--dsw-elevation-stroke-color: ...` 在我们
+    这儿是空转的（留着不删，那个文件要保持逐字）。将来若有第二个组件想绑别的描边色，
+    到这里另开一个令牌，不要去改 module.css。
+  */
+  --dsw-elevation-prominent:
+    0 0 0 0.5px var(--dsw-alias-border-l1), 0 3px 8px 0 rgba(0, 0, 0, 0.32), 0 0 20px 0 rgba(0, 0, 0, 0.4);
+}

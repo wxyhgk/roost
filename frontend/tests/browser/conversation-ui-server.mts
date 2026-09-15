@@ -99,12 +99,25 @@ say('assistant', [{ type: 'text', text: [
 bridge.unbind('fixture-shell');
 
 const runtime = createTerminalRuntime({ defaultCwd: dir, shell: '/bin/sh', env: {}, historyStore: store });
-const server = createBackendServer({ auth: false, store, runtime, workspaceRoot: dir, access: { allowedOrigins: ['http://127.0.0.1:5175'] } });
+/*
+  **默认只绑回环。** 这个 fixture 跑的是 `auth: false` 的后端——虽然工作目录是临时目录、
+  数据是编的，但它仍然是一个没有认证的文件接口。要从别的机器看就显式给 HOST，
+  并且知道自己在做什么。
+
+    HOST=0.0.0.0 node --import tsx frontend/tests/browser/conversation-ui-server.mts
+    （端口用 FIXTURE_PORT 改，默认 5175）
+*/
+const host = process.env.HOST ?? '127.0.0.1';
+// 不要用 PORT：这台机器的环境里它已经是后端的 8787，会去抢一个占着的端口。
+const port = Number(process.env.FIXTURE_PORT ?? 5175);
+// 绑到非回环时来源不止一个（IP、隧道域名…），把 Origin 校验放开——仅限这个隔离 fixture。
+const allowedOrigins = host === '127.0.0.1' ? [`http://127.0.0.1:${port}`] : undefined;
+const server = createBackendServer({ auth: false, store, runtime, workspaceRoot: dir, access: { allowedOrigins } });
 server.listen(0, '127.0.0.1'); await once(server, 'listening');
-const port = (server.address() as { port: number }).port;
+const backendPort = (server.address() as { port: number }).port;
 const vite = await createServer({ root: resolve('frontend'), configFile: resolve('frontend/vite.config.ts'),
-  server: { host: '127.0.0.1', port: 5175, strictPort: true, proxy: { '/api': { target: `http://127.0.0.1:${port}`, ws: true, changeOrigin: true } } } });
+  server: { host, port, strictPort: true, proxy: { '/api': { target: `http://127.0.0.1:${backendPort}`, ws: true, changeOrigin: true } } } });
 await vite.listen();
-console.log('http://127.0.0.1:5175/tests/browser/conversation-ui.html');
+console.log(`http://${host === '0.0.0.0' ? '<本机地址>' : host}:${port}/tests/browser/conversation-ui.html`);
 async function stop() { await vite.close(); server.closeAllConnections(); server.close(); runtime.dispose(); store.close(); rmSync(dir, { recursive: true, force: true }); process.exit(); }
 process.once('SIGTERM', stop); process.once('SIGINT', stop);

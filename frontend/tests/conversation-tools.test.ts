@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { identifyTool, toolArgsOf, argString, toolSubject, toolSummary } from '../src/features/conversations/tools/identify.ts';
+import { identifyTool, toolArgsOf, argString, toolLabel, toolSubject, toolSummary } from '../src/features/conversations/tools/identify.ts';
 import type { Block } from '../src/features/conversations/parts.ts';
 
 const tool = (args: string, name = 'X'): Extract<Block, { kind: 'tool' }> =>
@@ -119,7 +119,8 @@ test('摘要行：参数为空 / 非对象 / 半截 JSON 都不崩，只是没�
   assert.equal(summary('{"file_path":"/a/b'), '{"file_path":"/a/b', '半截 JSON 解不出，当预览态原文');
 });
 
-import { rendererNameFor } from '../src/features/conversations/tools/registry.tsx';
+// 判定住在 dispatch.ts：registry.tsx 里的 vendor 组件带 CSS Module，node --test 加载不了 .css。
+import { rendererNameFor } from '../src/features/conversations/tools/dispatch.ts';
 import { clipMiddle } from '../src/features/conversations/tools/text.ts';
 
 const patch = { filePath: 'a.ts', truncated: false, hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-a', '+b'] }] };
@@ -130,7 +131,13 @@ test('分派：认得出该认的，认不出的一律落兜底', () => {
   assert.equal(rendererNameFor({ ...tool('npm test'), name: 'Bash' }), 'bash');
   assert.equal(rendererNameFor({ ...tool('npm test'), name: 'shell' }), 'bash', 'codex 叫 shell');
   assert.equal(rendererNameFor({ ...tool('{"command":"ls"}'), name: 'bash' }), 'bash');
-  assert.equal(rendererNameFor({ ...tool(''), name: 'mcp__srv__do' }), 'mcp');
+  /*
+    MCP **不再有专用渲染器**：它要做的事（显示「服务器 · 工具」短名 + 摘要）兜底本来就全做
+    ——`toolLabel` 会拆 `mcp__a__b`，`toolSummary` 会挤出一行。一个只是换了文案的渲染器
+    不值得单独存在，而且多一条规则就多一处可能和兜底不一致的地方。
+  */
+  assert.equal(rendererNameFor({ ...tool(''), name: 'mcp__srv__do' }), null);
+  assert.equal(toolLabel(identifyTool('mcp__srv__do'), 'mcp__srv__do'), 'srv · do', '短名由兜底负责');
 
   // 兜底：没有渲染器时返回 null，调用方走改动之前那条路，行为零差异。
   assert.equal(rendererNameFor({ ...tool('x'), name: 'Grep' }), null);

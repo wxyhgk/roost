@@ -27,6 +27,26 @@ export type MessagePart = {
   patch?: EditPatch;
 };
 
+/**
+ * 一次模型请求的 token 用量。供应商上报，后端（`packages/ai-transcript`）折好带过来。
+ *
+ * **可选的三个桶缺席 ≠ 0。** 供应商没报缓存读写或思考 token 时，那个字段整个不出现——
+ * 求和的时候必须跟着缺席，而不是补一个 0 进去。补 0 会得到一个看着完整、其实少算的总数，
+ * 而少算在界面上看不出来。折一个回合的用量时：只要这个回合里有一条消息缺了某个桶，
+ * 整个回合的那个桶就不显示。
+ *
+ * `inputTokens` 是**没命中缓存的**那部分输入，不含 `cacheReadTokens` / `cacheWriteTokens`；
+ * 所以总数是四项相加。`reasoningTokens` 是 `outputTokens` 的子集，**不另加**。
+ */
+export type MessageUsage = {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  reasoningTokens?: number;
+  model?: string;
+};
+
 export type HistoryEvent = {
   eventId?: string;
   type?: string;
@@ -40,7 +60,12 @@ export type HistoryEvent = {
     可能没有：128KB 以上的消息只存轮廓（仍有 parts），而更早写入的行、以及只有正文才带
     parts 的老数据都可能缺。缺了就退回按 content 渲染。
   */
-  data?: { parts?: MessagePart[] };
+  /*
+    `usage` 是**消息级**的，不在 `parts` 里：它描述的是产生这条回复的那一次模型请求，
+    而不是回复里的某一段。只有 assistant 消息有；工具结果那些记录没有自己的请求。
+    老数据、不支持的 CLI 都会缺——缺了就是没有这个数，不要估。
+  */
+  data?: { parts?: MessagePart[]; usage?: MessageUsage };
 };
 
 export type HistoryMessage = {

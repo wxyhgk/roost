@@ -322,6 +322,36 @@ export const misc = {
     title: (count: number) => `${count} session${count === 1 ? "" : "s"} waiting for you`,
   },
 
+    blocks: {
+      running: "Running",
+      failed: "Failed",
+      stopped: "Stopped",
+      input: "Input",
+      output: "Output",
+      inspect: "Inspect",
+      copy: "Copy",
+      copied: "Copied",
+      collapse: "Collapse",
+      collapseAria: "Collapse",
+      expand: (hidden: number) => `${hidden} more lines`,
+      expandAria: (hidden: number) => `Expand ${hidden} more lines`,
+      files: (count: number) => `${count} file${count === 1 ? "" : "s"}`,
+      window: (shown: number, total: number) => `${shown} / ${total} lines`,
+      done: "Done",
+      /** 跑完了但一个字都没输出——必须说出来，否则和「结果没拿到」长得一样。 */
+      noOutput: "Finished with no output",
+      exitCode: (code: number) => `exit ${code}`,
+      signal: (signal: string) => `signal ${signal}`,
+      noResults: "No results",
+      truncated: "truncated",
+      pathsSummary: (shown: number, total: number, truncated: boolean) =>
+        `${shown} / ${total} files${truncated ? " (truncated)" : ""}`,
+      matchesSummary: (shown: number, total: number, files: number, truncated: boolean) =>
+        `${shown} / ${total} matches in ${files} files${truncated ? " (truncated)" : ""}`,
+      sourcesTruncated: "Sources truncated",
+      http: "HTTP",
+      contentTruncated: "Content truncated",
+    },
   media: {
     imageFailed: "Failed to load image",
     binary: "Binary file",
