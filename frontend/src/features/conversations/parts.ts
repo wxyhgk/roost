@@ -13,7 +13,16 @@ import type { EditPatch, HistoryMessage, MessagePart } from "../../shared/api/co
 
 export type Block =
   | { kind: "text"; text: string }
-  | { kind: "tool"; id: string; name: string; args: string; result: string | null; failed: boolean; patch?: EditPatch };
+  | { kind: "tool"; id: string; name: string; args: string; result: string | null; failed: boolean;
+      /**
+       * 这次调用被拦下来了，**命令根本没执行**——用户拒绝、auto 模式拦截、权限规则都算。
+       *
+       * 和 `failed` 分开是因为它们是两件事：失败是跑了之后的结果，拒绝是压根没跑。合成一个
+       * 布尔的话，一次「我不让它删这个目录」会在对话里显示成一次错误——报告一个没发生过的
+       * 故障。判据来自解析器（`packages/ai-transcript/src/claude.ts` 读记录级的
+       * `toolDenialKind`），不是这里猜文本。
+       */
+      denied?: boolean; patch?: EditPatch };
 
 export type Row = { message: HistoryMessage; role: string; blocks: Block[] };
 
@@ -51,11 +60,12 @@ export function groupMessages(messages: readonly HistoryMessage[]): Row[] {
         if (block.id) pending.set(block.id, block);
         continue;
       }
-      if (part.type === "tool_result" || part.type === "tool_error") {
+      if (part.type === "tool_result" || part.type === "tool_error" || part.type === "tool_denied") {
         const target = part.toolCallId ? pending.get(part.toolCallId) : undefined;
         if (target) {
           target.result = text(part);
           target.failed = part.type === "tool_error";
+          target.denied = part.type === "tool_denied";
           if (part.patch?.hunks.length) target.patch = part.patch;
           pending.delete(part.toolCallId!);
           continue;
@@ -65,7 +75,7 @@ export function groupMessages(messages: readonly HistoryMessage[]): Row[] {
           **默默丢掉比显示一个孤儿更糟**：用户会以为那一步没发生。
         */
         blocks.push({ kind: "tool", id: part.toolCallId ?? "", name: "", args: "",
-          result: text(part), failed: part.type === "tool_error",
+          result: text(part), failed: part.type === "tool_error", denied: part.type === "tool_denied",
           ...(part.patch?.hunks.length ? { patch: part.patch } : {}) });
         continue;
       }
@@ -101,6 +111,10 @@ export type ToolsStatus = "running" | "error" | "completed";
  * 一组的状态：**只要有一个还没回来就是 running**，否则有失败就是 error。
  *
  * 「还没结束」压过「其中有失败」——对一个摘要来说，先要回答的是「这一步做完了没有」。
+ *
+ * 被拒绝的调用（`denied`）不算 error：它没跑，也就没失败。这里**不为它加第四种状态**——
+ * 组头只有三种颜色，加一种要牵动 ConversationDetail 的样式和文案，而「用户自己刚拒绝的东西」
+ * 用户本来就知道。真正要修的是「显示成失败」，那一条在 SummaryRow 的行内标签上已经修掉了。
  */
 export function toolsStatus(tools: readonly ToolBlock[]): ToolsStatus {
   if (tools.some(tool => tool.result === null)) return "running";

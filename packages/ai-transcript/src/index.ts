@@ -14,10 +14,14 @@ export type TranscriptCheckpoint = {
 /**
  * 一次文件改动的真实 hunk。
  *
- * **供应商已经算好了，我们只是没去取。** Claude 在 edit 工具结果的记录级
- * `toolUseResult.structuredPatch` 上给出解析过的 unified hunk（实测 12 份 transcript 里
- * 有 30 条非空）。把它压成一行「Edit: src/foo.ts」，等于把 AI coding 对话里用户最关心的
- * 东西——「它到底改了什么」——扔掉。
+ * **供应商已经算好了，我们只是没去取。** Claude 在记录级给出解析过的 unified hunk：Edit 类
+ * 工具放 `toolUseResult.structuredPatch`，Bash 改文件（sed、heredoc、脚本）放
+ * `toolUseResult.bashEditDiff.files[]`，两处的 hunk 是同一副骨架（实测 52 份 transcript 里
+ * 94 条 + 501 条，且从不同时出现）。把它压成一行「Edit: src/foo.ts」，等于把 AI coding 对话里
+ * 用户最关心的东西——「它到底改了什么」——扔掉。
+ *
+ * 一次改动一个文件：`filePath` 和 `hunks` 是绑死的。`bashEditDiff` 一条里可能有好几个文件，
+ * 多出来的只能靠 `truncated` 说出来，不能并进同一个 `filePath`。
  *
  * 有上限：hunk 数、总行数、单行长度都封顶，超出标 `truncated`。原始数据可以任意大，
  * 而这份要经过预览、WebSocket 和列表预算。

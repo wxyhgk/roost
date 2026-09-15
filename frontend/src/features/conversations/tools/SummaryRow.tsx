@@ -39,6 +39,8 @@ export function SummaryRow({ block, title, children }: {
         </span>
         <span className="min-w-0 flex-1 truncate font-mono text-text-dim">{title ?? summary}</span>
         {block.failed && <span className="shrink-0 text-danger">{t.misc.conversations.detail.toolFailed}</span>}
+        {/* 拒绝用 warning 不用 danger：那是一次「没让它跑」，不是一次故障。 */}
+        {block.denied && <span className="shrink-0 text-warning">{t.misc.conversations.detail.toolDenied}</span>}
       </button>
       {open && (children ?? (
         <dl className="border-t border-border/60 px-2.5 py-1.5">

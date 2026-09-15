@@ -164,6 +164,8 @@ export const misc = {
       /** 工具调用折叠成一行；参数和结果展开才看。 */
       toolRan: (name: string) => name || "工具调用",
       toolFailed: "失败",
+      /** 「没跑」不是「跑失败」：被拒绝的调用一个字节都没执行，标成失败是在报一个没发生的错。 */
+      toolDenied: "已拒绝",
       toolNoResult: "没有结果",
       /** 命令输出留尾部：报错和结论都在末尾。 */
       outputClipped: "上面还有更早的输出，已省略",

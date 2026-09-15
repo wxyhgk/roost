@@ -34,8 +34,9 @@ type ToolRenderer = {
 const RENDERERS: readonly ToolRenderer[] = [
   /*
     **patch 排第一，而且按数据而不是按名字认领。** 谁带 patch 是 Claude 决定的——它看自己
-    写没写 `structuredPatch`，不看工具叫什么（见 packages/ai-transcript/src/claude.ts）。
-    改成按工具名匹配的话，一个我们没列进表的工具带着真实改动过来，diff 就静静消失了。
+    算没算出改动（Edit 类工具写 `structuredPatch`，Bash 改文件写 `bashEditDiff`），不看工具
+    叫什么（见 packages/ai-transcript/src/claude.ts）。改成按工具名匹配的话，一个我们没列进表的
+    工具带着真实改动过来，diff 就静静消失了——Bash 带 diff 这件事就是这条规则先兜住的。
   */
   {
     name: "patch",

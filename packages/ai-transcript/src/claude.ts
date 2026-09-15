@@ -9,9 +9,7 @@ const BATCH = 256 * 1024, LINE = 1024 * 1024, PREVIEW = 4000;
 
 /** hunk 数、总行数、单行长度都封顶：原始数据可以任意大，而这份要过预览和列表预算。 */
 const PATCH_HUNKS = 20, PATCH_LINES = 200, PATCH_LINE = 300;
-function editPatch(value: unknown): EditPatch | undefined {
-  if (!object(value)) return undefined;
-  const raw = (value as any).structuredPatch;
+function boundPatch(raw: unknown, filePath: unknown): EditPatch | undefined {
   if (!Array.isArray(raw) || raw.length === 0) return undefined;
   const int = (n: unknown) => Number.isSafeInteger(n) ? (n as number) : 0;
   let budget = PATCH_LINES;
@@ -26,9 +24,45 @@ function editPatch(value: unknown): EditPatch | undefined {
       newStart: int((hunk as any).newStart), newLines: int((hunk as any).newLines), lines });
   }
   if (!hunks.length) return undefined;
-  const filePath = (value as any).filePath;
   return { ...(typeof filePath === "string" ? { filePath: filePath.slice(0, 1024) } : {}),
     hunks, truncated: raw.length > hunks.length || budget <= 0 };
+}
+
+/**
+ * 用 Bash 改的文件也有 diff，只是放在另一个键上。
+ *
+ * sed、heredoc、改文件的脚本——这些走 Bash，结果里没有 `structuredPatch`，Claude 把算好的
+ * 改动放进 `toolUseResult.bashEditDiff`。**本机 52 份 transcript 实测 501 条，全部来自 Bash，
+ * 且和 `structuredPatch` 从不同时出现**（94 : 501 : 0）。不取它的后果是「Edit 工具改的文件
+ * 有 diff，Bash 改的一个都没有」——同一件事在对话里长得不一样。
+ *
+ * 内层 `files[i]` 和 `structuredPatch` 是同一副骨架（`filePath` + 同键名的 hunks），所以直接
+ * 映射成 `EditPatch`，前端现成的 diff 渲染器一行都不用改。
+ *
+ * **只带第一个有 hunk 的文件。** `EditPatch` 是单文件的——一个 `filePath` 配一组 hunks——
+ * 而 `files` 实测最多 5 项（223 条 1 个、104 条 2~5 个）。把几份 diff 并进一个 `filePath`
+ * 就是在撒谎，所以剩下的靠 `truncated` 说出来，而不是假装拿到的就是全部。同理
+ * `moreFiles` 是 Claude 自己都没给全的份数（实测最大 268），它大于 0 也必须标 `truncated`。
+ *
+ * 没带过来的：`changedFiles`（全量路径清单）、`created` / `deleted`（新建还是删除）、
+ * `shared` / `unavailable`。前两样在 `EditPatch` 里没有位置，后两样只出现在 `files` 为空的
+ * 记录上（172 + 2 条），那种记录我们本来就不附 patch——不附不等于声称没有改动。
+ */
+function bashEditPatch(value: unknown): EditPatch | undefined {
+  if (!object(value)) return undefined;
+  const files = (value as any).files;
+  if (!Array.isArray(files)) return undefined;
+  const first = files.find((file: unknown) => object(file) && Array.isArray((file as any).hunks) && (file as any).hunks.length);
+  if (!first) return undefined;
+  const patch = boundPatch(first.hunks, first.filePath);
+  if (!patch) return undefined;
+  const more = (value as any).moreFiles;
+  return { ...patch, truncated: patch.truncated || files.length > 1 || (Number.isSafeInteger(more) && more > 0) };
+}
+
+function editPatch(value: unknown): EditPatch | undefined {
+  if (!object(value)) return undefined;
+  return boundPatch((value as any).structuredPatch, (value as any).filePath) ?? bashEditPatch((value as any).bashEditDiff);
 }
 
 function fingerprint(stat: {dev: number; ino: number; birthtimeMs: number}) { return `${stat.dev}:${stat.ino}:${stat.birthtimeMs}`; }
@@ -87,6 +121,19 @@ function normalize(row: Record<string, any>, ref: TranscriptItem["data"]["detail
   // 记录级的改动数据只对应这一条结果；一条记录里有多个结果时无法指认是哪一个，就不附。
   const soleResult = content.filter((p: any) => p?.type === "tool_result").length === 1;
   const patch = soleResult ? editPatch(row.toolUseResult) : undefined;
+  /*
+    **「用户不让跑」和「跑了但失败」是两件事**，而 `is_error` 把它们说成同一件。实测 87 条
+    is_error 里有 21 条命令根本没执行过（用户拒绝 15、auto 模式拦截 5、权限规则 1），
+    一律画成「失败」是在报告一个没发生过的错误。
+
+    判据是记录级的 `toolDenialKind`，不是文本匹配：实测 21 条全部带这个字段、全部 is_error、
+    每条记录恰好一个 tool_result，而没有任何一条非拒绝记录带它（`toolUseResult` 在这些记录上
+    只是一个字符串，给不出任何结构化线索）。值不做白名单——字段名本身就是判据，而写死三个
+    已知值会让将来新增的拒绝种类悄悄退回「失败」，那正是这里要修的 bug。
+
+    同样受一条结果的门闸约束，理由和 patch 一样：记录级的信号指认不到具体哪条结果。
+  */
+  const denied = soleResult && typeof row.toolDenialKind === "string" && row.toolDenialKind.length > 0;
   for (const block of content.slice(0, 512)) {
     if (!object(block)) { partial = true; continue; }
     if (block.type === "text" && typeof block.text === "string") add("text", block.text);
@@ -103,7 +150,7 @@ function normalize(row: Record<string, any>, ref: TranscriptItem["data"]["detail
         text = block.content.slice(0,512).map((part: any) => { if (part?.type === "text" && typeof part.text === "string") return part.text; partial = true; return "[未支持的工具结果内容]"; }).join("\n");
         if (block.content.length > 512) { partial = true; truncated = true; }
       } else { partial = true; }
-      add(block.is_error ? "tool_error" : "tool_result", text, { toolCallId: block.tool_use_id, ...(patch ? { patch } : {}) });
+      add(!block.is_error ? "tool_result" : denied ? "tool_denied" : "tool_error", text, { toolCallId: block.tool_use_id, ...(patch ? { patch } : {}) });
     } else { partial = true; add("unsupported", "[未支持的记录内容]"); }
   }
   const timestamp = Date.parse(row.timestamp);

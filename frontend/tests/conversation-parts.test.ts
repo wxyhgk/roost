@@ -161,3 +161,34 @@ test("the rollup lands at the end of the turn that produced it", () => {
   ]);
   assert.deepEqual(buildItems(rows).map(i => i.kind), ["text", "tools", "diff", "text"]);
 });
+
+/*
+  **「用户不让跑」和「跑了但失败」是两件事。** 解析器读记录级的 `toolDenialKind` 把它们分开
+  （`packages/ai-transcript/src/claude.ts`，实测 87 条 is_error 里有 21 条命令根本没执行过）。
+  这里只负责别把它们又合回去：`denied` 的调用不能同时是 `failed`，否则对话里会出现一次
+  没发生过的故障。
+*/
+test("a denied tool use is marked denied, not failed", () => {
+  const rows = groupMessages([
+    msg("assistant", "", [{ type: "tool_call", name: "Bash", toolCallId: "c1", text: "Bash: rm -rf /w" }]),
+    msg("user", "", [{ type: "tool_denied", toolCallId: "c1", text: "这次调用被拒绝了" }]),
+  ]);
+  const tool = rows[0].blocks[0];
+  assert.equal(tool.kind === "tool" && tool.denied, true);
+  assert.equal(tool.kind === "tool" && tool.failed, false, "没跑不是跑失败");
+  assert.equal(tool.kind === "tool" && tool.result, "这次调用被拒绝了", "拒绝的说明也是结果");
+});
+
+/* 配不上对的结果仍然要显示——历史被截断时会这样。孤儿也得把「拒绝」和「失败」分开。 */
+test("an orphan denial keeps the distinction too", () => {
+  const rows = groupMessages([msg("user", "", [{ type: "tool_denied", toolCallId: "gone", text: "被拒绝" }])]);
+  const tool = rows[0].blocks[0];
+  assert.equal(tool.kind === "tool" && tool.denied, true);
+  assert.equal(tool.kind === "tool" && tool.failed, false);
+});
+
+/* 拒绝不算 error：它没跑，也就没失败。组头只有三种颜色，这里不为它加第四种。 */
+test("a denied tool does not turn its group red", () => {
+  assert.equal(toolsStatus([{ kind: "tool", id: "a", name: "", args: "", result: "x", failed: false, denied: true }]),
+    "completed");
+});

@@ -163,6 +163,7 @@ export const misc = {
       roleTool: "Tool",
       toolRan: (name: string) => name || "Tool call",
       toolFailed: "failed",
+      toolDenied: "denied",
       toolNoResult: "no result",
       /** 命令输出留尾部：报错和结论都在末尾。 */
       outputClipped: "Earlier output omitted",
