@@ -191,7 +191,12 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
             {t.misc.conversations.detail.loadOlder}
           </button>
         )}
-        <ul className="flex flex-col gap-2.5 px-2.5 py-2">
+        {/*
+          消息列**居中封顶**，滚动条仍然满铺——照 deepseek-harness 的 `.column`
+          （`max-width` + `margin: 0 auto`）。满宽的长行在宽屏上读起来费劲，而对话里
+          助手的段落是最长的那种文本。间距从 10px 提到 16px，也是跟着它们的节奏。
+        */}
+        <ul className="mx-auto flex w-full max-w-[52rem] flex-col gap-4 px-3 py-2">
           {items.map((item, i) => <TranscriptItem key={item.key} item={item} showRole={showRole[i]} />)}
           {/* 待发的消息就在流的末尾——它会进 TUI、再从 transcript 回来，本来就属于这里。 */}
           {outgoing.pending.map(item => (
@@ -302,11 +307,22 @@ function TextBlock({ text: value, mine, role }: { text: string; mine: boolean; r
   const [expanded, setExpanded] = useState(false);
   const collapsible = !mine && isLongReply(value);
   const prose = !mine && role !== "tool";
+  /*
+    **气泡只给用户消息，助手的不套框。**
+
+    照 deepseek-harness 的做法改的（`ui-chat/src/client/chat/MessageItem.module.css` 的
+    `.bubble` 只用在 userRow 上，助手那侧没有任何外框）——ChatGPT 系的对话都是这个形状，
+    理由也站得住：一屏里助手的字远多于用户的，每段都套一个灰盒子等于给正文加了一圈噪音，
+    而且会把里面真正需要框的东西（diff、终端输出、代码块）压得没有层次。
+
+    用户那条保留气泡并加大圆角（上游 22px），因为它是短的、需要一眼认出「这句是我说的」。
+  */
   return (
     <>
-      <div className={`max-w-[92%] break-words rounded-lg px-2.5 py-1.5 text-body leading-[1.5] ${
+      <div className={`break-words text-body leading-[1.55] ${
         prose ? "" : "whitespace-pre-wrap"
-      } ${mine ? "bg-bg-active text-text" : role === "tool" ? "bg-bg text-text-dim" : "bg-bg-raised text-text"
+      } ${mine ? "max-w-[85%] rounded-[22px] bg-bg-active px-4 py-2.5 text-text"
+        : role === "tool" ? "max-w-full rounded-lg bg-bg px-2.5 py-1.5 text-text-dim" : "max-w-full text-text"
       } ${collapsible && !expanded ? "line-clamp-4" : ""}`}>{prose ? <Prose value={value} /> : value}</div>
       {collapsible && (
         <button type="button" aria-expanded={expanded} onClick={() => setExpanded(v => !v)}
