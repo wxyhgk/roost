@@ -47,7 +47,11 @@ for (const [id, name, args, out] of [
 
 // 一次失败的命令：长输出。
 say('assistant', [{ type: 'tool_call', toolCallId: 't6', name: 'Bash', text: 'Bash: {"command":"npm test --workspace frontend"}' }]);
-say('user', [{ type: 'tool_error', toolCallId: 't6', text: Array.from({ length: 40 }, (_, i) => `✔ 用例 ${i + 1} 通过 (0.${i}ms)`).join('\n') + '\n✖ 空行兜底删掉之后，后面的原子跟着消失\n  AssertionError: 3 !== 1\n\nℹ fail 1' }]);
+// 真的带 ANSI 转义：绿色的 ✔、红色的 ✖、暗灰的耗时——命令输出的颜色是有意义的。
+const G = '\u001b[32m', R = '\u001b[31m', D = '\u001b[90m', B = '\u001b[1m', Z = '\u001b[0m';
+say('user', [{ type: 'tool_error', toolCallId: 't6', text:
+  Array.from({ length: 40 }, (_, i) => `${G}✔${Z} 用例 ${i + 1} 通过 ${D}(0.${i}ms)${Z}`).join('\n')
+  + `\n${R}✖ 空行兜底删掉之后，后面的原子跟着消失${Z}\n  ${R}AssertionError: 3 !== 1${Z}\n\n${B}ℹ fail 1${Z}` }]);
 
 // 一次被拒绝：命令根本没跑。
 say('assistant', [{ type: 'tool_call', toolCallId: 't7', name: 'Bash', text: 'Bash: {"command":"rm -rf frontend/tests"}' }]);

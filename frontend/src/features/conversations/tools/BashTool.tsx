@@ -1,6 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { SummaryRow, type ToolBlock } from "./SummaryRow";
 import { clipMiddle } from "./text";
+import { parseAnsiLines, type AnsiLine } from "../../../shared/terminal-text/ansi";
 import { t } from "@roost/i18n";
 
 /** 展开后最多显示多少字符的输出。上游把工具结果截到 4000 字，这里再留一道。 */
@@ -28,10 +29,33 @@ const MAX_OUTPUT = 4000;
 function Output({ text, failed }: { text: string; failed: boolean }) {
   const box = useRef<HTMLDivElement | null>(null);
   useEffect(() => { const el = box.current; if (el) el.scrollTop = el.scrollHeight; }, [text]);
+  /*
+    **按 ANSI 上色。** 命令输出里的红绿是有意义的——测试的通过/失败、diff 的增删、
+    linter 的警告，在此之前它们要么被剥成灰字要么原样显示转义码。解析器连同它的 75 个
+    用例一起抄自 deepseek-harness（见 shared/terminal-text/ansi.ts 顶上的出处）。
+
+    失败时**不再整块染红**：有颜色的输出自己会说话，整块染红反而把里面真正的红盖掉了。
+    失败与否由摘要行上那个标签负责。
+  */
+  const lines = useMemo(() => parseAnsiLines(text), [text]);
   return (
     <div ref={box} className={`mt-1 max-h-72 overflow-auto whitespace-pre-wrap break-words ${
-      failed ? "text-danger" : "text-text-dim"}`}>{text}</div>
+      failed && !hasColor(lines) ? "text-danger" : "text-text-dim"}`}>
+      {lines.map((line, i) => (
+        <div key={i}>
+          {line.length === 0
+            // 空行要占一行高，否则连续空行会塌掉、输出的段落感全没了。
+            ? "\u00a0"
+            : line.map((span, j) => <span key={j} style={span.style}>{span.text}</span>)}
+        </div>
+      ))}
+    </div>
   );
+}
+
+/** 输出自己带颜色时就别再整块染色，否则会把它自己的红盖掉。 */
+function hasColor(lines: readonly AnsiLine[]): boolean {
+  return lines.some(line => line.some(span => span.style?.color));
 }
 
 export function BashTool({ block, command }: { block: ToolBlock; command: string }) {
