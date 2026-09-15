@@ -29,11 +29,11 @@ Copyright (c) 2026 DeepSeek
 
 ## 这份拷贝的规矩
 
-**除下面点名的五个文件外，每个文件都逐字取自上游**，顶上压着一行出处（路径 + 提交号）。
-这样做是为了将来还能重新同步：改动只要还锁在那五个文件里，重新拉一遍上游就是覆盖，
+**除下面点名的八个文件外，每个文件都逐字取自上游**，顶上压着一行出处（路径 + 提交号）。
+这样做是为了将来还能重新同步：改动只要还锁在那八个文件里，重新拉一遍上游就是覆盖，
 而不是一场三方合并。要改样式请改 `tokens.css`，不要改进 `*.module.css`。
 
-### 不是上游的五个文件
+### 不是上游的八个文件
 
 | 文件 | 是什么 |
 | --- | --- |
@@ -42,6 +42,9 @@ Copyright (c) 2026 DeepSeek
 | `tokens.css` | `--dsw-*` → 我们 `--color-*` 的桥接表，文件里标了哪些值是猜的 |
 | `markdown/katex-lazy.ts` | **我们自己写的**：把 katex 引擎和它的样式表包成一个异步模块 |
 | `highlighted.ts` | **我们自己写的**第二个入口，装会拖进 shiki 的那几块，理由写在文件顶上 |
+| `chat/CompactionItem.module.css` | 从 `MessageItem.module.css` 52–193 行抽出来的那 20 条 `.compaction*` |
+| `layout/index.ts` | layout 的桶，上游没有对应物（它的外壳靠 slot 注册表装配，没有桶） |
+| `layout/layout-state.ts` | 上游 `stores.ts` 的布局那一半，`defineStore` → `useReducer`，并加了持久化 |
 
 ### 逐字之外的改动
 
@@ -69,10 +72,30 @@ Copyright (c) 2026 DeepSeek
    而且两次都是 typecheck 和测试看不出、只有画出来才发现。以后再搬带 inline svg 或列表的
    组件，先照着截图查一遍。
 
-4. **`MessageItem.module.css` 删掉了上游的 52–193 行**——那 20 条 `.compaction*` 已经在
+4. **我们自己的 `index.css` 静默干掉了上游的滚动条内缩。** `frontend/src/index.css` 有一条
+   无层的 `* { scrollbar-width: thin; scrollbar-color: … }`。上游 `scrollbar.css` 的注释把这件事
+   写得很死：非 `auto` 的 `scrollbar-width`/`scrollbar-color` 会让 Chromium 和 Safari 对该元素
+   **丢弃全部 `::-webkit-scrollbar*` 规则**。所以 `ConversationRoot.module.css` 的
+   `.scrollBody::-webkit-scrollbar-track { margin: 2px }` 和 `InputBar.module.css` 的
+   `.scroll::-webkit-scrollbar-track { margin-top: 8px }` 在我们这儿是**空转**的。
+   后果纯观感（滚动条不内缩 2px、滑块顶到卡片圆角里），module.css 保持逐字不动；真要修就改
+   `index.css` 那条全局规则，那是独立决定。
+
+   **这是 NOTICE 第 3 条那个模式的新变种**：前两次是 Tailwind 的 preflight 撞车，这次肇事者
+   是我们自己写的全局规则。同样是 typecheck 和单测看不见的一类。
+
+5. **布局状态我们持久化，上游故意不。** 上游 README 写着 "Layout state resets on reload"，
+   刷新即重置栏宽和折叠态（只有对话内容宽存 localStorage）。我们不跟这一条——口子是
+   `layout-state.ts` 的 `LayoutPersistence`，默认不启用。**只存 `sidebar` / `rightbar` 两个
+   字段**：`viewportWidth` 是实测值；`narrowExpanded` 上游自己跨断点就清，存下来等于把临时
+   动作变成永久偏好；右栏那几个 `shown/track/fullscreen` 是占位者报上来的派生装饰，存了会在
+   刷新后变成「框以为开着、占位者以为关着」。读回来的值重新夹逼一次——存储里可能躺着旧版本
+   写的或手改的值，一个 NaN 进 `gridTemplateColumns` 就是一条永远修不好的坏栏。
+
+6. **`MessageItem.module.css` 删掉了上游的 52–193 行**——那 20 条 `.compaction*` 已经在
    `chat/CompactionItem.module.css` 里，搬第二份会让两处各自漂移。
 
-5. **`WebBlock` 在 `highlighted.ts` 而不是 `index.ts`。** 它自己不碰 shiki，但它用
+7. **`WebBlock` 在 `highlighted.ts` 而不是 `index.ts`。** 它自己不碰 shiki，但它用
    `MarkdownText` 画搜索结果正文，而完整树里 `render.tsx → CodeBlock → markdown/highlight.ts`
    是静态引用——「谁 import 谁」的隔离只要有一次间接引用就破。实测：桶里只取一个
    `TerminalBlock`，挪之前 shiki 会跟着进来，挪之后 shiki 和 katex 都是 0 次、产物 154 KB。
@@ -107,6 +130,37 @@ Copyright (c) 2026 DeepSeek
   `chat/tool/ToolRow.tsx`，七个 `chat/tool/models/*`，以及 `chat/tool/toolviews/` 里的
   `GenericToolCard` `file-mutation-row` `read-row` `read-family-row` `bash-sample`
 
+### 第三轮：应用外壳（上游 `packages/client/ui-layout/src/client/`）
+
+前两轮搬的是「一条消息长什么样」，这一轮搬的是**装它的那个框**——在此之前我们是在自己的
+外壳上接别人的零件，形状始终对不上。
+
+- `layout/columns.ts`——**逐字**，57 行零 import。整套栏宽契约：`CENTER_MIN=400`
+  `SIDEBAR_MIN/MAX/DEFAULT/COLLAPSED=264/420/280/56` `SIDEBAR_AUTO_COLLAPSE=1024`
+  `RIGHTBAR_MIN=300` `RIGHTBAR_MAX_RATIO=0.7` `RIGHTBAR_DEFAULT_RATIO=0.45`，以及
+  `clampWidth` / `computeColumns`。**让步顺序是硬的**：右栏先缩到 300 → 整轨消失 →
+  中栏这才允许掉破 400 → 左栏永不让步。`frontend/tests/dsh-columns.test.ts` 钉着它。
+- `layout/AppFrame.module.css`——**逐字**，99 行。
+- `layout/AppFrame.tsx`——`DragHandle` 逐字，框主体改接线（六处 ROOST-CHANGE，见文件头）。
+
+### 第三轮之二：对话列骨架（上游 `packages/client/ui-conversation/src/client/skeleton/`）
+
+前两轮搬的是「一条消息长什么样」，这一块是**装消息的那个壳**：
+
+- `skeleton/ConversationRoot.module.css`（481 行）——**逐字**，1 处 ROOST-CHANGE。最值钱的
+  一份：内容宽度轴 `clamp(680px, 栏宽 × 0.64, 920px)`、76px 的头（这个数等于右栏标签条 38
+  加窗格头 38，两条规则在栏边接得上）、唯一滚动容器 `.scrollBody`、滚动容器**内部**的
+  sticky 座位、hero 态、两条 40px 宽度拖条。
+- `skeleton/HeroShell.module.css`（231 行）、`skeleton/InputBar.module.css`（394 行）——**逐字**。
+  后者**搬了没接**：我们的 `ConversationComposer` 还是自己那套，接它是另一件事。
+- `skeleton/ConversationShell.tsx` / `ConversationContent.tsx`——改自上游的
+  `ConversationMainPanel` / `ConversationContent`，`WidthHandle` 和两段 ResizeObserver 逐字。
+
+**这一块补上了一个一直缺的东西**：`--dsh-conversation-column-width` 在此之前**全仓没有任何
+地方发布过**，于是内容宽度轴恒等于 clamp 的下限 680px——消息列和栏宽脱钩，栏拉多宽都是 680。
+`ConversationShell` 的 `publishWidths` 正是发布它的那一段。接上之后实测：栏宽 1280 →
+正文列 819px（0.64 × 1280）、输入卡 851px，两者正好差 32。
+
 **其中 `TurnNavigator` 搬了但没接**：它的价值随回合数上涨，而我们是一次读完整段历史、
 不做增量滚动，接上去是个永远指着同一处的导航条。留在目录里是为了将来改成增量加载时不用重搬。
 
@@ -132,6 +186,12 @@ Copyright (c) 2026 DeepSeek
   结构（搜索结果条目、匹配行），而我们的 `ToolBlock.result` 是各家 CLI 落盘的原始文本，
   对不对得上没验过。**接之前先拿真实记录跑一遍 model，对不上再按规矩不接、回来补记。**
   `todo-row` 只读 `argsRaw`（就是我们的 `ToolBlock.args`），数据是够的。
+- **`ui-layout` 里没搬的那几个**：`DocumentTitle.tsx`（订阅上游 session/panel 投影拼
+  `document.title`，两个投影我们都没有，而浏览器标题是 roost 自己的事）；`service.ts` 的
+  `LayoutController`（那是给别的插件用的跨插件面，我们没有插件运行时）；`theme-presenter.ts`
+  （把 `ThemeSnapshot` 投到 `body[data-ds-dark-theme]` 上，而我们整张 `tokens.css` 建立在
+  `html[data-theme]` 上，搬进来是两套主题机制打架）；上游 `index.ts` 的插件注册；
+  `stores.ts` 里 `panelInfo` / `selectPanel` 那一半（那是路由，不是布局）。
 - `ui-tool` 的外壳与接线：`ToolCallTree` `AskQuestionCard` `apply.ts` `contract/slots.ts`
   `locale.ts` `index.ts`——那是上游的插槽运行时，我们的分派写在
   `features/conversations/tools/dispatch.ts` 里。

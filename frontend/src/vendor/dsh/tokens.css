@@ -382,4 +382,46 @@ html[data-theme="light"] {
   */
   --dsw-elevation-prominent:
     0 0 0 0.5px var(--dsw-alias-border-l1), 0 3px 8px 0 rgba(0, 0, 0, 0.32), 0 0 20px 0 rgba(0, 0, 0, 0.4);
+
+  /* ---- 外壳：过渡、轨、滚动条 ------------------------------------------
+     这一批是第三轮搬外壳（vendor/dsh/layout、skeleton、sidebar）才需要的。
+     前三批只搬了消息渲染层，那一层不碰动画也不碰栏。 */
+
+  /* 上游 base.css:11-14，**逐字**。栏宽变化的缓动就用这一条；`AppFrame.module.css`
+     的 `.frame` 在 `grid-template-columns` 上挂它，拖动时又用 `[data-dragging]` 掐掉
+     ——拖的时候有缓动，栏边就跟不上指针。 */
+  --ds-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ds-transition-duration: 0.2s;
+  --ds-transition-duration-fast: 0.1s;
+  --ds-transition-duration-slow: 0.3s;
+
+  /*
+    侧栏底色。上游是两套写死的值（浅 `rgb(249,250,251)`、深 `rgb(27,27,28)`），
+    我们接到 `--color-bg-panel`——它本来就跟着 `html[data-theme]` 翻，不用在这里
+    再写一份浅色表。数值上也对得住：我们的面板色深色是 `#202023`、浅色是 `#ffffff`，
+    和上游那两个各差一点点亮度，但角色完全相同。
+  */
+  --dsw-specific-sidebar-fill: var(--color-bg-panel);
+
+  /*
+    滚动条。宽度取上游 `scrollbar.css:25` 的 8px，**逐字**。
+
+    滑块颜色上游走的是 `neutral-200/300`（浅）和 `neutral-600/600`（深）——注意深色那套
+    两档**同色**，也就是深色下 hover 不变色。我们接到 `--color-border` 上：它在两个主题
+    下都是「比背景亮一点的中性色」，正是滑块要的角色；hover 档再往文字方向走一步，
+    于是深色下也有反馈，比上游多一点。**[猜]** 的是 hover 那一档的配比。
+  */
+  --dsh-scrollbar-width: 8px;
+  --dsw-alias-scrollbar-bg-l2: var(--color-border);
+  --dsw-alias-scrollbar-hover-l1: color-mix(in srgb, var(--color-border) 60%, var(--color-text-dim));
+
+  /*
+    **[猜]** 最轻的一档阴影，输入卡在用。上游三档的黑是 3%/2%（panel）、4%/5%
+    （prominent）、3%/3%（soft），都是为浅色背景配的；这里沿用上面 panel/prominent
+    那条已经定下来的 8 倍换算，于是 3%/3% → 24%/24%。描边色同样直接写死成 l1，
+    理由见上面 --dsw-elevation-prominent 那段（自定义属性重绑要逐元素声明，我们的
+    终端视图动辄上万个节点，不值）。
+  */
+  --dsw-elevation-soft:
+    0 0 0 0.5px var(--dsw-alias-border-l1), 0 4px 16px 0 rgba(0, 0, 0, 0.24), 0 0 24px 0 rgba(0, 0, 0, 0.24);
 }
