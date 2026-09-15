@@ -1,4 +1,5 @@
 import { identifyTool, toolArgsOf, toolSubject, type ToolArgs, type ToolId } from "./identify";
+import { readCard } from "./read-card";
 import type { ToolBlock } from "./SummaryRow";
 
 /**
@@ -10,7 +11,7 @@ import type { ToolBlock } from "./SummaryRow";
  */
 
 export type ToolViewInput = { block: ToolBlock; id: ToolId; args: ToolArgs };
-export type RendererName = "patch" | "bash";
+export type RendererName = "patch" | "bash" | "read";
 
 /**
  * 四态。**中断优先于失败**——一次「我不让它跑」不是一次故障，合起来会在对话里报一个
@@ -41,6 +42,12 @@ export function viewInput(block: ToolBlock): ToolViewInput {
 export function pickRenderer({ block, id, args }: ToolViewInput): RendererName | null {
   if (block.patch?.hunks.length) return "patch";
   if (id.key === "bash" && toolSubject(args)) return "bash";
+  /*
+    读文件排在最后，而且要 `readCard` 先折算得出来才认领。它返回 null 的两种情况——
+    没有路径、结果里一行带行号的都没有（读的是图片、读失败了、或者那个 CLI 的输出不是
+    `cat -n` 那个形状）——画出来都是一块有边框有标题的空代码区。
+  */
+  if (id.key === "read" && readCard(args, block.result) !== null) return "read";
   return null;
 }
 

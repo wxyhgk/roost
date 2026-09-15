@@ -5,11 +5,13 @@ import { toDiffHunks } from "./diff-adapter";
 import { toolErrorSummary } from "./error-summary";
 import { toolCatalogEntry, toolTitle, type ToolIconName } from "./catalog";
 import { clipMiddle } from "./text";
+import { readCard } from "./read-card";
 import { TOOL_ROW_LABELS, TERMINAL_LABELS } from "./labels";
 import type { ToolBlock } from "./SummaryRow";
 import { SummaryRow } from "./SummaryRow";
 import { FileMutationRow } from "../../../vendor/dsh/chat/tool/toolviews/file-mutation-row";
 import { BashRow } from "../../../vendor/dsh/chat/tool/toolviews/bash-sample";
+import { ReadRow } from "../../../vendor/dsh/chat/tool/toolviews/read-row";
 import { ToolRow } from "../../../vendor/dsh/chat/tool/ToolRow";
 import {
   IconApiOutline14, IconSearchOutline16, IconBrowseOutline16, IconEditOutline16,
@@ -89,6 +91,28 @@ const VIEWS: Record<RendererName, (input: ToolViewInput) => ReactNode> = {
           labels={{ ...TOOL_ROW_LABELS, terminal: TERMINAL_LABELS }}
         />
     );
+  },
+  /*
+    读文件：展开后是一块带行号、带语法高亮的 ReadBlock，而不是 IN/OUT 两坨原文。
+    Read 是所有 CLI 里调用最频繁的工具，这一条覆盖的条目数量远超另外两条。
+
+    `readCard` 已经在 pickRenderer 里判过一次非空，这里的 `!` 是跟着那次判断走的。
+    `bodyRaw` 由 read-family-row 钉死成 null——单文件工具不画参数体，路径就是唯一的
+    参数交互（上游同注）。
+  */
+  read: ({ block, args }) => {
+      const card = readCard(args, block.result)!;
+      const { line, ...read } = card;
+      return (
+        <ReadRow
+          variant={toolCatalogEntry(identifyTool(block.name)).variant}
+          title={toolTitle(toolCatalogEntry(identifyTool(block.name)).titleKey, toolLabel(identifyTool(block.name), block.name))}
+          summary={read.label} summarySuffix={deniedSuffix(block)} state={stateOf(block)}
+          read={read} line={line}
+          errorSummary={toolErrorSummary(block)}
+          labels={TOOL_ROW_LABELS}
+        />
+      );
   },
 };
 

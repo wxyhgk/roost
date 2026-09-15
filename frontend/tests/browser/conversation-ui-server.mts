@@ -33,7 +33,21 @@ say('assistant', [
 
 // 一次 Read：只有路径。
 say('assistant', [{ type: 'tool_call', toolCallId: 't1', name: 'Read', text: 'Read: {"file_path":"/Users/me/roost/frontend/src/plugins/xyz/parse.ts","offset":40,"limit":60}' }]);
-say('user', [{ type: 'tool_result', toolCallId: 't1', text: 'export function parseXyz(content: string) {\n  const lines = content.split(/\\r\\n|\\r|\\n/);\n  …' }]);
+// 读文件的结果是 `cat -n` 那个形状：每行「行号 \t 正文」。真实记录就是这样，
+// 前端靠这个形状解出行号、画成带语法高亮的 ReadBlock。
+say('user', [{ type: 'tool_result', toolCallId: 't1', text: [
+  '40\texport function parseXyz(content: string) {',
+  '41\t  const lines = content.split(/\\r\\n|\\r|\\n/);',
+  '42\t  const atoms: Atom[] = [];',
+  '43\t  for (const line of lines) {',
+  '44\t    if (!line.trim()) continue;',
+  '45\t    const cols = line.split(/\\s+/);',
+  '46\t    if (cols.length < 4) continue;',
+  '47\t    atoms.push({ element: cols[0], x: +cols[1], y: +cols[2], z: +cols[3] });',
+  '48\t  }',
+  '49\t  return { atoms };',
+  '50\t}',
+].join('\n') }]);
 
 // 一次 Bash 改文件：带 diff（这次新接上的那条路）。
 say('assistant', [{ type: 'tool_call', toolCallId: 't2', name: 'Bash', text: 'Bash: {"command":"python3 - <<\'PY\'\\nimport pathlib\\np = pathlib.Path(\'src/plugins/xyz/parse.ts\')\\n…\\nPY"}' }]);

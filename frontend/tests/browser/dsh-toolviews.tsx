@@ -17,6 +17,9 @@ import { FileMutationRow } from '../../src/vendor/dsh/chat/tool/toolviews/file-m
 import { BashRow } from '../../src/vendor/dsh/chat/tool/toolviews/bash-sample.tsx';
 import { ReadRow } from '../../src/vendor/dsh/chat/tool/toolviews/read-row.tsx';
 import { GenericToolCard } from '../../src/vendor/dsh/chat/tool/toolviews/GenericToolCard.tsx';
+// 上面那几行是**直接喂手写 props**，验的是组件本身。下面这一节走我们自己的分派和折算，
+// 验的是「真实 transcript 的数据形状能不能喂出这些 props」——两件不同的事，都要看。
+import { ToolView } from '../../src/features/conversations/tools/registry.tsx';
 // chat/ 下的文件不在 vendor/dsh 的桶里，直接 import 不会带上令牌表。这里显式引一次。
 import '../../src/vendor/dsh/tokens.css';
 import { ThemeProvider, useTheme } from '../../src/shared/theme';
@@ -338,6 +341,30 @@ function Fixture() {
               read={{ label: 'AGENTS.md', lines: READ_LINES.slice(0, 6), totalLines: 6 }}
             />
           </ClickToExpand>
+        </Section>
+
+        <Section
+          title="ToolView —— 走我们自己的分派，数据是真实形状（展开）"
+          note="结果文本是 Claude 的 cat -n 形状（每行「行号 \t 正文」），由 read-card.ts 折算成 ReadBlock 的卡"
+        >
+          <ClickToExpand>
+            <ToolView block={{
+              kind: 'tool', id: 'r1', name: 'Read', failed: false,
+              args: '{"file_path":"/Users/me/roost/frontend/src/plugins/xyz/parse.ts","offset":40,"limit":11}',
+              result: READ_LINES.map(l => `${l.number}\t${l.text}`).join('\n'),
+            }} />
+          </ClickToExpand>
+        </Section>
+
+        <Section
+          title="ToolView —— 读的是图片，数据不够就不认领"
+          note="结果里一行带行号的都没有。退回通用卡片，而不是画一块有边框有标题的空代码区"
+        >
+          <ToolView block={{
+            kind: 'tool', id: 'r2', name: 'Read', failed: false,
+            args: '{"file_path":"/Users/me/roost/scratchpad/shot.png"}',
+            result: '[图片内容已省略]',
+          }} />
         </Section>
 
         <Section title="GenericToolCard —— 认不出来的工具（展开）">

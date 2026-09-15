@@ -166,3 +166,55 @@ test('长输出掐中间，两头都留', () => {
   assert.ok(!text.includes('line 50'), '中间那截该被砍掉');
   assert.deepEqual(clipMiddle('short', 200), { text: 'short', clipped: false });
 });
+
+import { readCard, langFromPath } from '../src/features/conversations/tools/read-card.ts';
+
+/*
+  读文件的结果在 Claude 的 transcript 里是 `cat -n` 那个形状：每行 `行号 \t 正文`。
+  实测过：本机记录里 `tool_result.content` 就是这个样子（`toolUseResult.file` 里另有
+  `totalLines` 等更全的字段，但解析器现在不带它们过来）。
+*/
+test('读文件的结果解成带行号的行', () => {
+  const card = readCard(toolArgsOf(tool('{"file_path":"/a/b/parse.ts","offset":40}', 'Read')),
+    '40\texport function parseXyz(s: string) {\n41\t  const lines = s.split("\\n");\n42\t}');
+  assert.ok(card);
+  assert.deepEqual(card.lines.map(l => l.number), [40, 41, 42]);
+  assert.equal(card.lines[0].text, 'export function parseXyz(s: string) {');
+  assert.equal(card.label, '/a/b/parse.ts');
+  assert.equal(card.lang, 'ts', '扩展名直接当语法 id——highlight.ts 的别名表本来就收扩展名');
+  assert.equal(card.line, 40, '打开的位置取窗口第一行，而不是信 args.offset');
+  assert.equal(card.totalLines, card.lines.length,
+    '总行数只能给 lines.length：相等时 ReadBlock 就不画「显示 N / 共 M」，好过编一个数');
+});
+
+/*
+  结果后面常跟着 `<system-reminder>` 之类的附加块。从第一条配不上的行起整段停住，
+  **不挑着捡**——挑着捡会把提醒文字里恰好以数字加制表符开头的某行当成文件内容。
+*/
+test('附加块不会被当成文件内容', () => {
+  const card = readCard(toolArgsOf(tool('{"file_path":"/a/b.md"}', 'Read')),
+    '1\t# 标题\n2\t正文\n\n<system-reminder>\n3\t这一行不是文件内容\n</system-reminder>');
+  assert.ok(card);
+  assert.deepEqual(card.lines.map(l => l.number), [1, 2]);
+});
+
+test('数据不够就不认领读文件视图', () => {
+  // 读图片：结果里一行带行号的都没有，画出来是一块空的代码区。
+  assert.equal(rendererNameFor({ ...tool('{"file_path":"/a/shot.png"}', 'Read'),
+    result: '[图片内容]' } as never), null);
+  // 读失败：同理。
+  assert.equal(rendererNameFor({ ...tool('{"file_path":"/a/b.ts"}', 'Read'),
+    result: 'File does not exist.', failed: true } as never), null);
+  // 还在跑：结果是 null。
+  assert.equal(rendererNameFor({ ...tool('{"file_path":"/a/b.ts"}', 'Read') }), null);
+  // 认得出来的：gemini 叫 read_file。
+  assert.equal(rendererNameFor({ ...tool('{"file_path":"/a/b.ts"}', 'read_file'),
+    result: '1\tconst a = 1;' } as never), 'read');
+});
+
+test('没有扩展名就没有语法，不硬猜', () => {
+  assert.equal(langFromPath('/a/Makefile'), undefined);
+  assert.equal(langFromPath('/a/.gitignore'), undefined, '点开头的不是扩展名');
+  assert.equal(langFromPath('/a/b/c.TS'), 'ts', '扩展名大小写不敏感');
+  assert.equal(langFromPath('/a/b.tar.gz'), 'gz');
+});

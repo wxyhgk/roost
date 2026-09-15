@@ -120,12 +120,18 @@ Copyright (c) 2026 DeepSeek
 - 定位与杂项 hook：`useAnchoredMaxHeight` `useAnchoredPosition`
   `useDismissOnOutsidePointer` `pointer-grace` `relative-time` `rank-by-name` ~~`file-size`~~（第二轮随 MessageItem 搬入）
 - `markdown/plain-text.ts`——闭包里没人引它
-- **上游 `ui-tool` 里另外六个 toolview**：`search-row` `web-row` `todo-row` `read-image-row`
-  `ask-question-row`，以及 `plan-summary`。不是嫌麻烦：它们读的是上游自己那套工具结果信封
-  （`raw-tool-call.ts` / `auto-review-denial.ts` 的形状），我们的 transcript 里没有对应字段，
-  接上去画出来的是一个个**言之凿凿的空壳**——有标题有边框，里面永远没内容。宁可落到
-  `GenericToolCard`。配套的 `ask-question-card-model.ts` `auto-review-denial.ts`
-  `primitive-labels.ts` `raw-tool-call.ts` 同理没搬。
+- **`ask-question-row.tsx` + `ask-question-card-model.ts` + `raw-tool-call.ts`
+  + `AskQuestionCard`**：它们读的是上游那套审批往返的信封，我们的 transcript 里根本没有
+  审批这回事，接上去是**言之凿凿的空壳**——有标题有边框，里面永远没内容。
+  `auto-review-denial.ts` `primitive-labels.ts` 同理。
+- **`search-row` `web-row` `todo-row` `read-image-row` + `plan-summary.ts`：还没搬，但不是
+  「不该搬」。** 曾经在这里写过一条理由说它们要上游的工具结果信封——**那是错的**，已更正：
+  逐个查过 import，这四个只依赖 `tool-call-model` / `web-card-model` / `search-card-model` /
+  `image-card-model` / `read-family-row`，而这五个我们**都已经搬了**。
+  真正的未知在数据形状：`web-card-model` / `search-card-model` 要从 `resultRaw` 里解析出
+  结构（搜索结果条目、匹配行），而我们的 `ToolBlock.result` 是各家 CLI 落盘的原始文本，
+  对不对得上没验过。**接之前先拿真实记录跑一遍 model，对不上再按规矩不接、回来补记。**
+  `todo-row` 只读 `argsRaw`（就是我们的 `ToolBlock.args`），数据是够的。
 - `ui-tool` 的外壳与接线：`ToolCallTree` `AskQuestionCard` `apply.ts` `contract/slots.ts`
   `locale.ts` `index.ts`——那是上游的插槽运行时，我们的分派写在
   `features/conversations/tools/dispatch.ts` 里。
