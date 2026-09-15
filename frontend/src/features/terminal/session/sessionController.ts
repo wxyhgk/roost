@@ -393,15 +393,6 @@ export function createTerminalSessionController(options: {
       dispose, restart, persist, send,
       dismissInputNotice: () => update({ inputNotice: false }),
       repaint() { if(!valid()) return; trace.record('manual-repaint'); term?.repaint?.(true); engaged = true; fit(); },
-      /*
-        宿主被搬到了另一个落点（中栏 ⇄ 右侧停靠面），引擎和连接一个字没动，但**容器换了**。
-
-        新落点的宽高和旧的不一样，不重新 fit 就是本地行列数停在旧网格上、PTY 也没被告知，
-        整屏 TUI 会继续按旧宽度画。`engaged` 一并置上：stable 版要求尺寸只在用户自己动手
-        之后才改（deliberateResize），而「把终端拖到另一栏」正是用户动的手。
-        重绘是因为搬动期间宿主脱离过文档，画布上留着的是搬之前那一帧。
-      */
-      relocated() { if (!valid()) return; trace.record('relocated'); engaged = true; fit(); term?.repaint?.(); },
       diagnostics: () => ({ phase, status: state.status, historyTruncated: state.historyTruncated, active, visible: deps.isVisible(), inputReady, lastFrameAt,
         renderer: term?.inspect?.() ?? null, replay: resume?.inspect() ?? null, events: trace.read() }),
       snapshot: () => state,

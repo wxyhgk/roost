@@ -1,166 +1,85 @@
 import type { ReactNode } from "react";
-import { identifyTool, toolLabel, toolSubject, toolSummary } from "./identify";
-import { pickRenderer, stateOf, viewInput, type RendererName, type ToolViewInput } from "./dispatch";
-import { toDiffHunks } from "./diff-adapter";
-import { toolErrorSummary } from "./error-summary";
-import { toolCatalogEntry, toolTitle, type ToolIconName } from "./catalog";
-import { clipMiddle } from "./text";
-import { readCard } from "./read-card";
-import { TOOL_ROW_LABELS, TERMINAL_LABELS } from "./labels";
-import type { ToolBlock } from "./SummaryRow";
-import { SummaryRow } from "./SummaryRow";
-import { FileMutationRow } from "../../../vendor/dsh/chat/tool/toolviews/file-mutation-row";
-import { BashRow } from "../../../vendor/dsh/chat/tool/toolviews/bash-sample";
-import { ReadRow } from "../../../vendor/dsh/chat/tool/toolviews/read-row";
-import { ToolRow } from "../../../vendor/dsh/chat/tool/ToolRow";
-import {
-  IconApiOutline14, IconSearchOutline16, IconBrowseOutline16, IconEditOutline16,
-  IconListPenOutline16, IconTrashOutline16, IconGlobeOutline14, IconChecklistOutline14,
-  IconThinkOutline16, IconPlanOutline14, IconQuestionOutline14, IconAgentPresetOutline16,
-  IconCodeOutline16, IconStopFill16, IconCordisPluginOutline14, IconSparkle16,
-} from "../../../vendor/dsh";
+import { identifyTool, toolArgsOf, toolSubject, type ToolArgs, type ToolId } from "./identify";
+import { SummaryRow, type ToolBlock } from "./SummaryRow";
+import { PatchTool } from "./PatchTool";
+import { BashTool } from "./BashTool";
+import { McpTool } from "./McpTool";
 import { ErrorBoundary } from "../../../shared/ui/ErrorBoundary";
-import { t } from "@roost/i18n";
 
 /**
- * 工具调用的渲染分派。
+ * 工具调用的渲染器注册表。
  *
- * **卡片本身是抄来的**（deepseek-harness 的 ToolRow + toolviews，见 vendor/dsh/NOTICE.md），
- * 分派规则是我们自己的——因为它建立在我们的数据形状上，而那和上游不一样。
+ * **「哪个工具画成什么样」这个问题只在这里有答案**，和 `plugins/index.ts` 是同一个形状、
+ * 同一个理由：顺序就是匹配顺序，更专的排前面。
  *
  * 三件事必须守住，否则加渲染器就成了往对话里埋雷：
  *
- * 1. **认不出来走兜底。** 兜底是 `GenericToolCard`（只画工具名 + IN/OUT），它对
- *    「什么都没有」成立：名字空、参数空、结果 null 都画得出一行。
- * 2. **数据不够就不认领。** `match` 里要什么就先检查什么。上游的 search / web 卡片我们
- *    刻意没搬——缺数据时它们画的不是留白，是「没有结果」「HTTP NaN」这种**内容明确而
- *    错误**的空壳（见 research/deepseek-harness-adapter.md 第三节）。
- * 3. **每个渲染器包一层 ErrorBoundary，崩了退回兜底**，不是留一块「XX 不可用」。
+ * 1. **认不出来就走兜底**，而兜底就是改动之前那条路（`SummaryRow`），一个字节的行为差异
+ *    都没有。加渲染器永远是加法。
+ * 2. **数据不够就不认领**。`match` 里要什么就先检查什么——Claude 的预览态只保留一个标量，
+ *    Grep、TodoWrite 这些工具在它那儿连参数都没有。认领了却画不出来，比不认领更糟。
+ * 3. **每个渲染器外面包一层 ErrorBoundary**。某个渲染器抛异常只毁那一行，不毁整条对话。
  */
 
-/*
-  「已拒绝」要留一句**看得见**的话。
+export type ToolViewInput = { block: ToolBlock; id: ToolId; args: ToolArgs };
 
-  `ToolRow` 的 stopped 只有一枚黄点加读屏文本，而我们这条是修过的真 bug——在此之前
-  用户自己拒绝的调用被画成红色「失败」，那是在报告一个没发生过的故障。退回一枚点等于把
-  那次修复丢掉一半，所以塞进 summarySuffix。
-*/
-const deniedSuffix = (block: ToolBlock) =>
-  block.denied === true ? t.misc.conversations.detail.toolDenied : undefined;
-
-const VIEWS: Record<RendererName, (input: ToolViewInput) => ReactNode> = {
-  patch: ({ block }) => (
-      <FileMutationRow
-        variant={toolCatalogEntry(identifyTool(block.name)).variant}
-        title={toolTitle(toolCatalogEntry(identifyTool(block.name)).titleKey, toolLabel(identifyTool(block.name), block.name))}
-        summary={block.patch?.filePath ?? ""} state={stateOf(block)}
-        hunks={toDiffHunks(block.patch!)} truncated={block.patch!.truncated}
-        truncatedLabel={t.misc.blocks.truncated}
-        output={block.result ?? undefined} errorSummary={toolErrorSummary(block)}
-        labels={TOOL_ROW_LABELS}
-      />
-  ),
-  bash: ({ block, args }) => {
-      // 上游的 TerminalBlock 自己也有行数上限，但它指望外层已经截过。
-      const output = block.result === null ? undefined : clipMiddle(block.result, 4000).text;
-      return (
-        <BashRow
-          title={toolTitle(toolCatalogEntry(identifyTool(block.name)).titleKey, toolLabel(identifyTool(block.name), block.name))}
-          summary={toolSubject(args)!} state={stateOf(block)}
-          command={toolSubject(args)} output={output}
-          /*
-            **退出码故意不传。** Claude 的 transcript 里根本没有这个字段，而缺它时上游的
-            runState() 会把失败的命令显示成绿点「完成」（TerminalBlock.tsx:110-112 是它
-            有意的设计）。所以红点红字由外层的 state 负责，卡片内部保持沉默——
-            编一个退出码出来才是真的撒谎。
-          */
-          /*
-            错误摘要走 `error-summary.ts`，**不要直接塞 `block.result`**。
-
-            直接塞过整段输出，结果那一行吐出原始 ANSI 转义码——摘要位是纯文本渲染、不解析
-            转义。而且「整段输出」本来就不该放在一行短句的位置上。
-
-            `toolErrorSummary` 解决的正是这个：先剥 ANSI，再取**第一条有可见字符的行**
-            （终端输出的首行常常是纯控制序列，死守「第一行」会剥出空串，而真正那句
-            `npm ERR! …` 在下一行），拿不出可靠的一行就返回 null——不编。
-
-            注意它会**替换**摘要文字而不是追加（上游有意的设计），所以失败的 bash 行上
-            命令会被错误行顶掉。
-          */
-          errorSummary={toolErrorSummary(block)}
-          labels={{ ...TOOL_ROW_LABELS, terminal: TERMINAL_LABELS }}
-        />
-    );
-  },
-  /*
-    读文件：展开后是一块带行号、带语法高亮的 ReadBlock，而不是 IN/OUT 两坨原文。
-    Read 是所有 CLI 里调用最频繁的工具，这一条覆盖的条目数量远超另外两条。
-
-    `readCard` 已经在 pickRenderer 里判过一次非空，这里的 `!` 是跟着那次判断走的。
-    `bodyRaw` 由 read-family-row 钉死成 null——单文件工具不画参数体，路径就是唯一的
-    参数交互（上游同注）。
-  */
-  read: ({ block, args }) => {
-      const card = readCard(args, block.result)!;
-      const { line, ...read } = card;
-      return (
-        <ReadRow
-          variant={toolCatalogEntry(identifyTool(block.name)).variant}
-          title={toolTitle(toolCatalogEntry(identifyTool(block.name)).titleKey, toolLabel(identifyTool(block.name), block.name))}
-          summary={read.label} summarySuffix={deniedSuffix(block)} state={stateOf(block)}
-          read={read} line={line}
-          errorSummary={toolErrorSummary(block)}
-          labels={TOOL_ROW_LABELS}
-        />
-      );
-  },
+type ToolRenderer = {
+  /** 给日志和 ErrorBoundary 用的名字。 */
+  name: string;
+  /** 认不认领这次调用。数据不够就返回 false，让它落回兜底。 */
+  match(input: ToolViewInput): boolean;
+  View(input: ToolViewInput): ReactNode;
 };
+
+const RENDERERS: readonly ToolRenderer[] = [
+  /*
+    **patch 排第一，而且按数据而不是按名字认领。** 谁带 patch 是 Claude 决定的——它看自己
+    算没算出改动（Edit 类工具写 `structuredPatch`，Bash 改文件写 `bashEditDiff`），不看工具
+    叫什么（见 packages/ai-transcript/src/claude.ts）。改成按工具名匹配的话，一个我们没列进表的
+    工具带着真实改动过来，diff 就静静消失了——Bash 带 diff 这件事就是这条规则先兜住的。
+  */
+  {
+    name: "patch",
+    match: ({ block }) => !!block.patch?.hunks.length,
+    View: ({ block }) => <PatchTool block={block} />,
+  },
+  {
+    name: "bash",
+    // 命令拿不到就别认领：没有命令的「终端视图」只是个空壳。
+    match: ({ id, args }) => id.key === "bash" && !!toolSubject(args),
+    View: ({ block, args }) => <BashTool block={block} command={toolSubject(args)!} />,
+  },
+  {
+    name: "mcp",
+    match: ({ id }) => id.key === "mcp" && !!id.server,
+    View: ({ block }) => <McpTool block={block} />,
+  },
+];
 
 /** 一次工具调用画成什么样。这是 ConversationDetail 唯一需要知道的入口。 */
 export function ToolView({ block }: { block: ToolBlock }) {
-  const input = viewInput(block);
-  const name = pickRenderer(input);
-  const fallback = <Fallback {...input} />;
-  if (!name) return fallback;
-  return <ErrorBoundary fallback={fallback}>{VIEWS[name](input)}</ErrorBoundary>;
-}
-
-/*
-  图标的 ReactNode 映射只能待在这里——`catalog.ts` 必须是纯 TS（node --test 加载不了
-  CSS Module，见它顶上的说明），所以那边只吐标识，节点在这儿查。
-  尺寸统一 14，和 GenericToolCard 的 VARIANT_ICONS 一致：都在 16px 引导框里画 14。
-*/
-const TOOL_ICONS: Record<ToolIconName, ReactNode> = {
-  terminal: <IconApiOutline14 size={14} />, search: <IconSearchOutline16 size={14} />,
-  read: <IconBrowseOutline16 size={14} />, edit: <IconEditOutline16 size={14} />,
-  write: <IconListPenOutline16 size={14} />, delete: <IconTrashOutline16 size={14} />,
-  web: <IconGlobeOutline14 size={14} />, todo: <IconChecklistOutline14 size={14} />,
-  think: <IconThinkOutline16 size={14} />, plan: <IconPlanOutline14 size={14} />,
-  question: <IconQuestionOutline14 size={14} />, task: <IconAgentPresetOutline16 size={14} />,
-  code: <IconCodeOutline16 size={14} />, stop: <IconStopFill16 size={14} />,
-  plugin: <IconCordisPluginOutline14 size={14} />, generic: <IconSparkle16 size={14} />,
-};
-
-/**
- * 认不出来、或者专用渲染器崩了的那条路：工具名 + 参数 + 结果，只要有名字就画得出来。
- *
- * 直接用 `ToolRow` 而不是 `GenericToolCard`：后者把 `icon` 从 props 里 `Omit` 掉了、
- * 自己按 variant 算，而我们要的是**按工具**给图标。它除此之外只干「有 filePath 时抹掉
- * bodyRaw」一件事，而这条路本来就不传 filePath——等价。
- */
-function Fallback({ block, id, args }: ToolViewInput) {
-  const look = toolCatalogEntry(id);
+  const id = identifyTool(block.name);
+  const args = toolArgsOf(block);
+  const input: ToolViewInput = { block, id, args };
+  const renderer = RENDERERS.find(r => r.match(input));
+  if (!renderer) return <SummaryRow block={block} />;
   return (
-    <ToolRow
-      variant={look.variant} icon={TOOL_ICONS[look.icon]}
-      title={toolTitle(look.titleKey, toolLabel(id, block.name))}
-      summary={toolSummary(args) ?? block.args} summarySuffix={deniedSuffix(block)}
-      state={stateOf(block)} bodyRaw={block.args || undefined}
-      output={block.result ?? undefined} errorSummary={toolErrorSummary(block)}
-      labels={TOOL_ROW_LABELS}
-    />
+    /*
+      崩了退回兜底，而不是在对话里留一块「XX 不可用」。
+
+      上面第 1 条写着「加渲染器永远是加法」，而在此之前这句话在**崩溃**这条路上是不成立的：
+      认不出来会兜底，认出来但画崩了反而比不加渲染器更差。一个渲染器炸掉的正确结果，
+      和它压根不认领这次调用是同一个——用户照样看得到工具名、参数和结果。
+    */
+    <ErrorBoundary fallback={<SummaryRow block={block} />}>
+      {renderer.View(input)}
+    </ErrorBoundary>
   );
 }
 
-// 兜底行的旧实现暂时留着：它是 MessageIconActions 那条路的宿主，还没搬完。
-export { SummaryRow };
+/** 只给测试用：让「注册表里每条规则都还认得出它该认的东西」这件事可断言。 */
+export function rendererNameFor(block: ToolBlock): string | null {
+  const id = identifyTool(block.name);
+  const input: ToolViewInput = { block, id, args: toolArgsOf(block) };
+  return RENDERERS.find(r => r.match(input))?.name ?? null;
+}

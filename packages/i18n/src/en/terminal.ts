@@ -61,7 +61,6 @@ export const terminal = {
     switchToGui: "Switch to the conversation view",
     switchToTui: "Switch to the terminal",
     resolving: "Identifying the current conversation…",
-    history: "Terminal history",
     /** 没有可识别的对话时不显示切换器，这条只在明确查询失败时用。 */
     noConversation: "This terminal has no identified conversation yet",
   },

@@ -1,9 +1,9 @@
-import { lazy, Suspense, type ReactNode } from "react";
+import { lazy, Suspense } from "react";
 import { useLibraryPresentation } from "../shared/ui/useLibraryPresentation";
 import { createPortal } from "react-dom";
 import { useWorkspace } from "../shared/store";
 import type { NotesTab } from "../features/notes/NotesView";
-import type { RightPanelView } from "../shared/view";
+import type { RightView } from "../shared/view";
 import { PanelHeader } from "../shared/ui/PanelHeader";
 import { IconClose } from "../shared/icons";
 import { IconButton } from "../shared/ui/IconButton";
@@ -25,18 +25,14 @@ import type { MonitorTarget } from '../features/server-monitor/navigation';
 const ServerMonitorView = lazy(() => import("../features/server-monitor/ServerMonitorView"));
 const FilesView = lazy(() => import("../features/files/FilesView").then(m => ({ default: m.FilesView })));
 const NotesView = lazy(() => import("../features/notes/NotesView").then(m => ({ default: m.NotesView })));
-export function RightPanel({ view, onChangeView, visible = true, monitorTarget, chrome }: { view: RightPanelView; onChangeView: (view: RightPanelView) => void; visible?: boolean; monitorTarget?: MonitorTarget; /** 右栏三档呈现的那排控制钮（`RightbarChrome`）。上游把它们放在停靠面的标签条末端，我们没有那条标签条，所以借这个头的动作位。 */ chrome?: ReactNode }) {
+export function RightPanel({ view, onChangeView, visible = true, monitorTarget }: { view: RightView; onChangeView: (view: RightView) => void; visible?: boolean; monitorTarget?: MonitorTarget }) {
   // 每次渲染重取：切换语言后标题要跟着变，不能缓存在模块顶层。
   // 同上：占位文案也要每次渲染重取，模块级常量会把语言定死在首次加载那一刻。
   const panelFallback = <p className="p-3 text-xs text-text-dim">{t.misc.rightPanel.loading}</p>;
   /*
-    键类型故意写成结构化的那个联合而不是 RightPanelView：它和下面的 `titles[view]` 一起，
-    把 shared/view.ts 里的 RightPanelView 和 features/library 的 Kind 钉成同一个集合。
-    理由写在 shared/view.ts 的 RightPanelView 上面。
-
-    **收的是 `RightPanelView` 而不是 `RightView`**：右栏多出来的那一档 `"terminal"`
-    根本不走这个组件（对话模式下右栏装的是活的终端画面），让它进得来只会在这里
-    索引不到标题。
+    键类型故意写成结构化的那个联合而不是 RightView：它和下面的 `titles[view]` 一起，
+    把 shared/view.ts 里的 RightView 和 features/library 的 Kind 钉成同一个集合。
+    理由写在 shared/view.ts 的 RightView 上面。
   */
   const titles: Record<"files" | "server" | NotesTab, string> = { server: t.serverMonitor.title, files: t.misc.rightPanel.titles.files, notes: t.misc.rightPanel.titles.notes, snippets: t.misc.rightPanel.titles.snippets };
   const { sessions, selectedId } = useWorkspace("sessions", "selectedId");
@@ -47,10 +43,7 @@ export function RightPanel({ view, onChangeView, visible = true, monitorTarget, 
 
   return <section className={`flex h-full flex-col bg-bg-panel ${view === "server" ? "server-monitor" : ""}`}>
     <PanelHeader title={titles[view]} sub={view === "files" ? session?.cwd : undefined}
-      actions={(isLibrary || chrome) && <>
-        {isLibrary && <button ref={expandButton} className="rounded px-2 py-1 text-xs font-normal text-text-dim hover:bg-bg-hover hover:text-text" onClick={() => setExpanded(true)} aria-haspopup="dialog">{t.misc.rightPanel.expandLibrary}</button>}
-        {chrome}
-      </>} />
+      actions={isLibrary && <button ref={expandButton} className="rounded px-2 py-1 text-xs font-normal text-text-dim hover:bg-bg-hover hover:text-text" onClick={() => setExpanded(true)} aria-haspopup="dialog">{t.misc.rightPanel.expandLibrary}</button>} />
     {view === "files" ? <div key="files" className="flex min-h-0 flex-1 flex-col"><Suspense fallback={panelFallback}><FilesView /></Suspense></div>
       : view === "server" ? <Suspense fallback={<p className="p-3 text-xs text-text-dim">{t.serverMonitor.loading}</p>}><ServerMonitorView active={visible} target={monitorTarget} /></Suspense>
       : <div key="library" ref={sideSlot} className="flex min-h-0 flex-1 flex-col" />}

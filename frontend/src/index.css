@@ -504,31 +504,6 @@ html[data-theme="light"] .mono-icon svg [stroke]:not([stroke="none"]) {
     right: 3.5rem;
     visibility: visible;
   }
-
-  /*
-    **侧栏行的行内动作在触屏上要常驻。**
-
-    上面那两条瞄的是我们旧侧栏的标记（`.session-toolbar`）。两种模式的左栏都换成搬来的
-    那套之后，动作落在上游的 `.rowActions` 上，而**上游没有任何触屏分支**——它全靠
-    `:hover`，于是触屏上那两颗按钮永远够不到。这是相对旧侧栏的功能倒退。
-
-    钩子是 `vendor/dsh/sidebar/Rows.tsx` 上那两个 `data-*`（ROOST-CHANGE 6），
-    那个文件的 CSS 一条没动。
-
-    **`!important` 是必要的，不是偷懒**：上游那条 `.sessionRow:hover .rowActions` 的
-    特异性是 (0,2,0)，而 CSS Module 的类名哈希过、这里点不到，凑不出同等特异性的选择器；
-    模块样式和这份文件的注入顺序也不保证。同一个理由下面那条 `.icon-button` 的注释里
-    也写过一次（「不必和工具类打特异性官司」）。
-
-    时刻跟着藏掉：那正是 hover 态下上游自己的做法（`.sessionRow:hover .time`），
-    32px 的行放不下「标题 + 时刻 + 两颗图标」三样。
-  */
-  [data-row-actions] {
-    display: inline-flex !important;
-  }
-  [data-row-time] {
-    display: none !important;
-  }
 }
 
 /* 只在触屏上出现的入口。默认藏起来，避免在桌面上多一个没用的按钮。 */

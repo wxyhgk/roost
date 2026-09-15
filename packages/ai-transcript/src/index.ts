@@ -4,7 +4,6 @@ import { open, opendir, realpath } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 
 import { previewToolArgs } from "./truncate.ts";
-import type { ContextInjection } from "./context-injection.ts";
 
 export type TranscriptCheckpoint = {
   adapter?: string; state?: Record<string, unknown>;
@@ -33,52 +32,10 @@ export type EditPatch = {
   truncated: boolean;
 };
 
-/**
- * 一次模型请求的 token 用量，由供应商上报。
- *
- * **和 `EditPatch` 同一个道理：数据在源头就有，我们只是没去取。** Claude 在每条 assistant
- * 记录上写 `message.usage`（本机 28 份 transcript / 5219 条非 sidechain 的 assistant 记录，
- * **命中率 100%**），而解析器一个字段都没带出来。没有它，「这个回合烧了多少上下文」在界面上
- * 根本不存在。
- *
- * **桶不全就整个不给这一条字段，而不是当 0 算。** 缓存读写、思考三个桶是可选的：供应商没报
- * 就是缺席，缺席和「真的是 0」是两件事——把缺席记成 0，上层一求和就变成了一个看着完整、
- * 其实少算的数。这条规矩和 `EditPatch` 的 `truncated`、`parts.ts` 里「截断过的数字只是个下界」
- * 是同一件事：不完整的统计不许伪装成完整的。
- *
- * **只收安全整数，且封顶。** 上限取 1e12——本机单条记录实测最大 968403（总和），比它小七个
- * 数量级；而一个坏掉的记录可以写任意数字，把 1e300 当 token 数加进总数会让整列数字失去意义。
- * 超限、负数、非整数一律按「这个桶没有」处理，理由同上。
- *
- * **不带 `total`。** 总数是 `inputTokens + cacheReadTokens + cacheWriteTokens + outputTokens`，
- * 而其中三项可能缺席——在这里算一个数出来，等于替上层决定「缺席算 0」。上层按它自己能看到的
- * 桶去折，才知道自己的和完不完整。
- */
-export type MessageUsage = {
-  /** **没有命中缓存的**那部分输入。Claude 的 `input_tokens` 就是这个语义（实测最大 2）。 */
-  inputTokens: number;
-  outputTokens: number;
-  /** 命中缓存的输入。供应商没报就缺席。 */
-  cacheReadTokens?: number;
-  /** 写入缓存的输入。供应商没报就缺席。 */
-  cacheWriteTokens?: number;
-  /** `outputTokens` 的子集，不另加。供应商没报就缺席。 */
-  reasoningTokens?: number;
-  /** 产生这条回复的模型。用量弹层要回答「哪个模型烧的」。 */
-  model?: string;
-};
-
 export type TranscriptItem = {
   eventId: string; type: "message"; role: string; content: string; createdAt?: number;
   data: { source: "transcript"; nativeMessageId: string; parentId: string | null;
-    parts: { type: string; text?: string; toolCallId?: string; name?: string; patch?: EditPatch;
-      /**
-       * 只有 `type: "context"` 的段才有：这一段是一次**注入进模型上下文的内容**，不是谁说的话。
-       * 可选，所以库里按旧形状写进去的记录一个字都不受影响。
-       */
-      context?: ContextInjection }[];
-    /** 消息级：用量属于整条记录，不属于其中某一段。 */
-    usage?: MessageUsage;
+    parts: { type: string; text?: string; toolCallId?: string; name?: string; patch?: EditPatch }[];
     truncated: boolean; detail: { provider?: string; path: string; fingerprint: string; offset: number; length: number; nativeSessionId: string; recordId: string; hash: string } };
 };
 export class TranscriptError extends Error { constructor(public code: string) { super(code); } }
@@ -260,8 +217,6 @@ export async function readTranscriptDetail(ref: TranscriptItem["data"]["detail"]
   if (provider === "codex") return (await import("./codex.ts")).readCodexDetail(ref);
   return readOmpDetail(ref);
 }
-
-export { type ContextInjection, type ContextSource, type ContextTier } from './context-injection.ts';
 
 export {getTranscriptAdapter, listTranscriptAdapters, type TranscriptAdapter} from './registry.ts';
 

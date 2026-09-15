@@ -10,23 +10,11 @@ import { t } from "@roost/i18n";
 /**
  * 一个会话的操作入口：置顶、复制路径、重命名、结束。
  *
- * `variant="card"`（默认，画布卡片用）时外层容器必须带 `session-row` 类，
- * `data-toolbar-open` 也要跟着 `open` 走——index.css 里那套「悬停才显形、但触屏上常驻」
- * 的规则挂在这两个钩子上。**触屏上没有悬停**，漏了这两个钩子的话，手机上这些动作根本够不着。
- *
- * `variant="row"` 是侧栏那条 32px 上游行的行尾座位（`SessionRow` 的 `menu` prop）。
- * 那一侧的显形由**上游的 `.rowActions`** 管（hover 或 `menuOpen` 才 `display: inline-flex`），
- * 所以这个变体不戴 `session-toolbar` 那件外衣——两套显形规则叠在一起，结果是两边的
- * 条件要同时成立才看得见。**代价是触屏上侧栏行里够不着这两颗**：`.rowActions` 只认 hover，
- * 而那条规则在 `vendor/dsh` 里（要保持逐字）、补丁要写进 `index.css`（这一轮不动那个文件）。
- * 触屏上这四个动作仍然在画布卡片上——那里的 `session-row` 规则一个字没改。
- *
- * 按钮尺寸也跟着变体走：卡片上是常规 `IconButton`，行里是 16px 的裸图标——照上游
- * `Rows.module.css` 的 `.iconButton`（无底色、tertiary 灰、hover 转 primary）描的，
- * 因为那个类名隔着 CSS Module 够不着（`RowIconButton` 存在的正是这个理由，但 Radix 的
- * `asChild` 要求子元素转发 ref 和任意 props，它不转发）。
+ * 外层容器必须带 `session-row` 类，`data-toolbar-open` 也要跟着 `open` 走——
+ * index.css 里那套「悬停才显形、但触屏上常驻」的规则挂在这两个钩子上。
+ * **触屏上没有悬停**，漏了这两个钩子的话，手机上这些动作根本够不着。
  */
-export function SessionMenu({ session, onRename, onNote, onOpenChange, variant = "card" }: {
+export function SessionMenu({ session, onRename, onNote, onOpenChange }: {
   session: Session;
   /** 重命名由调用方起——输入框长在它自己的布局里。 */
   onRename: () => void;
@@ -34,8 +22,6 @@ export function SessionMenu({ session, onRename, onNote, onOpenChange, variant =
   onNote: () => void;
   /** 菜单开着时外层要保持工具条可见，否则鼠标一移开菜单就连着关掉。 */
   onOpenChange: (open: boolean) => void;
-  /** 画布卡片上的工具条，还是侧栏行尾那个座位。 */
-  variant?: "card" | "row";
 }) {
   const { killSession, pinnedSessionIds, togglePin } =
     useWorkspace("killSession", "pinnedSessionIds", "togglePin");
@@ -47,20 +33,9 @@ export function SessionMenu({ session, onRename, onNote, onOpenChange, variant =
   useEffect(() => () => { if (copyTimer.current !== null) window.clearTimeout(copyTimer.current); }, []);
   useEffect(() => { onOpenChange(menuOpen || killOpen); }, [menuOpen, killOpen, onOpenChange]);
 
-  const row = variant === "row";
-  /*
-    行里的两颗按钮：16px 裸图标，间距自己给——外面那层 `.rowActions` 的 12px 只隔直接子元素。
-
-    **尺寸写死 px，不用 `h-4`。** 这个应用的根字号不是 16（实测 13），而 Tailwind 的间距
-    刻度是 rem 的，`h-4` 在这儿会算成 13px；上游 `.iconButton` 那 16 是绝对像素。
-  */
-  const rowButton = "grid h-[16px] w-[16px] shrink-0 place-items-center rounded-[4px] text-text-dim hover:text-text";
-
   return (
       <div
-        className={row
-          ? "z-20 flex shrink-0 items-center gap-2"
-          : "session-toolbar z-20 flex shrink-0 items-center gap-px overflow-hidden rounded-md bg-transparent transition-opacity duration-150"}
+        className="session-toolbar z-20 flex shrink-0 items-center gap-px overflow-hidden rounded-md bg-transparent transition-opacity duration-150"
         onPointerDown={(e) => e.stopPropagation()}
       >
         <DropdownMenu.Root
@@ -73,20 +48,12 @@ export function SessionMenu({ session, onRename, onNote, onOpenChange, variant =
           }}
         >
           <DropdownMenu.Trigger asChild>
-            {row ? (
-              /* 行里的按钮必须自己吞掉 click：外面那条上游的行整行都是 onOpen。 */
-              <button type="button" className={rowButton} title={t.session.more} aria-label={t.session.more}
-                onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
-                <IconDots />
-              </button>
-            ) : (
-              <IconButton
-                title={t.session.more}
-                onPointerDown={(e) => e.stopPropagation()}
-              >
-                <IconDots />
-              </IconButton>
-            )}
+            <IconButton
+              title={t.session.more}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <IconDots />
+            </IconButton>
           </DropdownMenu.Trigger>
           <DropdownMenu.Portal>
             <DropdownMenu.Content
@@ -132,21 +99,13 @@ export function SessionMenu({ session, onRename, onNote, onOpenChange, variant =
         </DropdownMenu.Root>
         <DropdownMenu.Root open={killOpen} onOpenChange={setKillOpen}>
           <DropdownMenu.Trigger asChild>
-            {row ? (
-              <button type="button" className={`${rowButton} hover:text-danger`} title={t.session.kill}
-                aria-label={t.session.kill}
-                onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
-                <IconClose />
-              </button>
-            ) : (
-              <IconButton
-                title={t.session.kill}
-                danger
-                onPointerDown={(e) => e.stopPropagation()}
-              >
-                <IconClose />
-              </IconButton>
-            )}
+            <IconButton
+              title={t.session.kill}
+              danger
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <IconClose />
+            </IconButton>
           </DropdownMenu.Trigger>
           <DropdownMenu.Portal>
             <DropdownMenu.Content

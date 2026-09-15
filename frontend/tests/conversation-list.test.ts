@@ -55,27 +55,3 @@ test("失败保留已加载内容，只记错误", () => {
   // 重试时清掉上一次的错误，不要两条错误叠着显示。
   assert.equal(reduceList(failed, { type: "loading" }).error, null);
 });
-
-/*
-  **归档/回收站之后就地移走那一行，不重拉一页。**
-
-  列表按 `state` 筛（默认只列 active），打完标记那一条按定义就不该在这儿。重拉一页会让整列
-  闪一下，而且**游标是和筛选条件绑定的**——重拉要么从头开始（丢掉用户已经翻出来的几页），
-  要么拿旧游标去请求而后端判 400 "cursor does not match"。就地移走两样都不碰。
-*/
-test("dropping an archived row keeps the cursor and the rest of the page", () => {
-  const before = loaded();
-  const after = reduceList(before, { type: "drop", id: "a" });
-  assert.deepEqual(after.items.map(i => i.id), ["b"]);
-  assert.equal(after.cursor, before.cursor, "游标不能动——少一条不改变还有没有下一页");
-  assert.equal(after.done, before.done);
-});
-
-/*
-  没命中就**原样返回同一个对象**。那一条可能本来就不在当前这一页（用户在别处归档了它），
-  换一个新对象等于让整列白渲染一次。
-*/
-test("dropping an id that is not on this page changes nothing at all", () => {
-  const before = loaded();
-  assert.equal(reduceList(before, { type: "drop", id: "zzz" }), before);
-});

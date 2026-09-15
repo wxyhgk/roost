@@ -1,4 +1,4 @@
-import type { ContextInjection, ContextSource, EditPatch, HistoryMessage, MessagePart } from "../../shared/api/conversationPayloads";
+import type { EditPatch, HistoryMessage, MessagePart } from "../../shared/api/conversationPayloads";
 
 /**
  * 把一串消息整理成能渲染的行。
@@ -22,25 +22,6 @@ export type Block =
    * 剩下的东西，藏掉比画错更糟。
    */
   | { kind: "compaction"; text: string }
-  /**
-   * AI 的思考过程（Claude 的 `thinking` 块、codex 的 `summary_text`、qwen 的 `thought`）。
-   *
-   * 四个解析器都在产出它，而前端此前一处都不认——于是它掉进通用文本分支，**被当成普通
-   * 回复画出来，和真正的答复混在一起分不开**。思考是过程不是结论，该折起来。
-   */
-  | { kind: "thinking"; text: string }
-  /**
-   * 一次**上下文注入**：系统提示词快照、环境信息、在外面被改过的文件、技能/agent 清单。
-   *
-   * Claude Code 把它们写成独立的 `attachment` 记录，解析器此前整条丢掉——于是「这场对话
-   * 模型到底看到了什么」在界面上根本不存在。它**不是谁说的话**：`role` 是 `context`，
-   * 既不该画成用户气泡，也不该开一个新回合。
-   *
-   * `tier` 由解析器按真实分布定（见 `packages/ai-transcript/src/context-injection.ts`），
-   * 这里只照着摆。占大头的 token 计数提醒在解析器那一层就没产出 part，到不了这里。
-   */
-  | { kind: "context"; contextKind: string; tier: ContextInjection["tier"]; subject?: string;
-      text: string; length: number; source?: ContextSource }
   | { kind: "tool"; id: string; name: string; args: string; result: string | null; failed: boolean;
       /**
        * 这次调用被拦下来了，**命令根本没执行**——用户拒绝、auto 模式拦截、权限规则都算。
@@ -88,20 +69,6 @@ export function groupMessages(messages: readonly HistoryMessage[]): Row[] {
         if (block.id) pending.set(block.id, block);
         continue;
       }
-      if (part.type === "thinking") {
-        const value = text(part);
-        if (value) blocks.push({ kind: "thinking", text: value });
-        continue;
-      }
-      if (part.type === "context" && part.context) {
-        // 正文可以是空的（比如 `command_permissions` 的空清单），但这一行仍然要出现：
-        // 「模型收到过一条这种注入」本身就是信息，空正文不等于没发生。
-        blocks.push({ kind: "context", contextKind: part.context.kind, tier: part.context.tier,
-          ...(part.context.subject ? { subject: part.context.subject } : {}),
-          text: text(part), length: part.context.length,
-          ...(part.context.source ? { source: part.context.source } : {}) });
-        continue;
-      }
       if (part.type === "compaction") {
         const value = text(part);
         if (value) blocks.push({ kind: "compaction", text: value });
@@ -147,34 +114,10 @@ export type ToolBlock = Extract<Block, { kind: "tool" }>;
  * 收成一组**，摘要显示「N 次调用 + 状态」，展开才看细节。
  */
 export type Item =
-  | { kind: "text"; key: string; role: string; text: string; message: HistoryMessage; turnStart: boolean;
-      /**
-       * 有这个字段就说明这一条**不是谁说的话**，而是一次注入进模型上下文的内容
-       * （系统提示词快照、环境信息、被改过的文件、技能清单……），`role` 是 `context`。
-       * 渲染时按它分流到注入行；没有它就是一条普通正文。
-       *
-       * **注入为什么不是自己的一个 `kind`。** `MessageBody` 的入参是
-       * `Extract<Item, { kind: "text" }>`，`ConversationDetail` 在排除掉 diff / 压缩 / 思考
-       * 之后把剩下的非工具条目直接交给它。新开一个 `kind` 会让那个「剩下的」变成两种类型，
-       * 于是这两个文件都得跟着改——而它们正由另一路在搬上游组件。一个可选的标记字段把
-       * 分流点收在一处：接线时加一句 `if (item.context)` 就够，没接之前它退化成一条普通
-       * 正文行（`roleName` 对陌生角色本来就有兜底），而不是一片空白或者一次崩溃。
-       */
-      context?: ContextInjection }
-  /*
-    `message` 是这一组的**第一条**消息（标题上的时刻、bodyState 都读它）。
-    `messages` 是这一组**跨过的全部消息**，去重、按出现顺序。
-
-    **两个都要，不是冗余。** 一组连续的工具调用是跨消息的（一次回合里 AI 往往是
-    「调用 → 下一条消息里的结果 → 再调用」），而按用量计费的是**每一条**消息。
-    只留第一条的话，`turn-usage.ts` 按 messageId 求和就会把后面几条整个丢掉——
-    实测 fixture 里 5 条带 usage 的记录被缩成 1 条，总量从 995,740 掉到 199,148。
-  */
-  | { kind: "tools"; key: string; role: string; tools: ToolBlock[]; status: ToolsStatus;
-      message: HistoryMessage; messages: HistoryMessage[]; turnStart: boolean }
-  | { kind: "compaction"; key: string; text: string; turnStart: false }
-  | { kind: "thinking"; key: string; text: string; turnStart: false }
+  | { kind: "text"; key: string; role: string; text: string; message: HistoryMessage; turnStart: boolean }
+  | { kind: "tools"; key: string; role: string; tools: ToolBlock[]; status: ToolsStatus; message: HistoryMessage; turnStart: boolean }
   /** 一个回合改了什么的汇总，摆在这个回合的末尾。 */
+  | { kind: "compaction"; key: string; text: string; turnStart: false }
   | { kind: "diff"; key: string; diff: TurnDiff; turnStart: false };
 
 export type ToolsStatus = "running" | "error" | "completed";
@@ -202,18 +145,6 @@ export function toolsStatus(tools: readonly ToolBlock[]): ToolsStatus {
 export const MIN_GROUPED_TOOLS = 3;
 
 /**
- * 工具条目一律算 AI 的动作，**不看承载它的那条消息是什么角色**。
- *
- * 这不是化简，是纠错。工具结果在 Claude 的 transcript 里装在合成的 user 回合里；平时
- * `groupMessages` 会把结果并回调用那一条、把空壳消息丢掉，角色自然是 assistant。但配不上
- * 对的结果（历史分页时调用落在窗口之外、或被截断）会留下一个孤儿块，那条 user 消息因此
- * 活了下来——照着 `row.role` 走，一整组工具调用就被标成「你」、还靠右对齐成用户气泡的样子。
- *
- * 用户没有调用过任何工具。角色在这里是**传输的外壳**，不是说话的人。
- */
-const TOOL_ROLE = "assistant";
-
-/**
  * 把行拍平成条目，并把**连续的**工具调用收成组。
  *
  * 连续是跨消息的：一次回合里 AI 往往是「调用 → （下一条消息里的结果）→ 再调用」，
@@ -235,58 +166,18 @@ export function buildItems(rows: readonly Row[]): Item[] {
     turnTools = [];
     if (diff) items.push({ kind: "diff", key: `${turnKey}:diff`, diff, turnStart: false });
   };
-  let pendingTools: { tools: ToolBlock[]; message: HistoryMessage; messages: HistoryMessage[]; key: string; role: string } | null = null;
-  /*
-    **上下文注入不打断工具组。**
-
-    实测：不算 token 计数提醒，777 条注入里有 472 条落在一次工具循环**中间**——Bash 里
-    `cd` 一下就有一条 `environment`，工具改了文件就有一条 `edited_text_file`。在那里
-    `flush()` 会把一组连续调用切成两半，于是「六次调用」在界面上变成「三次 + 一条注入 +
-    三次」，而那条边界不对应任何一件事。
-
-    所以攒着，等这一组落下去之后再排在它后面：组是完整的，注入也仍然在引发它的那几次
-    调用之后——只是从组的中间挪到了组的末尾。
-  */
-  let pendingContext: Item[] = [];
-  /*
-    **「这是不是同一份转录里的第 2+ 次」只有这一层算得出来。**
-
-    解析器是按字节增量走的，而 `readClaudeDetail` 回读单行时连会话上下文都没有——同一条
-    记录会在流式和回读两条路上得出不同的 `update`，那比不给更糟。它是**序列**的性质，
-    不是记录的性质，而序列在这里。
-
-    数据里自己带了答案的（`skill_listing` / `agent_listing_delta` 有 `isInitial`）以数据为准：
-    翻页时第一页未必是真正的第一次，这里数出来的只是「在已加载的这段里」。
-  */
-  const seenKinds = new Set<string>();
-  const seenUpdate = (kind: string, source: ContextSource): ContextSource => {
-    const first = !seenKinds.has(kind);
-    seenKinds.add(kind);
-    if (source.form !== "catalog" && source.form !== "system_prompt") return source;
-    return source.update === undefined ? { ...source, update: !first } : source;
-  };
-  const drainContext = () => {
-    if (!pendingContext.length) return;
-    items.push(...pendingContext);
-    pendingContext = [];
-  };
+  let pendingTools: { tools: ToolBlock[]; message: HistoryMessage; key: string; role: string } | null = null;
   const flush = () => {
-    if (!pendingTools) { drainContext(); return; }
-    const { tools, message, messages, key, role } = pendingTools;
+    if (!pendingTools) return;
+    const { tools, message, key, role } = pendingTools;
     pendingTools = null;
     if (tools.length >= MIN_GROUPED_TOOLS) {
-      items.push({ kind: "tools", key, role, tools, status: toolsStatus(tools), message, messages, turnStart: false });
-      drainContext();
+      items.push({ kind: "tools", key, role, tools, status: toolsStatus(tools), message, turnStart: false });
       return;
     }
     // 太少就不成组：一条条摊开，各自是一个单元素的组，渲染上不带组的外壳。
-    /*
-      太少就不成组，一条条摊开。**每条仍然带整组跨过的消息**——摊开只改渲染，不该让
-      用量少算：这几条工具本来就可能来自不同的消息。
-    */
     tools.forEach((tool, i) => items.push({ kind: "tools", key: `${key}:${i}`, role, tools: [tool],
-      status: toolsStatus([tool]), message, messages, turnStart: false }));
-    drainContext();
+      status: toolsStatus([tool]), message, turnStart: false }));
   };
   for (const row of rows) {
     const isUser = row.role === "user";
@@ -303,30 +194,12 @@ export function buildItems(rows: readonly Row[]): Item[] {
         */
         if (block.patch?.hunks.length) {
           flush();
-          items.push({ kind: "tools", key: `${row.message.messageId}:patch:${index}`, role: TOOL_ROLE,
-            tools: [block], status: toolsStatus([block]), message: row.message,
-            messages: [row.message], turnStart: false });
+          items.push({ kind: "tools", key: `${row.message.messageId}:patch:${index}`, role: row.role,
+            tools: [block], status: toolsStatus([block]), message: row.message, turnStart: false });
           continue;
         }
-        pendingTools ??= { tools: [], message: row.message, messages: [],
-          key: `${row.message.messageId}:tools`, role: TOOL_ROLE };
+        pendingTools ??= { tools: [], message: row.message, key: `${row.message.messageId}:tools`, role: row.role };
         pendingTools.tools.push(block);
-        // 跨过的每一条消息都要记下来（去重）——组是跨消息的，而用量是按消息计的。
-        if (pendingTools.messages.at(-1) !== row.message) pendingTools.messages.push(row.message);
-        continue;
-      }
-      if (block.kind === "context") {
-        /*
-          注入**不开新回合**，理由和压缩摘要一样：它不是有人说了新的话。`role` 是 `context`，
-          `isUser` 本来就为假，所以这里只要不去碰 `closeTurn` 就够了。
-        */
-        pendingContext.push({ kind: "text", key: `${row.message.messageId}:${index}`, role: row.role,
-          text: block.text, message: row.message, turnStart: false,
-          context: { kind: block.contextKind, tier: block.tier,
-            ...(block.subject ? { subject: block.subject } : {}), length: block.length,
-            ...(block.source ? { source: seenUpdate(block.contextKind, block.source) } : {}) } });
-        // 没有组要等的时候立刻落下去，免得它被一个更晚才出现的组拖到后面去。
-        if (!pendingTools) drainContext();
         continue;
       }
       flush();
@@ -334,8 +207,8 @@ export function buildItems(rows: readonly Row[]): Item[] {
         压缩摘要**不开新回合**。它在 transcript 里是 user 角色，照常走下面那条就会画出一条
         回合边界——可上下文压缩发生在一个回合中间，不是用户说了新的话。
       */
-      if (block.kind === "compaction" || block.kind === "thinking") {
-        items.push({ kind: block.kind, key: `${row.message.messageId}:${index}`, text: block.text, turnStart: false });
+      if (block.kind === "compaction") {
+        items.push({ kind: "compaction", key: `${row.message.messageId}:${index}`, text: block.text, turnStart: false });
         continue;
       }
       if (isUser && index === 0) { closeTurn(); turnKey = row.message.messageId; }

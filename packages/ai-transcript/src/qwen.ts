@@ -5,7 +5,6 @@ import { isAbsolute, join } from "node:path";
 
 import { TranscriptError, type TranscriptCheckpoint, type TranscriptItem } from "./index.ts";
 import { previewToolArgs } from "./truncate.ts";
-import type { ContextInjection } from "./context-injection.ts";
 const BATCH = 256 * 1024, LINE = 1024 * 1024, PREVIEW = 4000;
 function fingerprint(stat: {dev: number; ino: number; birthtimeMs: number}) { return `${stat.dev}:${stat.ino}:${stat.birthtimeMs}`; }
 const object = (value: unknown): value is Record<string, any> => !!value && typeof value === "object" && !Array.isArray(value);
@@ -55,33 +54,8 @@ function normalize(row: Record<string, any>, ref: TranscriptItem["data"]["detail
     const output = text.slice(0, Math.max(0, limit - total)); total += output.length;
     truncated ||= output.length < text.length; parts.push({ type, text: output, ...extra });
   }
-  /*
-    **Qwen 把注入拼进用户消息自己的 text 部件里**，`systemPayload.displayText` 是用户真正
-    打的那一段。这里曾经的处置是「有 displayText 就只画它、`message.parts` 整个跳过」——
-    那躲开了「用户看到自己说了一堆没说过的话」，代价是**把注入整个丢掉**：模型实际看到的
-    那部分在界面上不存在，仓库自己的 fixture 就写着 parts 是 `original + injected hook`
-    而 displayText 是 `original`，那个 hook 从来没画出来过。
-
-    现在有了注入这条通道（`context-injection.ts`，为 Claude 的 attachment 行建的），
-    两样都给：用户气泡里是 displayText，注入单独成一段。
-
-    **拆法只认前缀。** Qwen 是往后追加，所以正常情况下拼起来的正文以 displayText 开头，
-    剩下的那截就是注入。对不上前缀时**不猜怎么切**——把整段作为注入给出去，那仍然是
-    一句真话（模型确实收到了这些），而硬切会造出一段谁都没写过的文本。
-  */
   const display = row.type === "user" && typeof row.systemPayload?.displayText === "string" ? row.systemPayload.displayText : undefined;
-  if (display !== undefined) {
-    add("text", display);
-    const whole = row.message.parts
-      .slice(0, 512)
-      .map((p: unknown) => (object(p) && typeof (p as { text?: unknown }).text === "string" ? (p as { text: string }).text : ""))
-      .join("");
-    const injected = whole.startsWith(display) ? whole.slice(display.length) : whole;
-    if (injected.trim()) {
-      const context: ContextInjection = { kind: "qwen_prompt_injection", tier: "collapsed", length: injected.length };
-      add("context", injected, { context });
-    }
-  }
+  if (display !== undefined) add("text", display);
   else for (const p of row.message.parts.slice(0, 512)) {
     if (!object(p)) { partial = true; continue; }
     if (typeof p.text === "string") add(p.thought === true ? "thinking" : "text", p.text);
@@ -99,16 +73,7 @@ function normalize(row: Record<string, any>, ref: TranscriptItem["data"]["detail
   const timestamp = Date.parse(row.timestamp);
   return { partial, item: { eventId: "qwen:" + ref.nativeSessionId + ":" + row.uuid, type: "message",
     role: row.type === "tool_result" ? "tool" : row.provenance === "system" || row.provenance === "goal_runtime" ? "system" : row.type,
-    /*
-      **注入不进 `content`。** 这个字段是那条消息的扁平正文——预览取它
-      （`conversation-preview.ts` 取首条 user 的 content）、搜索也扫它。注入是模型收到的东西，
-      不是用户打的字；混进去会让「这条对话讲了什么」的预览显示成一段 hook，也会让搜索在
-      用户从没写过的词上命中他的消息。
-
-      注入本身一个字都没丢，它在 `parts` 里（`type: "context"`），前端照样画得出来。
-    */
-    content: parts.filter(p => p.type !== "context")
-      .map(p => p.type === "thinking" ? "[已记录的思考]\n" + p.text : p.text ?? "").join("\n"),
+    content: parts.map(p => p.type === "thinking" ? "[已记录的思考]\n" + p.text : p.text ?? "").join("\n"),
     ...(Number.isFinite(timestamp) ? {createdAt: timestamp} : {}),
     data: {source: "transcript", nativeMessageId: row.uuid, parentId: typeof row.parentUuid === "string" ? row.parentUuid : null,
       parts, truncated, detail: {...ref, recordId: row.uuid}},

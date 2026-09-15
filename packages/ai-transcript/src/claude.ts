@@ -3,9 +3,8 @@ import { constants } from "node:fs";
 import { open, opendir, realpath } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 
-import { TranscriptError, type EditPatch, type MessageUsage, type TranscriptCheckpoint, type TranscriptItem } from "./index.ts";
+import { TranscriptError, type EditPatch, type TranscriptCheckpoint, type TranscriptItem } from "./index.ts";
 import { previewToolArgs } from "./truncate.ts";
-import { contextSource, contextSubject, contextText, contextTier } from "./context-injection.ts";
 const BATCH = 256 * 1024, LINE = 1024 * 1024, PREVIEW = 4000;
 
 /** hunk 数、总行数、单行长度都封顶：原始数据可以任意大，而这份要过预览和列表预算。 */
@@ -61,49 +60,6 @@ function bashEditPatch(value: unknown): EditPatch | undefined {
   return { ...patch, truncated: patch.truncated || files.length > 1 || (Number.isSafeInteger(more) && more > 0) };
 }
 
-/**
- * token 数的上限：见 `MessageUsage` 的说明。超限的桶按缺席处理，不按上限截断——
- * 截断会造出一个「看着合理」的假数，而缺席至少是诚实的。
- */
-const TOKENS_MAX = 1e12;
-const tokens = (value: unknown): number | undefined =>
-  typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= TOKENS_MAX ? value : undefined;
-
-/**
- * 把 `message.usage` 折成 `MessageUsage`。
- *
- * **两个必需桶缺一个就整条不给。** `input_tokens` / `output_tokens` 是 Claude 每条记录都写的
- * （实测 5219/5219），缺了说明这条记录的 usage 本身不可信，硬凑一个「只有输出没有输入」的
- * 用量比没有更糟——它会在总数里少算一块，而界面上看不出来少了。
- *
- * **三个可选桶各自判断**：`cache_read_input_tokens` / `cache_creation_input_tokens` 在本机是
- * 100% 有的，`output_tokens_details.thinking_tokens` 是 99.7%（5207/5219）——那 12 条缺席的
- * 恰恰证明了「不能当 0」：思考 token 缺席时写 0，界面会说「这次没思考」，而真相是没报。
- *
- * **`usage.iterations` 不用。** 它是每次 attempt 的分项（本机 5207 条**全部长度为 1**），
- * 顶层 usage 已经是它们的合计（实测 `sum(iterations[].output_tokens) === usage.output_tokens`，
- * 0 条不符）。多取一份只会多一个要对齐的真相。
- *
- * **`model` 照抄不做白名单**，包括 Claude Code 自己塞的 `<synthetic>`（本机 5 条，usage 全零，
- * 是它生成的报错占位，不是一次模型请求）。零就是零，不必特判；而把 `<synthetic>` 藏起来，
- * 等于让界面上少掉几条本来存在的记录。
- */
-function messageUsage(message: Record<string, any>): MessageUsage | undefined {
-  const raw = message.usage;
-  if (!object(raw)) return undefined;
-  const inputTokens = tokens(raw.input_tokens), outputTokens = tokens(raw.output_tokens);
-  if (inputTokens === undefined || outputTokens === undefined) return undefined;
-  const cacheReadTokens = tokens(raw.cache_read_input_tokens);
-  const cacheWriteTokens = tokens(raw.cache_creation_input_tokens);
-  const reasoningTokens = object(raw.output_tokens_details) ? tokens(raw.output_tokens_details.thinking_tokens) : undefined;
-  const model = typeof message.model === "string" && message.model ? message.model.slice(0, 128) : undefined;
-  return { inputTokens, outputTokens,
-    ...(cacheReadTokens !== undefined ? { cacheReadTokens } : {}),
-    ...(cacheWriteTokens !== undefined ? { cacheWriteTokens } : {}),
-    ...(reasoningTokens !== undefined ? { reasoningTokens } : {}),
-    ...(model ? { model } : {}) };
-}
-
 function editPatch(value: unknown): EditPatch | undefined {
   if (!object(value)) return undefined;
   return boundPatch((value as any).structuredPatch, (value as any).filePath) ?? bashEditPatch((value as any).bashEditDiff);
@@ -144,45 +100,8 @@ async function header(handle: Awaited<ReturnType<typeof open>>, nativeId: string
   throw new TranscriptError("header_unavailable");
 }
 
-/**
- * `attachment` 行：这次对话注入进模型上下文的一段内容。见 `context-injection.ts` 的说明。
- *
- * **预览态按工具结果那一档的额度截（4000），不按正文的 64KB。** 这些正文可以很大——
- * `prompt_snapshot` 本机最大 142KB——而列表和会话流要为每一条消息掏这份额度。一条注入在
- * 列表里只需要「是什么、大概长什么样」，要读全文按 `detail` 回读，和工具结果是同一个套路。
- * `context.length` 给的是截断前的真实字符数，所以「这里看到的不是全部」是说得出口的。
- *
- * 一行只产出一段 part：attachment 行本身就是一条独立记录，没有多段的形状。
- */
-function contextRecord(row: Record<string, any>, ref: TranscriptItem["data"]["detail"], full: boolean): { item?: TranscriptItem; partial: boolean } {
-  const payload = row.attachment;
-  if (!object(payload) || typeof payload.type !== "string" || !payload.type) return { partial: true };
-  const kind = payload.type.slice(0, 64);
-  const tier = contextTier(kind);
-  // 明知故丢的类型（今天只有 token 计数提醒）不算解析失败，否则每份转录都永远 partial。
-  if (!tier) return { partial: false };
-  if (typeof row.uuid !== "string" || !row.uuid || row.uuid.length > 256) return { partial: true };
-  if (row.sessionId !== ref.nativeSessionId) throw new TranscriptError("session_mismatch");
-  const whole = contextText(row.rendered, payload);
-  const text = whole.slice(0, full ? 256 * 1024 : PREVIEW);
-  const subject = contextSubject(payload);
-  // 结构化视图和正文是两条独立的路：`source` 喂不满就缺席，正文照样是完整的那一份。
-  const source = contextSource(kind, payload);
-  const timestamp = Date.parse(row.timestamp);
-  return { partial: false, item: {
-    eventId: "claude:" + ref.nativeSessionId + ":" + row.uuid, type: "message", role: "context", content: text,
-    ...(Number.isFinite(timestamp) ? { createdAt: timestamp } : {}),
-    data: { source: "transcript", nativeMessageId: row.uuid, parentId: typeof row.parentUuid === "string" ? row.parentUuid : null,
-      parts: [{ type: "context", text, context: { kind, tier, ...(subject ? { subject } : {}),
-        length: whole.length, ...(source ? { source } : {}) } }],
-      // 注入不是一次模型请求，没有自己的用量——所以这里没有 `usage`。
-      truncated: text.length < whole.length, detail: { ...ref, recordId: row.uuid } },
-  } };
-}
-
 function normalize(row: Record<string, any>, ref: TranscriptItem["data"]["detail"], full = false): { item?: TranscriptItem; partial: boolean } {
   if (row.isSidechain === true) return { partial: true };
-  if (row.type === "attachment") return contextRecord(row, ref, full);
   if (["queue-operation", "file-history-snapshot", "summary", "progress", "last-prompt"].includes(row.type)) return { partial: false };
   if (!["user", "assistant"].includes(row.type)) return { partial: true };
   if (row.sessionId !== ref.nativeSessionId) throw new TranscriptError("session_mismatch");
@@ -252,11 +171,7 @@ function normalize(row: Record<string, any>, ref: TranscriptItem["data"]["detail
     content: parts.map(part => part.type === "thinking" ? "[已记录的思考]\n" + part.text : part.text ?? "").join("\n"),
     ...(Number.isFinite(timestamp) ? { createdAt: timestamp } : {}),
     data: { source: "transcript", nativeMessageId: row.uuid, parentId: typeof row.parentUuid === "string" ? row.parentUuid : null,
-      parts,
-      // 用量描述的是「产生这条回复的那次模型请求」，所以只挂在 assistant 记录上。工具结果
-      // 记录在 Claude 这里是 `type: "user"`，它没有自己的请求，也就没有自己的用量。
-      ...(row.type === "assistant" ? (usage => usage ? { usage } : {})(messageUsage(message)) : {}),
-      truncated, detail: { ...ref, recordId: row.uuid } },
+      parts, truncated, detail: { ...ref, recordId: row.uuid } },
   } };
 }
 

@@ -165,34 +165,6 @@ export const workspace = {
       quiet: "暂无新输出",
       none: "还没有终端",
     },
-    /*
-      下面这一撮是左栏换成搬来的那套外壳（vendor/dsh/sidebar）之后才需要的。
-      对话模式那一份在 misc.ts 的 conversations.sidebar 里，**两边形状刻意一样**：
-      同一个 SidebarRoot / SidebarBrowser 收同样的 labels，只是词不同。
-    */
-    newTerminal: "新建终端",
-    toggleOpen: "展开侧栏",
-    toggleCollapse: "收起侧栏",
-    panels: "视图",
-    search: "搜索终端或路径…",
-    searchClear: "清除搜索",
-    noMatch: "没有匹配的终端",
-    /** 「还有 n 个」——每个工作区先露 5 个终端，和对话那边同一个上限。 */
-    more: (hidden: number) => `还有 ${hidden} 个`,
-    /** 上面那个 `collapse(name)` 是行的无障碍名字，这个是「还有 n 个」按钮的反面。 */
-    collapseOverflow: "收起",
-    /*
-      行尾的相对时间，量的是这个终端**最后一次吐字节**的时刻（lastOutputAt）。
-      紧凑到能塞进 32px 行的尾巴，所以是「12 分」不是「12 分钟前」——和对话那边同一条规矩。
-    */
-    when: {
-      now: "刚刚",
-      minutes: (n: number) => `${n} 分`,
-      hours: (n: number) => `${n} 时`,
-      days: (n: number) => `${n} 天`,
-      months: (n: number) => `${n} 月`,
-      years: (n: number) => `${n} 年`,
-    },
   },
 
   project: {

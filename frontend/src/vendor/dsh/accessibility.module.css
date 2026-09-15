@@ -1,9 +1,0 @@
-/* 逐字取自 deepseek-ai/deepseek-harness@0d1f500 packages/client/ui-chat/src/client/chat/accessibility.module.css —— MIT，Copyright (c) 2026 DeepSeek。改动见 ./NOTICE.md。 */
-.visuallyHidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-}

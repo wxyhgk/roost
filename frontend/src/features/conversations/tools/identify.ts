@@ -32,22 +32,6 @@ const ALIASES: Record<string, string> = {
   codexbash: "bash",
   codexpatch: "patch",
   codexdiff: "diff",
-  /*
-    gemini 和 qwen 用的是一整套自己的 wire 名，一个都不和别家重合。不补这几条的后果很具体：
-    `run_shell_command` 匹配不到 bash 那条规则，那两家的命令行走不到终端卡片，
-    只能落兜底——而兜底画不出 `$ 命令` 和带颜色的输出。
-  */
-  run_shell_command: "bash",
-  read_file: "read",
-  read_many_files: "read",
-  write_file: "write",
-  replace: "edit",
-  search_file_content: "grep",
-  list_directory: "ls",
-  glob: "glob",
-  google_web_search: "websearch",
-  web_fetch: "webfetch",
-
   // 各家对同一件事的不同叫法。
   shell: "bash",
   execute: "bash",

@@ -95,39 +95,6 @@ export const misc = {
       unavailable: "识别服务不可用",
       noTerminal: "没有选中的终端",
     },
-    /* 左栏用搬来的那套壳和行（vendor/dsh/sidebar）需要的文案。 */
-    sidebar: {
-      newConversation: "新建对话",
-      newConversationLabel: "新建对话",
-      toggleOpen: "展开侧栏",
-      toggleCollapse: "收起侧栏",
-      panels: "面板",
-      section: "对话",
-      /** 「还有 n 条」——每组默认先露 5 条。 */
-      more: (hidden: number) => `还有 ${hidden} 条`,
-      collapse: "收起",
-      /** 转录有缺口的那条对话，状态点是琥珀色。读屏要读得出来。 */
-      gap: "这条对话的记录有缺口",
-      /*
-        相对时间。上游的 `relativeTime()` 只给桶和数量，文字由这里拼——
-        **紧凑到能塞进 32px 行的尾巴**，所以是「12min」不是「12 分钟前」。
-      */
-      /* 侧栏行 hover 时露出的两颗动作。 */
-      rowActions: {
-        archive: "归档",
-        trash: "移到回收站",
-        /** 改不动时那一行。**不吞掉**——用户点了就该知道成没成。 */
-        failed: "改不了，稍后再试",
-      },
-      when: {
-        now: "刚刚",
-        minutes: (n: number) => `${n} 分`,
-        hours: (n: number) => `${n} 时`,
-        days: (n: number) => `${n} 天`,
-        months: (n: number) => `${n} 月`,
-        years: (n: number) => `${n} 年`,
-      },
-    },
     title: "对话",
     catalogEntry: (count: number) => `历史对话 ${count} 条`,
     catalogEntryPlain: "历史对话",
@@ -136,8 +103,6 @@ export const misc = {
     search: "搜索标题或正文…",
     clearSearch: "清除搜索",
     empty: "还没有已保存的对话",
-    /** 对话模式下中栏没有选中对话时的那一句。 */
-    columnEmpty: "在左栏选一条对话；还没有的话，去终端里和 AI 说一句",
     emptyHint: "在终端里用 AI 聊过之后，对话会自动出现在这里，终端关掉也不会消失。",
     noMatch: "没有匹配的对话",
     noMatchHint: "换个关键词试试。搜索会同时找标题和正文。",
@@ -180,44 +145,7 @@ export const misc = {
       failed: "保存失败",
     },
     detail: {
-      /*
-        上下文注入行（vendor/dsh/chat/ContextInjectionRow + ContextBody + SystemPromptRow）。
-        「这次对话模型实际看到了什么」——系统提示词、环境快照、技能目录、被编辑过的文件。
-
-        **`relayFrom` / `recallCounts` / `recallTruncated` 这三条画不出来。** 那两档（转发、召回）
-        我们喂不满：`queued_command` 只有后台任务 id 不是会话 id，`compact_file_reference` 给不出
-        「保留/省略几条」的计数——而那个计数正是那张卡存在的理由。文案留着是因为
-        `ContextBodyLabels` 是个闭合接口，少一条就给不出一份全覆盖的 labels；和
-        `turnTime.speed/ttft` 是同一个先例。
-      */
-      context: {
-        injection: "上下文注入",
-        recall: "上下文召回",
-        systemPrompt: "系统提示词",
-        systemPromptUpdate: "系统提示词（已更新）",
-        unknownBlock: "未识别的内容块",
-        jsonTruncated: (total: number) => `已截断，共 ${total} 字符`,
-        /** 指令文件的四种状态。`added` / `updated` / `removed` 今天画不出来——Claude 只在开场铺一次底。 */
-        instructions: {
-          loaded: "开场载入",
-          added: "新增",
-          updated: "已更新",
-          removed: "已移除",
-        },
-        catalogReplaced: "替换先前的目录",
-        catalogMore: (count: number) => `另有 ${count} 条未列出`,
-        snapshotSupersedes: "取代先前的快照",
-        relayFrom: (session: string) => `转发自会话 ${session}`,
-        recallCounts: (retained: number, omitted: number) => `保留 ${retained} 条，省略 ${omitted} 条`,
-        recallTruncated: "这一路召回被截断过",
-      },
       back: "返回列表",
-      /** 头里那条面包屑的无障碍名。上游同一个位叫 `session.hierarchy`。 */
-      hierarchy: "对话位置",
-      /** 头右上角那颗 `…`：对话的属性与管理动作。 */
-      details: "对话详情",
-      /** 栏太窄时把动作/工具收进来的那颗钮。一样都不删，只是换个地方点。 */
-      more: "更多",
       loading: "正在加载对话…",
       loadOlder: "加载更早的消息",
       noMessages: "这段对话没有已保存的消息",
@@ -241,21 +169,6 @@ export const misc = {
       toolNoResult: "没有结果",
       /** `/compact` 的摘要：一条分隔行，点开才看。它不是用户说的话。 */
       compacted: "上下文已压缩",
-      /** 收起时标题右边那句。上游放「压缩了 N 条 · 约 M tokens」，那两个数我们算不出来。 */
-      compactedDetail: "点开看摘要",
-      /** AI 的思考过程：折叠行，收起时只看第一行。它是过程不是结论。 */
-      thinking: "思考",
-      thinkingRunning: "正在思考",
-      /** 消息尾部那行图标：复制、时刻。分支我们还没实现，但组件里那条路留着。 */
-      copy: "复制",
-      copied: "已复制",
-      branch: "从这里分支",
-      branchUnavailable: "这条不能分支",
-      /** markdown 里脚注那一节的标题。 */
-      footnotes: "脚注",
-      /** 非当天的消息才显示日期：同年只给月日，跨年才给年份。 */
-      clockMd: (m: number, d: number) => `${m} 月 ${d} 日`,
-      clockYmd: (y: number, m: number, d: number) => `${y} 年 ${m} 月 ${d} 日`,
       /** 命令输出留尾部：报错和结论都在末尾。 */
       outputClipped: "上面还有更早的输出，已省略",
       /** 「跑完了但没输出」和「结果没拿到」必须分得开。 */
@@ -267,84 +180,6 @@ export const misc = {
       turnDiffFiles: (n: number) => `本轮改动 ${n} 个文件`,
       turnDiffPartial: "（不完整）",
       patchTruncated: "改动过长，已截断",
-      /*
-        回合用量 / 回合耗时两个药丸和它们的弹层（vendor/dsh/chat/TurnUsagePanel）。上游的 `t`
-        是一个扁平 key 的 locale seat（`message.turnUsage.count` 这种），调用方把下面这些映射过去。
-
-        **紧凑单位用 K/M，不用「万/亿」。** 中文里 12200 本该读作「1.22 万」，但 `formatTokens`
-        的分档是写死的 1e3/1e6（`vendor/dsh/chat/token-format.ts`）——把模板换成「万」而不动函数，
-        会让 12200 显示成「12.2万」，也就是 12 万，**差一个数量级的谎**。要换就得连函数一起改，
-        而那不值得：token 数是技术量，K/M 是 CLI、API 文档、供应商控制台一致的写法，换成万/亿
-        反而对不上用户在别处看到的数；精确值那一档还用三位一组的千分位（`groupSeparator`），
-        四位一档的万/亿和它摆在同一个弹层里也自相矛盾。所以函数不动，中英两份都用 K/M。
-      */
-      turnUsage: {
-        /** `{count}` 已经是格式化好的数（`517` / `12.2K`）。 */
-        count: (count: string) => `${count} tokens`,
-        /** 药丸上那句。 */
-        consumed: (total: string) => `用了 ${total}`,
-        title: "本轮用量",
-        model: "模型",
-        cacheHit: "缓存命中",
-        /** 特意不写成「输入」：这一项是**没命中缓存的**那部分，缓存读写各有自己一行。 */
-        input: "未缓存输入",
-        cacheRead: "缓存读取",
-        cacheWrite: "缓存写入",
-        output: "输出",
-        /** 思考是输出的子集，所以挂在「输出」那一行后面，而不是自己占一行。 */
-        reasoning: (tokens: string) => `（含思考 ${tokens}）`,
-      },
-      turnTime: {
-        title: "本轮耗时",
-        duration: "总时长",
-        /*
-          速度和首 token 延迟这两行**当前画不出来**：transcript 里没有首 token 时刻，我们只给
-          `runMs`，弹层里这两行有 `!== undefined` 的闸门。文案照样留着——`TurnStatTranslate`
-          的键是个闭合联合，少一个调用方就没法给出一个全覆盖的 `t`；而为了省两句话去改抄来的
-          组件，代价比留着大。
-        */
-        speed: "速度",
-        ttft: "首 token 延迟",
-      },
-      /*
-        输入卡下面那两颗**会话级**药丸（vendor/dsh/chat/StatsPills）。和上面那两颗回合级的
-        是同一套皮、不同的统计边界。
-
-        **四条计时文案当前一条都画不出来**，和 `turnTime.speed/ttft` 同一个理由：transcript
-        里没有 step 开始时刻、没有首 token 时刻、工具调用和结果也没有配对时刻。仪表盘那颗
-        药丸因此退化成一个不可点的静态读数（只剩「n 轮 m 步」），弹层不出现。文案照样留着
-        ——`SessionStatTranslate` 的键是个闭合联合，少一个调用方就给不出全覆盖的 `t`。
-      */
-      sessionStats: {
-        /** 药丸上那句。上游写作 `{turns} 轮 {steps} 步`。 */
-        counts: (turns: number, steps: number) => `${turns} 轮 ${steps} 步`,
-        /** `{percent}` 已经是格式化好的百分数（可能带小数，见 formatCacheHitPercent）。 */
-        cacheHit: (percent: string) => `缓存命中 ${percent}%`,
-        title: "会话统计",
-        usageTitle: "Token 用量",
-        llmTime: "模型用时",
-        toolTime: "工具调用用时",
-        ttft: "首 token 平均（TTFT）",
-        speed: "输出速度（TPS）",
-        /** 紧凑时长，和上面那三档不是一套：药丸弹层要的是 `45.2秒` / `2分42秒` 这种短形。 */
-        compactSeconds: (seconds: number) => `${seconds}秒`,
-        compactMinutes: (minutes: number, seconds: number) => `${minutes}分${seconds}秒`,
-      },
-      ranFor: (duration: string) => `耗时 ${duration}`,
-      tokensPerSecond: (tps: string) => `${tps} tokens/秒`,
-      number: {
-        thousand: (value: string) => `${value}K`,
-        million: (value: string) => `${value}M`,
-        /** 精确值的千分位分隔符，不带参数。 */
-        groupSeparator: ",",
-      },
-      /** 耗时三档。小单位已经在格式化函数里补过零，所以可能是字符串。 */
-      duration: {
-        seconds: (seconds: number | string) => `${seconds} 秒`,
-        minutes: (minutes: number | string, seconds: number | string) => `${minutes} 分 ${seconds} 秒`,
-        hours: (hours: number, minutes: number | string, seconds: number | string) =>
-          `${hours} 小时 ${minutes} 分 ${seconds} 秒`,
-      },
       toolGroup: (n: number) => `${n} 次工具调用`,
       toolGroupRunning: "进行中",
       toolGroupError: "有失败",
@@ -445,19 +280,6 @@ export const misc = {
     libraryKind: "资料类型",
     hint: "搜索、浏览和编辑 · Esc 收起",
     collapse: "收起资料库",
-    /*
-      右栏三档呈现的那排按钮。每一档的文案写的是**按下去会变成什么**，不是当前是什么——
-      按钮上只有一个图标，说「现在是推挤」帮不上忙。
-    */
-    chrome: {
-      toPush: "让中栏让出位置",
-      toFloat: "浮在中栏上，不挤它",
-      toFullscreen: "铺满整个工作区",
-      exitFullscreen: "退出全屏",
-      /* 窄框下只有全屏一档，退出全屏就只能是收起——按钮换个说法，别让人以为还有别的落点。 */
-      exitFullscreenNarrow: "收起面板",
-      collapse: "收起右侧面板",
-    },
   },
 
   leftRail: {
@@ -465,11 +287,6 @@ export const misc = {
     expandSessions: "展开工作区栏",
     collapseSessions: "收起工作区栏",
     sessions: "工作区",
-    conversations: "对话",
-    /* 两颗按钮切的是整套三栏，不只是左栏，所以副标题要把另外两栏也说出来。 */
-    conversationsTitle: "对话：目录 · 正文 · 终端",
-    terminal: "终端",
-    terminalTitle: "终端：工作区 · 终端画面 · 文件",
     catalog: "历史对话",
     catalogTitle: "翻看历史对话",
     settings: "设置",
@@ -481,8 +298,6 @@ export const misc = {
       files: "文件",
       notes: "笔记",
       snippets: "代码片段",
-      /** 只在对话模式下出现：那时终端住在右栏。 */
-      terminal: "终端",
     },
     view: "右侧视图",
   },
@@ -498,61 +313,6 @@ export const misc = {
     title: (count: number) => `${count} 个会话在等你`,
   },
 
-    /**
-     * 从 deepseek-harness 搬来的那批积木要的文案（vendor/dsh）。
-     *
-     * 单独一块而不是散进 detail：它们是**组件的契约**，不是我们自己的界面用语——
-     * 上游改了 props，这一块跟着改；我们自己改措辞，不该碰到这里的结构。
-     */
-    blocks: {
-      running: "正在运行",
-      failed: "失败",
-      stopped: "已中断",
-      input: "输入",
-      output: "输出",
-      inspect: "查看",
-      copy: "复制",
-      copied: "已复制",
-      collapse: "收起",
-      collapseAria: "收起",
-      expand: (hidden: number) => `还有 ${hidden} 行`,
-      expandAria: (hidden: number) => `展开其余 ${hidden} 行`,
-      files: (count: number) => `${count} 个文件`,
-      /** 读文件：显示了多少行、一共多少行。 */
-      window: (shown: number, total: number) => `${shown} / ${total} 行`,
-      done: "完成",
-      /** 跑完了但一个字都没输出——必须说出来，否则和「结果没拿到」长得一样。 */
-      noOutput: "执行完成，没有输出",
-      exitCode: (code: number) => `退出码 ${code}`,
-      signal: (signal: string) => `信号 ${signal}`,
-      noResults: "没有结果",
-      truncated: "已截断",
-      pathsSummary: (shown: number, total: number, truncated: boolean) =>
-        `${shown} / ${total} 个文件${truncated ? "（已截断）" : ""}`,
-      matchesSummary: (shown: number, total: number, files: number, truncated: boolean) =>
-        `${shown} / ${total} 处匹配，${files} 个文件${truncated ? "（已截断）" : ""}`,
-      sourcesTruncated: "来源已截断",
-      http: "HTTP",
-      contentTruncated: "内容已截断",
-      /*
-        `MessageItem` 那六句。**其中四句当前一条都画不出来**，照 `turnTime.speed/ttft`
-        的先例留着：`MessageItemLabels` 是个闭合的接口，少一个键调用方就给不出一个
-        全覆盖的对象，而为了省几句话去改抄来的组件，代价比留着大。
-
-        画得出来的只有 extraBlock / jsonTruncated（用户消息里解析不出来的块）；
-        turnError / authFailure / maxTokens / maxTokensHint 走的是 `error` 那个 prop，
-        而我们的 transcript 里**没有回合级错误、也没有 stop_reason**——不传 `error`，
-        那两行整块不渲染。**尤其不能把 maxTokens 那两句接上**：`TurnMaxTokensRow` 不吃
-        任何数据、只吃文案，接上就是每条消息底下都能冒出一句「输出被截断」，那是言之
-        凿凿的空壳（同 NOTICE 里 ask-question-row 不接的理由）。
-      */
-      extraBlock: "这条消息里还有一块没认出来的内容",
-      jsonTruncated: (total: number) => `…（共 ${total} 字符，已截断）`,
-      turnError: "本回合失败",
-      authFailure: "登录已失效，请重新连接后再试。",
-      maxTokens: "输出被截断",
-      maxTokensHint: "这一回合到达了输出长度上限，后面的内容没有生成。",
-    },
   media: {
     imageFailed: "图片加载失败",
     binary: "二进制文件",

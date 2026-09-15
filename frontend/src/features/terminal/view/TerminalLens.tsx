@@ -1,12 +1,10 @@
-import { Suspense, lazy, useEffect, useRef, useState, type ReactNode } from "react";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { fetchConversation, listConversations, type Conversation } from "../../../shared/api/conversations";
 /*
   对话视图不进首屏。
 
-  **默认镜头已经改成对话了**（见 Shell 的 LENS_KEY），所以这条懒加载不再像当初那样
-  「多数人根本不会触发」。它仍然值得留着：首屏落点是画布（`loadMode` 默认 canvas），
-  中栏这时一个终端都没打开，对话那 51.5 KB（gzip，实测）照样不该堵在首屏 chunk 里。
-  代价从「切过去才付」变成「进终端就付」，但仍然晚于首次绘制。
+  桌面端默认镜头是 tui（见 defaultLens），`ConversationDetail` 只有切到「对话」才渲染，
+  但它拖着 markdown-it 一起待在首屏 chunk 里。整个组件懒加载省 51.5 KB（gzip，实测）。
 
   **另一处 import 必须一起改**：BookmarksDialog 也静态 import 它，而 LeftRail 又静态
   import BookmarksDialog。只改这一处实测一个字节都省不下来——一个模块只要还有一条静态
@@ -16,14 +14,6 @@ import { fetchConversation, listConversations, type Conversation } from "../../.
   渲染结果，那比晚一拍出现更糟。组件在加载完之前根本不挂，切换时只是一次极短的空白。
 */
 const ConversationDetail = lazy(() => import("../../conversations/ConversationDetail").then(m => ({ default: m.ConversationDetail })));
-/*
-  空态那个壳和详情在**同一个模块**里，所以这第二条 lazy 不多一次请求——两条指向同一个
-  chunk，先到的那条把它拉下来，另一条直接命中。分成两个导出是因为空态不需要一条对话。
-*/
-const ConversationColumnEmpty = lazy(() => import("../../conversations/ConversationDetail").then(m => ({ default: m.ConversationColumnEmpty })));
-/* 只要类型，不建运行时引用边——否则那条懒加载立刻失效。 */
-import type { ColumnChrome, ColumnCrumb, ColumnTab } from "../../conversations/ColumnHeader";
-import { IconChevron } from "../../../shared/icons";
 import type { Lens } from "../../../shared/view";
 import { t } from "@roost/i18n";
 
@@ -37,31 +27,46 @@ import { t } from "@roost/i18n";
  */
 
 
-/** 当前身份与历史选择分开：历史永远只读，跟随时身份变化会卸载旧详情。 */
-export function ConversationLens({
-  terminalId, conversationId, current, pinned, crumbs, utilities, tabs, onLens,
-}: {
-  terminalId: string;
-  conversationId: string | null;
-  current: boolean;
-  /**
-   * 左栏选中的那条对话。**它压过本终端的当前对话**——你在目录里点了一条，就是要看那条，
-   * 哪怕它属于别的终端。等于本终端当前那条时不算压过（那就是同一件事）。
-   *
-   * 只读：它未必是这个终端正在跑的对话，往这里发消息会发错地方。
-   */
-  pinned: string | null;
-  /**
-   * 面包屑的前缀（画布 / 这个终端），由 TerminalPane 给——**和 TUI 那个头用的是同一份**，
-   * 所以切视角时前缀一个字都不变，只在末尾多出对话标题那一格。
-   */
-  crumbs: readonly ColumnCrumb[];
-  /** 工作目录 / 主题 / 搜索 / 下载那一撮，同样由 TerminalPane 组好（TUI 用的是同一个节点）。 */
-  utilities: ReactNode;
-  /** 视角标签条，同上：两个视角共用同一份定义。 */
-  tabs: readonly ColumnTab[];
-  onLens: (lens: Lens) => void;
+/** 手机上默认看对话：13px 等宽的终端在手机上没法用，而你多半只是想读一眼。 */
+export function defaultLens(): Lens {
+  return typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches ? "gui" : "tui";
+}
+
+export function LensSwitch({ lens, onChange, available, fallbackTitle }: {
+  lens: Lens;
+  onChange: (lens: Lens) => void;
+  available: boolean;
+  /** 没有对话可看时退回普通标题——不显示一个只有一项的「切换器」。 */
+  fallbackTitle: string;
 }) {
+  if (!available) return <span className="truncate">{fallbackTitle}</span>;
+  return (
+    // 放在面板标题位，成为横跨顶部的一条 tab 栏，而不是挤在图标堆里的小控件：
+    // 这两个视角是「同一件事的两种看法」，地位对等，理应是主导航。
+    <nav role="tablist" aria-label={fallbackTitle} className="-mb-px flex h-9 shrink-0 items-stretch gap-3">
+      {(["tui", "gui"] as const).map(value => (
+        <button
+          key={value}
+          type="button"
+          role="tab"
+          aria-selected={lens === value}
+          title={value === "gui" ? t.terminal.lens.switchToGui : t.terminal.lens.switchToTui}
+          onClick={() => onChange(value)}
+          className={`relative border-b-2 px-0.5 text-body transition-colors ${
+            lens === value
+              ? "border-accent font-semibold text-text"
+              : "border-transparent font-normal text-text-dim hover:text-text"
+          }`}
+        >
+          {value === "tui" ? t.terminal.lens.tui : t.terminal.lens.gui}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+/** 当前身份与历史选择分开：历史永远只读，跟随时身份变化会卸载旧详情。 */
+export function ConversationLens({ terminalId, conversationId, current }: { terminalId: string; conversationId: string | null; current: boolean }) {
   const [selected, setSelected] = useState('');
   const [items, setItems] = useState<Conversation[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -88,122 +93,19 @@ export function ConversationLens({
     } catch { if (version === epoch.current) setError(true); }
     finally { if (version === epoch.current) setLoading(false); }
   }
-  // 下拉里手选的优先级最高（那是在这个终端的历史里翻），其次是左栏钉住的，最后才是当前。
-  const pinnedOther = pinned && pinned !== conversationId ? pinned : null;
-  const active = selected || pinnedOther || conversationId;
-
-  /*
-    这一栏那个头的几个位。前缀面包屑、工具位、标签条都是 TerminalPane 给的同一份
-    （TUI 那个头用的就是它们），这里只补上本视角自己的那一样：`.headerActions` 里的
-    「本终端历史」。填好交给 `ConversationDetail`，由 `ConversationShell` 包 `<header>`。
-
-    **空态也要用同一份**——没有对话可画时头仍然得在，否则返回画布、切视角、翻本终端历史
-    三条路一起断掉。
-  */
-  const chrome = {
-    crumbs,
-    actions: <TerminalHistoryMenu
-      items={items} selected={selected} onSelect={setSelected} current={current}
-      hasMore={cursor !== null} error={error} loading={loading} onMore={() => void more()} />,
-    utilities,
-    tabs,
-    tabsLabel: t.terminal.pane.title,
-    onSelectTab: (id: string) => { onLens(id as Lens); },
-  } as const;
-
-  /*
-    「当前显示已保存的记录，新对话接入后会自动切换」原来是头里的一条横幅。它是一句状态，
-    不是控件，所以跟着断线/重同步一起去了输入卡上方。
-  */
-  const notice = active && !current && !selected ? t.bookmarks.historyFallback : undefined;
-
+  const active = selected || conversationId;
   return <div className="flex min-h-0 flex-1 flex-col">
-    <Suspense fallback={null}>
-      {active
-        ? <ConversationContent key={active} conversationId={active} readOnly={!!selected || !!pinnedOther || !current}
-            notice={notice} chrome={chrome} />
-        : <ConversationColumnEmpty message={loading ? t.bookmarks.loading : t.bookmarks.noTerminalHistory} {...chrome} />}
-    </Suspense>
+    <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-2.5 py-2 text-caption text-text-dim">
+      <label className="flex min-w-0 flex-1 items-center gap-2"><span className="shrink-0">{t.bookmarks.terminalHistory}</span><select aria-label={t.bookmarks.terminalHistory} value={selected} onChange={event => setSelected(event.target.value)} className="min-w-0 flex-1 rounded border border-border bg-bg p-1 text-text"><option value="">{current ? t.bookmarks.followCurrent : t.bookmarks.latestHistory}</option>{selected && !items.some(item => item.id === selected) && <option value={selected}>{t.bookmarks.readingHistory}</option>}{items.map(item => <option key={item.id} value={item.id}>{item.source.cliId} · {item.title} · {new Date(item.lastMessageAt ?? item.createdAt).toLocaleString()}</option>)}</select></label>
+      {(cursor || error) && <button disabled={loading} className="rounded px-2 py-1 hover:bg-bg-hover" onClick={() => void more()}>{error ? t.bookmarks.retry : t.bookmarks.more}</button>}
+    </div>
+    {error && <p role="status" className="px-3 text-caption text-text-dim">{t.bookmarks.historyFailed}</p>}
+    {active && !current && !selected && <p className="border-b border-border px-3 py-1.5 text-caption text-text-dim">{t.bookmarks.historyFallback}</p>}
+    {active ? <ConversationContent key={active} conversationId={active} readOnly={!!selected || !current} /> : <p role="status" className="p-4 text-caption text-text-dim">{loading ? t.bookmarks.loading : t.bookmarks.noTerminalHistory}</p>}
   </div>;
 }
 
-/**
- * 「本终端的对话」——原来那条横幅上的下拉，收成 `.headerActions` 里的一颗菜单钮。
- *
- * **没有被左栏取代，所以不能删。** 左栏列的是 `listConversations({ q })`：`state` 走默认的
- * `active`（归档的对话根本不在里面），而且它没有 `terminalId` 这一维——那是后端一条
- * `EXISTS(ai_generations / conversation_runs)` 的关联查询，用标题/正文的全文搜索表达不出来。
- * 「跟随当前终端」那个勾选框解决的是另一件事：它只跟到终端**此刻**那一条，够不着这个终端
- * 过去跑过的任何一条。所以这颗钮是本栏唯一的「按终端筛历史」入口。
- *
- * 用 `<details>` 而不是自己写一套点外面就关：同一行里的终端外观设置就是这么做的。
- */
-function TerminalHistoryMenu({ items, selected, onSelect, current, hasMore, error, loading, onMore }: {
-  items: readonly Conversation[];
-  selected: string;
-  onSelect: (id: string) => void;
-  current: boolean;
-  hasMore: boolean;
-  error: boolean;
-  loading: boolean;
-  onMore: () => void;
-}) {
-  const chosen = items.find(item => item.id === selected);
-  // 关掉菜单靠 `open` 属性：选完一条还挂着一张列表，等于让人再点一次空白处。
-  const host = useRef<HTMLDetailsElement>(null);
-  const pick = (id: string) => { onSelect(id); if (host.current) host.current.open = false; };
-  const followLabel = current ? t.bookmarks.followCurrent : t.bookmarks.latestHistory;
-  return (
-    <details ref={host} className="relative shrink-0">
-      <summary
-        title={error ? t.bookmarks.historyFailed : `${t.bookmarks.terminalHistory} · ${chosen ? chosen.title : followLabel}`}
-        className={`flex cursor-pointer list-none items-center gap-1 rounded-md border border-border px-2 py-1 text-caption hover:bg-bg-hover ${
-          error ? 'text-danger' : 'text-text'}`}>
-        <span className="truncate">{t.terminal.lens.history}</span>
-        {/*
-          朝下的角标：这颗钮展开的是一张列表，不是往右走一层。
-          外面那层必须是 inline-flex——preflight 把 svg 设成 `display: block`，套在普通
-          span 里会被拍成块级盒子，把这一行挤开（NOTICE 第 3 条那个模式）。
-        */}
-        <span className="inline-flex shrink-0 rotate-90"><IconChevron open={false} /></span>
-      </summary>
-      <div className="absolute left-0 top-full z-30 mt-2 max-h-80 w-96 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-lg border border-border bg-bg-panel p-1 shadow-lg">
-        <MenuRow active={selected === ''} onClick={() => pick('')}>{followLabel}</MenuRow>
-        {/* 选中的那条已经翻过页去了：仍然要有一行代表「现在选的是它」。 */}
-        {selected && !chosen && <MenuRow active onClick={() => pick(selected)}>{t.bookmarks.readingHistory}</MenuRow>}
-        {items.map(item => (
-          <MenuRow key={item.id} active={item.id === selected} onClick={() => pick(item.id)}>
-            <span className="truncate">{item.title}</span>
-            <span className="shrink-0 text-text-dim/70">{item.source.cliId}</span>
-            <span className="shrink-0 text-text-dim/70">{new Date(item.lastMessageAt ?? item.createdAt).toLocaleString()}</span>
-          </MenuRow>
-        ))}
-        {error && <p role="status" className="px-2 py-1 text-caption text-danger">{t.bookmarks.historyFailed}</p>}
-        {(hasMore || error) && (
-          <button type="button" disabled={loading} className="w-full rounded px-2 py-1 text-caption text-text-dim hover:bg-bg-hover hover:text-text disabled:opacity-50"
-            onClick={onMore}>{error ? t.bookmarks.retry : t.bookmarks.more}</button>
-        )}
-      </div>
-    </details>
-  );
-}
-
-function MenuRow({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
-  return (
-    <button type="button" role="menuitemradio" aria-checked={active} onClick={onClick}
-      className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left text-caption hover:bg-bg-hover ${
-        active ? 'bg-bg-active text-text' : 'text-text-dim'}`}>
-      {children}
-    </button>
-  );
-}
-
-function ConversationContent({ conversationId, readOnly, notice, chrome }: {
-  conversationId: string;
-  readOnly: boolean;
-  notice: string | undefined;
-  chrome: ColumnChrome;
-}) {
+function ConversationContent({ conversationId, readOnly }: { conversationId: string; readOnly: boolean }) {
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [error, setError] = useState(false);
   const [retry, setRetry] = useState(0);
@@ -215,10 +117,7 @@ function ConversationContent({ conversationId, readOnly, notice, chrome }: {
       .catch(() => { if (!cancelled) setError(true); });
     return () => { cancelled = true; };
   }, [conversationId, retry]);
-  // 取详情失败 / 还在取的时候也走空态那个壳：头一直在，返回画布和切视角不会断。
-  if (error) return <ConversationColumnEmpty message={`${t.bookmarks.historyFailed} · ${t.bookmarks.retry}`}
-    {...chrome} actions={<button type="button" className="rounded border border-border px-2 py-1 text-caption text-text hover:bg-bg-hover"
-      onClick={() => setRetry(value => value + 1)}>{t.bookmarks.retry}</button>} />;
-  if (!conversation) return <ConversationColumnEmpty message={t.terminal.lens.resolving} {...chrome} />;
-  return <ConversationDetail key={conversation.id} conversation={conversation} readOnly={readOnly} notice={notice} {...chrome} />;
+  if (error) return <button className="p-4 text-caption text-text-dim" onClick={() => setRetry(value => value + 1)}>{t.bookmarks.historyFailed} · {t.bookmarks.retry}</button>;
+  if (!conversation) return <div className="px-2.5 py-2 text-caption text-text-dim">{t.terminal.lens.resolving}</div>;
+  return <Suspense fallback={null}><ConversationDetail key={conversation.id} conversation={conversation} readOnly={readOnly} /></Suspense>;
 }

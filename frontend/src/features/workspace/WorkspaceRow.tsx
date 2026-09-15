@@ -1,205 +1,229 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { IconChevron, IconEdit, IconPlus, IconTrash } from "../../shared/icons";
+import { useGroupActivity } from "../session-status/public";
 import { useWorkspace } from "../../shared/store";
 import type { Session } from "../../shared/types";
+import { Collapse } from "../../shared/ui/Collapse";
 import { InlineRename } from "../../shared/ui/InlineRename";
 import { WorkspaceSessionRow } from "./WorkspaceSessionRow";
-import { GroupRow, RowIconButton } from "../../vendor/dsh/sidebar/Rows";
-import { SidebarGroup } from "../../vendor/dsh/sidebar/WorkspaceBrowser";
-import { IconEditOutline16, IconProjectAddOutline16, IconTrashOutline16 } from "../../vendor/dsh/icons/index.tsx";
+import { IconButton } from "../../shared/ui/IconButton";
 import { t } from "@roost/i18n";
 
 /**
- * 侧栏里的一个工作区：**上游那条 34px 的工作区行**（`vendor/dsh/sidebar/Rows` 的
- * `GroupRow`）加它底下那一撮终端。
+ * 侧栏的一行工作区。
  *
- * `GroupRow` 本来就是为这件事画的——文件夹图标 + hover 换成能转的三角 + 行尾动作。
- * 我们搬进来之后先拿它去当对话目录的「今天 / 昨天」分组头了，这一轮把它用回本来的用途。
- * 装行的盒子是 `SidebarGroup`：头 + 先露 5 条 + 「还有 n 个」，和对话那边同一个上限。
+ * 它不再展开会话列表去做管理——那些是中间画布的卡片。这一行回答三件事：这里有
+ * 几个终端、有没有哪个在等你、我此刻在哪一个里面。
  *
- * 原来这里是我们自己写的一张 48px 卡片（图标块、两行字、活动点、两颗 hover 按钮），
- * 外面套一个 `Collapse`。换掉之后每一样的去向：
- *
- * | 原来有的 | 现在在哪 |
- * | --- | --- |
- * | 展开 / 收起 | `GroupRow` 的三角，整行可点，行为一字未改（**展开 = 顺带切画布**） |
- * | 选中（画布在看这个工作区） | `containsActive` → 文件夹图标点亮，见下面 `scoped` 那段 |
- * | 改名 / 删除 | 行尾 `actions` 座位里的两颗 `RowIconButton`，加上双击改名 |
- * | 拖拽（换顺序、收终端） | 原样，挂在包住上游行的那一层上 |
- * | 「n 个终端」 | **不画了**。上游把这条副标题删掉才换来 34px 的单行（`Rows.module.css` 里那句注释），展开一下就是终端本身 |
- * | 工作区级活动点（有 AI 在等你 / 有终端在输出） | **不画了**。这一行只有两个前导槽，文件夹和三角各占一个；「有谁在等你」这件事在左轨的收件箱角标上是全局的，展开之后每一行的状态点是具体的 |
+ * 尺寸刻意和原来的会话行看齐（48px 高、带一块图标）。侧栏是这个应用的主导航，
+ * 压成一条细线会让整个左边看起来像个附属品。
  */
 export function WorkspaceRow({
-  id, name, sessions, scoped, expanded, onToggle, onSelect, onOpenSession, currentSessionId, onRename, onDelete,
+  id, name, icon, sessions, selected, expandable = true, showCount = true, expanded, onToggle, onSelect, onOpenSession, currentSessionId, onRename, onDelete,
 }: {
-  /** 拖拽落点用的容器 ID：`project:<id>` 或 `ungrouped`。 */
-  id: string;
+  /** 拖拽落点用的容器 ID：`project:<id>` 或 `ungrouped`。"all" 这类聚合视图传 null。 */
+  id: string | null;
   name: string;
+  icon: ReactNode;
   sessions: Session[];
-  /** 画布此刻正在看这个工作区。 */
-  scoped: boolean;
+  selected: boolean;
+  /**
+   * 能不能展开。「全部终端」不能：画布本来就在显示全部，侧栏再列一遍是同一份内容
+   * 讲两遍；何况它钉在顶栏里，展开会把那条 bar 撑没边。
+   */
+  expandable?: boolean;
+  /**
+   * 要不要显示「n 个终端」。「全部终端」不显示：面板标题就在它上面 40px 处，数的是
+   * 同一个数组，两条永远相等——同一个数字连着写两遍，读的人还得先确认它们是不是同一个。
+   */
+  showCount?: boolean;
   expanded: boolean;
   onToggle: () => void;
   onSelect: () => void;
   /** 点开里面某个终端：直接进那个终端，不停在画布上。 */
   onOpenSession: (id: string) => void;
-  /** 此刻在哪个终端里——展开之后要把那一行标出来。 */
+  /** 此刻在哪个终端里——展开之后要把那一张标出来。 */
   currentSessionId: string | null;
-  /** 只有真的分组能改名和删除；「未分组」是聚合视图，没有可改的东西。 */
+  /** 只有真的分组能改名和删除；「全部」「未分组」是聚合视图，没有可改的东西。 */
   onRename?: (name: string) => void;
   onDelete?: () => void;
 }) {
   const [renaming, setRenaming] = useState(false);
-  const projectId = id.startsWith("project:") ? id.slice("project:".length) : null;
+  const activity = useGroupActivity(sessions.map(s => s.id));
+  const projectId = id?.startsWith("project:") ? id.slice("project:".length) : null;
 
-  const drop = useDroppable({ id });
+  // 落点始终挂着；「全部」这种聚合行没有可归属的容器，不接收拖拽。
+  const drop = useDroppable({ id: id ?? "workspace-all", disabled: id === null });
   /*
     分组还能被拖着换顺序。改名时禁用，否则输入框里选不了字。
     **每一行的 draggable id 必须唯一**，哪怕这一行是 disabled 的：dnd-kit 照样会
     把它登记进去，重复 id 会让拖拽指向错的行。
   */
   const drag = useDraggable({
-    id: projectId ? `projectdrag:${projectId}` : `nodrag:${id}`,
+    id: projectId ? `projectdrag:${projectId}` : `nodrag:${id ?? "all"}`,
     data: { projectName: name },
     disabled: projectId === null || renaming,
   });
   // 落点始终挂着，但含义随「正在拖什么」变化，反馈也必须跟着变——否则拖动分组时
   // 目标行会亮出「把终端收进来」的样式，指错方向。
   const draggingProject = String(drop.active?.id ?? "").startsWith("projectdrag:");
-  const sessionOver = drop.isOver && !draggingProject;
+  const sessionOver = drop.isOver && id !== null && !draggingProject;
   // 正在被拖的那一行自己不画落点线——它落回原处不是一次移动。
   const projectOver = drop.isOver && draggingProject && projectId !== null
     && drop.active?.id !== `projectdrag:${projectId}`;
 
-  /**
-   * 打开就等于「我要看这个工作区」；关上只是收起列表，不动画布。
-   *
-   * 这条一个字没改，理由是原来那段注释写的：整行只有一个含义（开 / 关），别让箭头管一个、
-   * 行身管另一个。上游那一行恰好也只有一个 onToggle，接得上。
-   */
+  /*
+    活动点**只在有话说的时候才出现**。原来每一行都挂一个灰点表示「安静」，一列排
+    下来全是没有信息的圆点，反而把真正在等你的那一个淹掉了。
+  */
+  const notable = activity === "blocked" || activity === "active";
+
+  const open = expandable && expanded;
+
+  /** 打开就等于「我要看这个工作区」；关上只是收起列表，不动画布。 */
   function toggle() {
+    if (!expandable) { onSelect(); return; }
     if (!expanded) onSelect();
     onToggle();
   }
 
-  const actions = onRename || onDelete
-    ? (
-      <>
-        {onRename && (
-          <RowIconButton label={t.project.rename} onClick={() => setRenaming(true)}>
-            <IconEditOutline16 size={14} />
-          </RowIconButton>
-        )}
-        {onDelete && (
-          <RowIconButton label={t.project.delete} onClick={onDelete}>
-            <IconTrashOutline16 size={14} />
-          </RowIconButton>
-        )}
-      </>
-    )
-    : undefined;
-
   return (
-    <div ref={drop.setNodeRef} className={`relative rounded-lg transition-colors duration-150 ${sessionOver ? "bg-bg-hover/40" : ""}`}>
+    <div
+      ref={drop.setNodeRef}
+      className={`relative rounded-xl transition-colors duration-150 ${sessionOver ? "bg-bg-hover/40" : ""}`}
+    >
       {/* 竖条＝把终端收进这个工作区；横线＝分组落到这个位置。两种拖拽两种指示。 */}
-      {sessionOver && <span className="absolute left-0 top-1 bottom-1 z-10 w-[3px] rounded-full bg-accent/60" />}
+      {sessionOver && <span className="absolute left-0 top-1.5 bottom-1.5 z-10 w-[3px] rounded-full bg-accent/60" />}
       {projectOver && <span className="absolute inset-x-0 -top-px z-10 h-[3px] rounded-full bg-accent/60" />}
 
-      <SidebarGroup
-        header={renaming
-          /*
-            改名时整个头换成一个输入框，理由和会话行那边一样：上游的 `label` 是 string，
-            `.renameInput` 那条 CSS 隔着 CSS Module 够不着。照 `.projectRow` 的几何描一个
-            替身（34px、左右 8px、两个 16px 前导槽、14px/20px 的字），**只在改名那几秒出现**。
-          */
-          ? (
-            <div className="flex h-[34px] items-center gap-[6px] rounded-[8px] px-[8px]">
-              {/* 两个 16px 前导槽加它们中间那 6px 的 gap＝38，标题才和静息态对得上。 */}
-              <span className="w-[38px] shrink-0" aria-hidden />
-              <InlineRename
-                className="min-w-0 flex-1 text-[14px] leading-[20px]"
-                value={name}
-                editing
-                onEditingChange={setRenaming}
-                onCommit={next => onRename?.(next)}
-              />
-            </div>
-          )
-          : (
-            <div
-              ref={drag.setNodeRef}
-              {...drag.listeners}
-              {...drag.attributes}
-              style={{ transform: CSS.Translate.toString(drag.transform), opacity: drag.isDragging ? 0.35 : 1 }}
-              /* 双击改名；第二下不能连带把刚展开的又收回去（那会闪一下）。 */
-              onDoubleClick={event => {
-                if (!onRename || (event.target as HTMLElement).closest("button")) return;
-                setRenaming(true);
-              }}
-              onClickCapture={event => { if (event.detail > 1) event.stopPropagation(); }}
-            >
-              <GroupRow
-                label={name}
-                expanded={expanded}
-                /*
-                  **上游这个 prop 的原意是「当前选中的那条会话在这一组里」，我们改喂「画布
-                  正在看这个工作区」。** 换掉是因为原意在我们这儿是重复的：选中的那个终端
-                  自己那一行有底色，而 `containsActive` 只在展开时生效（上游 `active =
-                  expanded && containsActive`）——也就是说它只在你已经看得见那一行时才亮。
-                  而「画布在看哪个工作区」没有别的落点（面包屑在顶栏，离得远）。
-                */
-                containsActive={scoped}
-                onToggle={toggle}
-                {...(actions ? { actions } : {})}
-              />
-            </div>
+      {/* 同原来的会话行：不能写 touch-none，否则这一行上也滑不动列表。 */}
+      <div
+        ref={drag.setNodeRef}
+        {...drag.listeners}
+        {...drag.attributes}
+        style={{ transform: CSS.Translate.toString(drag.transform), opacity: drag.isDragging ? 0.35 : 1 }}
+        /*
+          **整行就是一个开关，只有一个含义：开 / 关。**
+
+          原来这一行挂着两个互不相干的状态——画布显示哪个工作区、列表开着没——
+          于是箭头管一个、行身管另一个，而看起来最像按钮的那块反而管得最少。
+          怎么摆都别扭：非得点小箭头才展得开；后来让行身也能展开，又变成点了展不回去。
+
+          现在两者合成一件事：打开它 = 「我要看这个工作区」，所以顺带切画布；
+          关上它只是收起列表，不动别的。
+        */
+        role="button"
+        tabIndex={0}
+        aria-expanded={expandable ? open : undefined}
+        aria-label={!expandable ? name : open ? t.sidebar.collapse(name) : t.sidebar.expand(name)}
+        /*
+          双击的第二下不再 toggle：否则双击改名时这一行会先展开、再立刻收回，闪一下。
+          第一下照常生效——单击的主动作不该为了等一个可能到来的双击而延迟。
+        */
+        onClick={event => { if (event.detail > 1) return; toggle(); }}
+        onKeyDown={event => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          toggle();
+        }}
+        className={`group relative flex min-h-12 w-full cursor-pointer select-none items-center gap-1.5 rounded-xl border px-1.5 py-2 transition-colors ${
+          selected ? "border-border bg-bg-active/70 text-text" : "border-transparent text-text/90 hover:bg-bg-hover/60"
+        }`}
+      >
+        {/* 箭头现在只是指示，不再是独立的控件——整行都能点，多一个只有它能做的
+            动作正是原来那份别扭的来源。 */}
+        {/* 不能展开的那种也占同样的位，好让下面所有行的图标块对齐。 */}
+        <span aria-hidden className="grid h-5 w-4 shrink-0 place-items-center text-text-dim">
+          {expandable && <IconChevron open={open} />}
+        </span>
+
+        {/* 图标块。和会话卡片上的处理一致，让侧栏和画布看起来是同一套东西。 */}
+        <span className={`relative grid h-9 w-9 shrink-0 place-items-center rounded-lg transition-colors ${
+          selected ? "bg-accent/8 text-text" : "bg-text/6 text-text-dim"
+        }`}>
+          {icon}
+          {notable && (
+            <span
+              role="img"
+              aria-label={t.sidebar.groupActivity[activity]}
+              title={t.sidebar.groupActivity[activity]}
+              className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-bg-panel ${
+                activity === "blocked" ? "bg-warning" : "bg-success motion-safe:animate-pulse"
+              }`}
+            />
           )}
-        labels={{ expand: t.sidebar.more, collapse: t.sidebar.collapseOverflow }}
-        items={expanded ? sessions : []}
-        renderItem={item => (
-          <WorkspaceSessionRow
-            key={item.id}
-            session={item}
-            current={item.id === currentSessionId}
-            onOpen={() => onOpenSession(item.id)}
-          />
+        </span>
+
+        <span className="flex min-w-0 flex-1 flex-col gap-px">
+          {/* 只有真分组有 onRename，所以只有它能双击改名；「全部终端」「未分组」走纯文本分支。 */}
+          {onRename ? (
+            <InlineRename
+              className={`truncate ${selected ? "font-semibold text-text" : "font-medium text-text/90"}`}
+              value={name}
+              editing={renaming}
+              onEditingChange={setRenaming}
+              onCommit={onRename}
+              editOnDoubleClick
+            />
+          ) : (
+            <span className={`truncate ${selected ? "font-semibold text-text" : "font-medium text-text/90"}`}>{name}</span>
+          )}
+          {showCount && <span className="truncate text-caption text-text-dim">{t.sidebar.count(sessions.length)}</span>}
+        </span>
+
+        {!renaming && (onRename || onDelete) && (
+          <span className="flex shrink-0 items-center gap-px opacity-0 transition-opacity pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
+            {onRename && (
+              <IconButton title={t.project.rename}
+                onClick={e => { e.stopPropagation(); setRenaming(true); }}
+                onPointerDown={e => e.stopPropagation()}>
+                <IconEdit />
+              </IconButton>
+            )}
+            {onDelete && (
+              <IconButton title={t.project.delete} danger
+                onClick={e => { e.stopPropagation(); onDelete(); }}
+                onPointerDown={e => e.stopPropagation()}>
+                <IconTrash />
+              </IconButton>
+            )}
+          </span>
         )}
-      />
-      {expanded && sessions.length === 0 && (
-        <div className="px-2 py-1.5 text-caption text-text-dim">{t.sidebar.noTerminals}</div>
-      )}
+      </div>
+
+      <Collapse open={open}>
+        {/* 导引线对准箭头中心：px-1.5(6px) + 半个 w-4(8px) = 14px。 */}
+        <div className="ml-[14px] flex flex-col border-l border-border/60 py-1 pl-1.5">
+          {sessions.length === 0
+            ? <div className="px-2 py-1.5 text-caption text-text-dim">{t.sidebar.noTerminals}</div>
+            : sessions.map(item => (
+              <WorkspaceSessionRow
+                key={item.id}
+                session={item}
+                current={item.id === currentSessionId}
+                onOpen={() => onOpenSession(item.id)}
+              />
+            ))}
+        </div>
+      </Collapse>
     </div>
   );
 }
 
-/**
- * 新建工作区。
- *
- * 位置换了：原来是钉在侧栏底部的一条虚线按钮，现在是**区段头右边那颗圆钮**——
- * 上游那个座位（`SidebarBrowser` 的 `headerActions`）本来装的就是「加工作区」，
- * 见 vendor/dsh/NOTICE.md 里 WorkspaceBrowser 的 ROOST-CHANGE 第 5 条。
- *
- * 放这儿还顺带保住了一件事：**两种模式的左栏底部都是空的**。底部那一格（`footArea`）
- * 在对话模式下没有占用者，塞一条按钮进去，两边的列就又不一样高了。
- *
- * 座位是 ReactNode，样式得调用方自己给——上游的 `.iconButton`（28px 圆、hover 底色）
- * 隔着 CSS Module 够不着，所以这里照它描一遍。轨上那一档跟着邻居放大到 36px。
- */
-export function NewWorkspaceButton({ wide }: { wide: boolean }) {
+/** 侧栏底部的新建入口。工作区只是归类，**不会启动终端**——文案要把这点说清。 */
+export function NewWorkspaceButton() {
   const { addProject } = useWorkspace("addProject");
   return (
     <button
       type="button"
-      title={t.sidebar.newWorkspace}
-      aria-label={t.sidebar.newWorkspace}
       onClick={() => addProject()}
-      /* 28 / 36 都写死 px：Tailwind 的 h-7/h-9 是 rem，而根字号是 13，算出来差一截。 */
-      className={`grid shrink-0 place-items-center rounded-full text-text-dim transition-colors hover:bg-bg-hover hover:text-text ${
-        wide ? "h-[28px] w-[28px]" : "h-[36px] w-[36px]"
-      }`}
+      className="flex min-h-11 w-full shrink-0 items-center gap-1.5 rounded-xl border border-dashed border-border px-1.5 text-text-dim transition-colors hover:border-accent/50 hover:bg-bg-hover/50 hover:text-text"
     >
-      <IconProjectAddOutline16 size={wide ? 16 : 18} />
+      <span className="w-4 shrink-0" aria-hidden />
+      <span className="grid h-9 w-9 shrink-0 place-items-center" aria-hidden><IconPlus /></span>
+      <span className="min-w-0 flex-1 truncate text-left">{t.sidebar.newWorkspace}</span>
     </button>
   );
 }

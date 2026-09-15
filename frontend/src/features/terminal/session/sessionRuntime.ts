@@ -5,8 +5,7 @@ import { observeFonts, waitForMeasurable } from '../engine/font';
 import { createConnection } from './connection';
 import type { ResumeSnapshot } from './resume';
 import { emitFileLink } from '../fileLinks';
-import { createTerminalSessionController, type SessionDependencies } from './sessionController';
-import { createTerminalStage } from './terminalStage';
+import type { SessionDependencies } from './sessionController';
 import { stableRuntime } from '../../../shared/runtime';
 import { sessionStatus } from '../../session-status/public';
 /*
@@ -51,17 +50,3 @@ export function sessionDependencies(sessionId: string): SessionDependencies {
     reportPresented: (instanceId, seq) => sessionStatus.presented(sessionId, instanceId, seq),
   };
 }
-
-/**
- * 应用里那一张终端舞台：每个会话的 xterm 宿主和 controller 都住在这儿，落点只是借用。
- *
- * 装在这个文件里，是因为它是**知道真引擎长什么样**的那一个（`sessionDependencies` 在这）。
- * 工厂本身留在 `terminalStage.ts` 且不认识引擎，那样它才能在 `node --test` 里被测——
- * 这条路上的 `xtermEngine` import 了 CSS。同一个分工见 `plugins/xyz`：`viewer-host.ts`
- * 是工厂，单例在认识 3Dmol 的那个文件里。
- */
-export const terminalStage = createTerminalStage((sessionId, host, hooks, onState) =>
-  createTerminalSessionController({
-    sessionId, host, active: hooks.active,
-    onCwd: hooks.onCwd, onCli: hooks.onCli, onState,
-  }, sessionDependencies(sessionId)));

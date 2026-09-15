@@ -61,8 +61,6 @@ export const terminal = {
     switchToGui: "切换到对话视图",
     switchToTui: "切换到终端",
     resolving: "正在确认当前对话…",
-    /** 头里那颗菜单钮的短标签；完整那句（t.bookmarks.terminalHistory）留在 title 里。 */
-    history: "本终端历史",
     /** 没有可识别的对话时不显示切换器，这条只在明确查询失败时用。 */
     noConversation: "这个终端还没有可识别的对话",
   },
