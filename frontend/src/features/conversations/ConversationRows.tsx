@@ -2,23 +2,33 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { listConversations, MAX_QUERY_LENGTH, type Conversation, type ConversationFilters } from "../../shared/api/conversations";
 import { ApiError } from "../../shared/api/errors";
 import { emptyList, reduceList } from "./list";
-import { SessionLogo, useCliIdentity } from "../../shared/ui/SessionLogo";
 import { Empty } from "../../shared/ui/Empty";
-import { IconButton } from "../../shared/ui/IconButton";
-import { IconClose } from "../../shared/icons";
-import { groupByDay, timeLabel } from "./when";
+import { groupByDay } from "./when";
+import { relativeTime } from "../../vendor/dsh/relative-time";
+import { SessionRow, GroupRow } from "../../vendor/dsh/sidebar/Rows";
+import { SidebarBrowser, SidebarGroup } from "../../vendor/dsh/sidebar/WorkspaceBrowser";
 import { t } from "@roost/i18n";
 
 /**
  * 对话目录的**列表那一半**：搜索框 + 按天分段的行 + 翻页。
  *
- * 从 `ConversationList` 里抽出来，因为它现在有两个落点，而两边对「点一行之后发生什么」
- * 的答案不同：目录浮层里是就地换成详情，左栏里是让中栏切过去。所以 `onOpen` 是 prop，
- * 组件自己不碰任何选择状态。
+ * 行、分组壳、区段头都是搬来的（`vendor/dsh/sidebar/`），我们只负责喂数据。从「自己写一套
+ * 行」换成「用上游那一行」之后少掉的东西，每一样都是有意的——见下面 `rowOf` 的注释。
+ *
+ * 有两个落点，而两边对「点一行之后发生什么」的答案不同：目录浮层里是就地换成详情，
+ * 左栏里是让中栏切过去。所以 `onOpen` 是 prop，组件自己不碰任何选择状态。
  *
  * **独立于终端**：这里列的是已保存的对话，终端关掉、CLI 退出，它们仍然在。
  */
-export function ConversationRows({ onOpen }: { onOpen: (conversation: Conversation) => void }) {
+export function ConversationRows({ onOpen, activeId, wide = true, onExpandSidebar }: {
+  onOpen: (conversation: Conversation) => void;
+  /** 当前选中的那条，用来点亮行和它所在的组。 */
+  activeId?: string | null | undefined;
+  /** 列现在是宽的吗。折叠成 56px 轨时只画区段头上那两颗图标。 */
+  wide?: boolean | undefined;
+  /** 折叠态下点搜索钮：请求把列展开。 */
+  onExpandSidebar?: (() => void) | undefined;
+}) {
   const [state, dispatch] = useReducer(reduceList, undefined, () => emptyList());
   const [query, setQuery] = useState("");
   const requestSeq = useRef(0);
@@ -56,116 +66,118 @@ export function ConversationRows({ onOpen }: { onOpen: (conversation: Conversati
   }, [query, load]);
 
   const searching = state.filters.q !== undefined && state.filters.q !== "";
+  const groups = groupByDay(state.items, item => item.lastMessageAt ?? item.createdAt);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex shrink-0 items-center gap-1.5 border-b border-border px-2.5 py-1.5">
-        <input
-          value={query}
-          maxLength={MAX_QUERY_LENGTH}
-          onChange={event => setQuery(event.target.value)}
-          placeholder={t.misc.conversations.search}
-          spellCheck={false}
-          className="h-7 min-w-0 flex-1 rounded-md border border-border bg-bg px-2 text-body text-text outline-none placeholder:text-text-dim/60 focus:border-accent"
+    <SidebarBrowser
+      wide={wide}
+      query={query}
+      onQueryChange={setQuery}
+      maxQueryLength={MAX_QUERY_LENGTH}
+      {...(onExpandSidebar ? { onExpandSidebar } : {})}
+      labels={{
+        section: t.misc.conversations.sidebar.section,
+        search: t.misc.conversations.search,
+        searchPlaceholder: t.misc.conversations.search,
+        searchClear: t.misc.conversations.clearSearch,
+      }}
+    >
+      {state.items.length === 0 && !state.loading && !state.error && (
+        <Empty
+          title={searching ? t.misc.conversations.noMatch : t.misc.conversations.empty}
+          hint={searching ? t.misc.conversations.noMatchHint : t.misc.conversations.emptyHint}
         />
-        {query && (
-          <IconButton title={t.misc.conversations.clearSearch} onClick={() => setQuery("")}>
-            <IconClose />
-          </IconButton>
-        )}
-      </div>
+      )}
 
-      <div className="min-h-0 flex-1 overflow-auto">
-        {state.items.length === 0 && !state.loading && !state.error && (
-          <Empty
-            title={searching ? t.misc.conversations.noMatch : t.misc.conversations.empty}
-            hint={searching ? t.misc.conversations.noMatchHint : t.misc.conversations.emptyHint}
-          />
-        )}
-        {/* 按天分段：日期对同一天的所有行完全相同，提到组标题上，行内只留时刻。 */}
-        {groupByDay(state.items, item => item.lastMessageAt ?? item.createdAt).map(group => (
-          <section key={group.key}>
-            <h3 className="sticky top-0 z-[1] bg-bg-panel/95 px-2.5 py-1 text-caption text-text-dim/70 backdrop-blur-sm">
-              {group.label}
-            </h3>
-            <ul className="flex flex-col">
-              {group.items.map(item => <Row key={item.id} conversation={item} onOpen={onOpen} />)}
-            </ul>
-          </section>
-        ))}
+      {/*
+        按天分段：日期对同一天的所有行完全相同，提到组标题上，行内只留相对时间。
+        每组先露 5 条（`SidebarGroup` 的默认上限，和上游一致），超出的**不挂载**——
+        一组里几百条对话时这一条决定滚动列表的 DOM 规模。
+      */}
+      {groups.map(group => (
+        <DayGroup key={group.key} label={group.label} items={group.items}
+          activeId={activeId ?? null} onOpen={onOpen} />
+      ))}
 
-        {state.error && (
-          <div role="alert" className="flex items-center gap-2 px-2.5 py-2 text-caption text-danger">
-            <span className="min-w-0 flex-1">{state.error}</span>
-            <button type="button" className="shrink-0 rounded px-2 py-1 hover:bg-bg-hover"
-              onClick={() => void load(state.filters, state.cursor, state.items.length > 0)}>
-              {t.misc.conversations.retry}
-            </button>
-          </div>
-        )}
-        {state.loading && <div className="px-2.5 py-2 text-caption text-text-dim">{t.misc.conversations.loading}</div>}
-        {!state.loading && !state.done && state.items.length > 0 && (
-          <button type="button" className="w-full px-2.5 py-2 text-caption text-text-dim hover:bg-bg-hover hover:text-text"
-            onClick={() => void load(state.filters, state.cursor, true)}>
-            {t.misc.conversations.more}
+      {state.error && (
+        <div role="alert" className="flex items-center gap-2 px-2.5 py-2 text-caption text-danger">
+          <span className="min-w-0 flex-1">{state.error}</span>
+          <button type="button" className="shrink-0 rounded px-2 py-1 hover:bg-bg-hover"
+            onClick={() => void load(state.filters, state.cursor, state.items.length > 0)}>
+            {t.misc.conversations.retry}
           </button>
-        )}
-      </div>
-    </div>
+        </div>
+      )}
+      {state.loading && <div className="px-2.5 py-2 text-caption text-text-dim">{t.misc.conversations.loading}</div>}
+      {!state.loading && !state.done && state.items.length > 0 && (
+        <button type="button" className="w-full px-2.5 py-2 text-caption text-text-dim hover:bg-bg-hover hover:text-text"
+          onClick={() => void load(state.filters, state.cursor, true)}>
+          {t.misc.conversations.more}
+        </button>
+      )}
+    </SidebarBrowser>
   );
 }
 
-function Row({ conversation, onOpen }: { conversation: Conversation; onOpen: (c: Conversation) => void }) {
-  // lastMessageAt 可能为 null（建了对话但一条消息都没有），此时退回创建时间。
+/**
+ * 一天一组：可折叠的头 + 最多 5 条行。
+ *
+ * 折起来时给 `SidebarGroup` 一个空数组，而不是把行藏起来——超出上限的条目它本来就不挂载，
+ * 这里跟着同一条规矩。
+ */
+function DayGroup({ label, items, activeId, onOpen }: {
+  label: string;
+  items: readonly Conversation[];
+  activeId: string | null;
+  onOpen: (conversation: Conversation) => void;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  const containsActive = activeId !== null && items.some(item => item.id === activeId);
+  return (
+    <SidebarGroup
+      header={<GroupRow label={label} expanded={expanded} containsActive={containsActive}
+        onToggle={() => { setExpanded(value => !value); }} />}
+      labels={{ expand: t.misc.conversations.sidebar.more, collapse: t.misc.conversations.sidebar.collapse }}
+      items={expanded ? items : []}
+      renderItem={item => (
+        <SessionRow key={item.id} {...rowOf(item, item.id === activeId)} onOpen={() => { onOpen(item); }} />
+      )}
+    />
+  );
+}
+
+/**
+ * 一条对话喂成上游那一行。
+ *
+ * **前导只有一个 16px 槽，所以只能放一样东西**——放的是状态点，不是 CLI 图标。
+ * 真实数据里 11/17 是同一个 CLI，图标的区分度本来就低（这句话在我们自己的旧注释里
+ * 就写着）；而上游那一行之所以干净，正是因为只有一个前导标记。CLI 名字那段文字一并
+ * 不画：图标已经说了同一件事，何况图标也没画。
+ *
+ * 一并不画的还有工作目录末段——上游把它放在悬停卡里，而悬停卡我们没搬。它是「标题大量
+ * 重复时唯一还能区分的东西」，所以这是一笔**真实的损失**，等以后搬了 HoverCard 再放回去。
+ *
+ * `titleOrigin === "fallback"` 那个 `~` 并进标题字符串，不另开一个槽——上游那一行没有
+ * 第二个标记位，硬塞会把 32px 的几何撑开。
+ */
+function rowOf(conversation: Conversation, active: boolean) {
   const when = conversation.lastMessageAt ?? conversation.createdAt;
   const gap = conversation.source.coverage?.hasGap === true;
-  // 标题大量重复（真实数据里 17 条有 10 条叫「前端」），工作目录的最后一段
-  // 是现有字段里唯一还能区分它们的东西，所以补上。
-  const folder = conversation.source.cwd?.replaceAll('\\', '/').split("/").filter(Boolean).at(-1) ?? null;
-  // 只放一个图标是分不出来的：真实数据里 11/17 是同一个 CLI，图标全长一样。
-  const identity = useCliIdentity(null, conversation.source.cliId);
-  return (
-    <li>
-      <button
-        type="button"
-        onClick={() => onOpen(conversation)}
-        className="flex w-full items-baseline gap-2 px-2.5 py-1.5 text-left hover:bg-bg-hover"
-      >
-        {/* 时间在最左且等宽：它是这个列表事实上的主键，要能一列扫下来。 */}
-        <span className="shrink-0 font-mono text-caption tabular-nums text-text-dim">
-          {conversation.lastMessageAt ? timeLabel(when) : "--:--"}
-        </span>
-        <span className="shrink-0 self-center"><SessionLogo cliId={conversation.source.cliId} /></span>
-        {/* CLI 名字在宽的地方有用，窄到放不下时它是**第一个该让位的**：图标已经说了同一件事。 */}
-        <span className="min-w-0 shrink-[4] truncate text-caption text-text-dim/80">{identity.label}</span>
-        {/*
-          **窄栏里这两个的收缩优先级要分清。** 这一行原来只在 720px 的目录浮层里出现，
-          谁都不用让；搬进左栏那点宽度之后就露馅了：标题（`truncate` 少了 `min-w-0`，
-          flex 项默认 `min-width: auto` 不肯收缩）和目录名（`shrink-0`）一起撑爆行宽，
-          被栏边**硬切**掉——连省略号都没有。
+  const title = conversation.titleOrigin === "fallback" ? `~${conversation.title}` : conversation.title;
+  return {
+    title,
+    active,
+    // 还没有消息的对话不画时间。上游对这种行也是干脆不画，比编一个「从未」更合它的意思。
+    ...(conversation.lastMessageAt ? { timeLabel: timeLabelOf(when) } : {}),
+    // 缺口是我们唯一喂得出的状态。其余四档（待审批、运行中、子代理、跑完没看）没有数据，
+    // 不给——`state` 不给时那 16px 的槽仍然占位，所以标题不会因为有没有点而横跳。
+    ...(gap ? { state: "warning" as const, stateLabel: t.misc.conversations.sidebar.gap } : {}),
+  };
+}
 
-          现在按**收缩系数**分优先级，而不是「谁 shrink-0 谁赢」：标题 `shrink`（1，最不肯让），
-          CLI 名字和目录名 `shrink-[4]`（先让）。标题用 `basis-auto` 而不是 `flex-1` 的 0 基准——
-          基准是 0 的话没有空余空间它就永远长不出来，实测正是这样：标题被压成 0 宽，
-          而次要的目录名霸着 97px。
-        */}
-        <span className="min-w-0 shrink grow basis-auto truncate text-body text-text">{conversation.title}</span>
-        {folder && <span className="min-w-0 shrink-[4] truncate text-caption text-text-dim/70">{folder}</span>}
-        <span className="ml-auto flex shrink-0 items-center gap-1.5">
-          {conversation.titleOrigin === "fallback" && (
-            <span className="text-caption text-text-dim/60" title={t.misc.conversations.fallbackTitle}>~</span>
-          )}
-          {/* 缺口出现在近三成的行上，用整段橙字会盖过内容本身。
-              降成一个小点：信息不丢，说明留在 tooltip 里。 */}
-          {gap && (
-            <span role="img" aria-label={t.misc.conversations.hasGap} title={t.misc.conversations.hasGapHint}
-              className="h-1.5 w-1.5 rounded-full bg-warning" />
-          )}
-          {!conversation.lastMessageAt && (
-            <span className="text-caption text-text-dim/50">{t.misc.conversations.never}</span>
-          )}
-        </span>
-      </button>
-    </li>
-  );
+/** `relativeTime()` 只给桶和数量，文字在这里拼。 */
+function timeLabelOf(at: number): string {
+  const { unit, n } = relativeTime(at, Date.now());
+  const when = t.misc.conversations.sidebar.when;
+  return unit === "now" ? when.now : when[unit](n);
 }

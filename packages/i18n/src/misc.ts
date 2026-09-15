@@ -95,6 +95,32 @@ export const misc = {
       unavailable: "识别服务不可用",
       noTerminal: "没有选中的终端",
     },
+    /* 左栏用搬来的那套壳和行（vendor/dsh/sidebar）需要的文案。 */
+    sidebar: {
+      newConversation: "新建对话",
+      newConversationLabel: "新建对话",
+      toggleOpen: "展开侧栏",
+      toggleCollapse: "收起侧栏",
+      panels: "面板",
+      section: "对话",
+      /** 「还有 n 条」——每组默认先露 5 条。 */
+      more: (hidden: number) => `还有 ${hidden} 条`,
+      collapse: "收起",
+      /** 转录有缺口的那条对话，状态点是琥珀色。读屏要读得出来。 */
+      gap: "这条对话的记录有缺口",
+      /*
+        相对时间。上游的 `relativeTime()` 只给桶和数量，文字由这里拼——
+        **紧凑到能塞进 32px 行的尾巴**，所以是「12min」不是「12 分钟前」。
+      */
+      when: {
+        now: "刚刚",
+        minutes: (n: number) => `${n} 分`,
+        hours: (n: number) => `${n} 时`,
+        days: (n: number) => `${n} 天`,
+        months: (n: number) => `${n} 月`,
+        years: (n: number) => `${n} 年`,
+      },
+    },
     title: "对话",
     catalogEntry: (count: number) => `历史对话 ${count} 条`,
     catalogEntryPlain: "历史对话",

@@ -1,6 +1,16 @@
 import { subscribeFileLinkOpen } from '../features/terminal/public';
-import { Suspense, lazy, useEffect, useRef, useState } from "react";
-import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelHandle, type ImperativePanelGroupHandle } from "react-resizable-panels";
+import { Suspense, lazy, useCallback, useEffect, useState, type ReactNode } from "react";
+/*
+  三栏外壳换成搬来的那套（vendor/dsh/layout）。原来用 react-resizable-panels：
+  它把栏宽记成百分比、折叠到**宽度 0**，而上游的左栏折叠态是一条 **56px 的图标轨**——
+  两者对「折叠」的定义不一样，同时留着就是一边把轨画出来、另一边把它压没。
+
+  换过来还带来一条我们自己写不出的东西：那条**硬让步顺序**（右栏先缩到 300 → 整轨消失 →
+  中栏这才允许掉破 400 → 左栏永不让步）。百分比布局做不到「谁先让、让到哪儿为止」。
+*/
+import { AppFrame } from "../vendor/dsh/layout/AppFrame";
+import { useLayoutState, browserLayoutPersistence } from "../vendor/dsh/layout/layout-state";
+import { SIDEBAR_DEFAULT } from "../vendor/dsh/layout/columns";
 import { LeftRail } from "./LeftRail";
 import { InboxButton } from "../features/inbox/InboxButton";
 import { RightPanel } from "./RightPanel";
@@ -96,6 +106,15 @@ function loadLens(): Lens {
 
   跟着一起持久化：翻历史翻到一半刷新一下被扔回工作区树，和刷新被扔回画布是同一种烦。
 */
+/*
+  栏宽和折叠态存哪儿。上游**故意不存**（README: "Layout state resets on reload"），
+  我们不跟这一条——原来用 react-resizable-panels 的 autoSaveId 存着，换了外壳不该倒退。
+
+  只存左右两栏的宽度偏好，其余（实测视口宽、窄屏的临时展开、右栏那几个派生装饰）
+  都不存，理由写在 vendor/dsh/layout/layout-state.ts 的 ROOST-CHANGE 四。
+*/
+const LAYOUT_PERSISTENCE = browserLayoutPersistence("roost-shell-layout-v1");
+
 const LEFT_VIEW_KEY = "roost-left-view-v1";
 function loadLeftView(): LeftView {
   try { return localStorage.getItem(LEFT_VIEW_KEY) === "workspaces" ? "workspaces" : "conversations"; }
@@ -103,11 +122,15 @@ function loadLeftView(): LeftView {
 }
 
 export function Shell() {
-  const layoutRef = useRef<ImperativePanelGroupHandle>(null);
-  const leftRef = useRef<ImperativePanelHandle>(null);
-  const rightRef = useRef<ImperativePanelHandle>(null);
-  const [leftCollapsed, setLeftCollapsed] = useState(false);
-  const [rightCollapsed, setRightCollapsed] = useState(false);
+  /*
+    栏宽和折叠态。**持久化是我们相对上游唯一的行为偏离**——它 README 写着刷新即重置，
+    我们不跟（理由见 vendor/dsh/NOTICE.md 那条）。存的只有左右两栏的宽度偏好。
+  */
+  const { layout, actions, geometry } = useLayoutState(LAYOUT_PERSISTENCE);
+  const leftCollapsed = geometry.sidebarCollapsed;
+  // 右栏「收起」在上游的模型里就是占位者没报 shown。我们只有「占轨展开」一种呈现。
+  const rightCollapsed = !layout.rightbarShown;
+  const expandRight = useCallback(() => { actions.openRightbar(true, false); }, [actions]);
   const [rightView, setRightView] = useState<RightView>("files");
   const [monitorTarget, setMonitorTarget] = useState<MonitorTarget>({ tab: 'overview', revision: 0 });
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -148,36 +171,27 @@ export function Shell() {
     return () => window.removeEventListener('keydown', onKey, true);
   }, []);
   useEffect(() => subscribeFileLinkOpen(() => {
-    rightRef.current?.expand();
+    expandRight();
     setRightView('files');
-  }), []);
-  // autoSaveId 会恢复上次的尺寸（含折叠）, 挂载后对齐一次状态。
-  useEffect(() => {
-    setLeftCollapsed(leftRef.current?.isCollapsed() ?? false);
-    setRightCollapsed(rightRef.current?.isCollapsed() ?? false);
-  }, []);
-
+  }), [expandRight]);
   function toggleLeft() {
-    if (leftCollapsed) leftRef.current?.expand();
-    else leftRef.current?.collapse();
+    actions.toggleSidebar();
   }
 
   function toggleRight() {
-    if (rightCollapsed) rightRef.current?.expand();
-    else rightRef.current?.collapse();
+    if (rightCollapsed) expandRight();
+    else actions.closeRightbar();
   }
 
   function showRight(view: RightView) {
-    rightRef.current?.expand();
+    expandRight();
     setRightView(view);
   }
 
   function selectRight(view: RightView) {
-    if (rightView === view && !rightCollapsed) {
-      rightRef.current?.collapse();
-      return;
-    }
-    rightRef.current?.expand();
+    // 点当前这个视图等于收起——和左栏那两颗图标钮是同一个手势。
+    if (rightView === view && !rightCollapsed) { actions.closeRightbar(); return; }
+    expandRight();
     setRightView(view);
   }
 
@@ -222,36 +236,39 @@ export function Shell() {
         <LeftRail collapsed={leftCollapsed} onToggle={toggleLeft} view={leftView} onView={setLeftView} onSettings={() => { setPaletteOpen(false); setSettingsOpen(true); }}
           /* 和 Sidebar 走同一条路：组件自己选中，切回终端由这里给。 */
           inbox={<InboxButton onEnterTerminal={() => setMode("terminal")} />} />
-        <PanelGroup
-          ref={layoutRef}
-          className="flex h-full w-full min-w-0 flex-1 overflow-hidden rounded-xl"
-          direction="horizontal"
-          /* 版本号必须跟着默认尺寸一起改：autoSaveId 会恢复上次存下的布局，
-             不换号的话已经用过的人永远拿不到新的默认宽度。 */
-          autoSaveId="roost-shell-canvas-v3"
-          style={{ height: "100%" }}
-        >
-          <Panel
-            ref={leftRef}
-            defaultSize={23}
-            minSize={16}
-            maxSize={38}
-            collapsible
-            collapsedSize={0}
-            onCollapse={() => setLeftCollapsed(true)}
-            onExpand={() => setLeftCollapsed(false)}
-            className="h-full min-w-0 overflow-hidden"
-          >
-            {/*
+        {/*
+          **这一层是块级的，不是 flex——框要靠它才撑得满。**
+
+          `.frame` 是 `display: grid` + `height: 100%`，**没有 `width: 100%`**（上游那边它的
+          宿主本来就给了宽）。放进 flex 容器里它就是 `flex: 0 1 auto`，按内容收缩；放进块级
+          容器里，块级 grid 自然占满一整行。
+
+          这条踩过两次，实测：框只有 221px，于是「窄屏自动折叠」当场生效（断点 1024），
+          左栏缩成 56px 轨、中栏压成 165px，看起来像布局整个坏掉。原来那个 PanelGroup
+          自带 `flex-1 w-full`，换外壳时这一条跟丢了。
+
+          修的是外面这一层而不是 `AppFrame.module.css`——那个文件要保持逐字。
+        */}
+        <div className="h-full min-w-0 flex-1 overflow-hidden rounded-xl">
+        <AppFrame
+          layout={layout}
+          actions={actions}
+          sidebar={
+            /*
               左栏两种内容。对话目录是默认的那个：点一行让中栏切到那条对话
               （中栏的镜头本来就默认是对话），所以不需要再切一次视图。
-            */}
-            {leftView === "conversations"
-              ? <ConversationSidebar onEnterTerminal={() => setMode("terminal")} />
-              : <Sidebar scope={scope} onScope={setScope} onEnterTerminal={() => setMode("terminal")} />}
-          </Panel>
-          <PanelResizeHandle className="resize" />
-          <Panel defaultSize={59} minSize={38} className="h-full min-w-0">
+
+              **只有对话目录认识 56px 折叠轨**——它是照上游搬的，轨上是一列图标。
+              工作区树还是我们自己那份，折叠时整块不画（宽度已经由框收到 56，再画
+              一棵按 280px 排版的树只会被裁掉一半）。
+            */
+            leftView === "conversations"
+              ? <ConversationSidebar collapsed={leftCollapsed} width={geometry.sidebarPreference || SIDEBAR_DEFAULT}
+                  onToggle={toggleLeft} onEnterTerminal={() => setMode("terminal")} />
+              : leftCollapsed ? null
+              : <Sidebar scope={scope} onScope={setScope} onEnterTerminal={() => setMode("terminal")} />
+          }
+          main={
             <TerminalPane
               scope={scope}
               mode={mode}
@@ -260,29 +277,28 @@ export function Shell() {
               onLens={setLens}
               leftCollapsed={leftCollapsed}
               rightCollapsed={rightCollapsed}
-              onExpandLeft={() => leftRef.current?.expand()}
-              onExpandRight={() => rightRef.current?.expand()}
+              onExpandLeft={() => { if (leftCollapsed) actions.toggleSidebar(); }}
+              onExpandRight={expandRight}
             />
-          </Panel>
-          <PanelResizeHandle className="resize" />
-          <Panel
-            ref={rightRef}
-            className="h-full min-w-0 overflow-hidden"
-            defaultSize={18}
-            minSize={12}
-            maxSize={30}
-            collapsible
-            collapsedSize={0}
-            onCollapse={() => setRightCollapsed(true)}
-            onExpand={() => setRightCollapsed(false)}
-          >
-            <ErrorBoundary region={t.misc.shell.regionLibraryFiles} key={rightView}><RightPanel view={rightView} onChangeView={setRightView} visible={!rightCollapsed} monitorTarget={monitorTarget} /></ErrorBoundary>
-          </Panel>
-        </PanelGroup>
+          }
+          rightbar={
+            /*
+              右栏在上游是「占位者」：面板自己贴着框的右边缘画，把 shown/track 报回框，
+              框只决定中栏让不让出那条轨。我们只有「占轨展开」一种呈现，所以这里报的
+              track 恒为真——三态里的悬浮和全屏留给以后。
+            */
+            <RightbarSeat shown={!rightCollapsed} width={geometry.normal.rightbar}>
+              <ErrorBoundary region={t.misc.shell.regionLibraryFiles} key={rightView}>
+                <RightPanel view={rightView} onChangeView={setRightView} visible={!rightCollapsed} monitorTarget={monitorTarget} />
+              </ErrorBoundary>
+            </RightbarSeat>
+          }
+        />
+        </div>
         <RightRail view={rightView} collapsed={rightCollapsed} onSelect={selectRight} />
       </div>
       <StatusBar monitorVisible={rightView === 'server' && !rightCollapsed} onOpenMonitor={tab => { setMonitorTarget(previous => ({ tab, revision: previous.revision + 1 })); showRight('server'); }} />
-      {settingsOpen && <ErrorBoundary region={t.misc.shell.regionSettings}><Suspense fallback={null}><SettingsDialog onClose={() => setSettingsOpen(false)} onResetLayout={() => layoutRef.current?.setLayout([23, 59, 18])} /></Suspense></ErrorBoundary>}
+      {settingsOpen && <ErrorBoundary region={t.misc.shell.regionSettings}><Suspense fallback={null}><SettingsDialog onClose={() => setSettingsOpen(false)} onResetLayout={() => { actions.setSidebar(SIDEBAR_DEFAULT); actions.setRightbar(0); actions.closeRightbar(); }} /></Suspense></ErrorBoundary>}
       {paletteOpen && <ErrorBoundary region={t.misc.shell.regionPalette}><Suspense fallback={null}><CommandPalette open onClose={() => setPaletteOpen(false)} onShowView={showRight} /></Suspense></ErrorBoundary>}
       {/*
         弹窗之外的编辑器挂在这一层，而不是文件树里。
@@ -299,6 +315,27 @@ export function Shell() {
           <editor.Host />
         </ErrorBoundary>
       ))}
+    </div>
+  );
+}
+
+/**
+ * 右栏占位者。
+ *
+ * 上游那条栏是**轨道不是盒子**：`.rightbarCol` 自己 `overflow: visible`，面板贴着框的
+ * 右边缘绝对定位，轨只决定中栏让不让出那块地。这么分工是为了「全屏 / 推挤 / 悬浮」
+ * 三态能共用同一棵 DOM、切换时不重挂载——我们目前只做推挤那一态，但保持同样的分工，
+ * 将来加另外两态不用动面板本身。
+ *
+ * 报不报 `shown` 由 Shell 直接调 `actions` 决定（我们没有上游那种「占位者自己决定要不要
+ * 出现」的插件模型），所以这一层是纯呈现的。
+ */
+function RightbarSeat({ shown, width, children }: { shown: boolean; width: number; children: ReactNode }) {
+  if (!shown) return null;
+  return (
+    <div className="absolute inset-y-0 right-0 overflow-hidden border-l border-border bg-bg-panel"
+      style={{ width: `${Math.round(width)}px` }}>
+      {children}
     </div>
   );
 }
