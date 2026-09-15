@@ -16,6 +16,19 @@ import type { ActivityView } from "../session-status/public";
  * 的只有 CLI 自己报的那条事件，从历史里挑一条最近的顶上去是猜——`FollowTerminal` 的注释
  * 讲的是同一件事。这里能做的是把状态说准，并告诉用户那一下敲在哪。
  *
+ * **不要在这里加一个「替我戳一下终端」的按钮**，这条查过了：
+ * 写入闸（`terminal-daemon/src/ai-command-owner.ts`）只在 composer 空着且画面稳定时
+ * 才放行往 PTY 写；而重绑只认三个 hook（`claude-launch.ts` 只装了 SessionStart /
+ * UserPromptSubmit / Stop，hook 脚本把别的直接扔掉）。空 composer 上敲回车什么都没提交，
+ * 不触发 UserPromptSubmit，也就不重绑——**允许按的时候没用，有用的时候正好被禁止**。
+ * 更糟的是回车落在权限框上等于选中高亮项：`classifyClaudeComposer` 专门认
+ * 「Do you want to proceed」「Allow once」「Do you trust this folder」就是为了这个，
+ * 绕过它就是替用户批准一次工具调用。而且那套分类器是 claude 专用的，codex 走控制 socket，
+ * `codex-control.ts` 的注释明令禁止键盘注入。
+ *
+ * 归根到底：能触发重绑的「戳」按定义就是提交了一条 prompt——进转录、花一次调用。
+ * 它和「发一句话」是同一件事，没有更轻的版本，所以这里只说清楚该去哪敲。
+ *
  * 几种成因**各有各的做法**，合成一句话等于谁都救不了，所以分开返回：
  *
  * - `history`      用户自己在下拉里选了一条历史。**这不是故障**，原文案是对的。

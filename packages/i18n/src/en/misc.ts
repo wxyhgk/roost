@@ -214,7 +214,7 @@ export const misc = {
           noCli: "No AI CLI is running in this terminal",
           noCliHint: "Start one under Terminal (claude, codex, …); sending works once it connects.",
           unbound: "A CLI is running, but it has not reported which conversation it is in",
-          unboundHint: "Send a line or press Enter in Terminal — one event from the CLI reconnects it. Needed again after the daemon restarts.",
+          unboundHint: "Send a line in Terminal — the CLI only reports when a prompt is actually submitted; a bare Enter does not count. Needed again after the daemon restarts.",
         },
         conflict: "That request id was already used with different text; send a new one",
         /** 各状态对使用者的含义。措辞刻意保守：宁可说不确定，也不谎报已送达。 */
