@@ -2,13 +2,21 @@ import type { ReactNode } from "react";
 import { identifyTool, toolLabel, toolSubject, toolSummary } from "./identify";
 import { pickRenderer, stateOf, viewInput, type RendererName, type ToolViewInput } from "./dispatch";
 import { toDiffHunks } from "./diff-adapter";
+import { toolErrorSummary } from "./error-summary";
+import { toolCatalogEntry, toolTitle, type ToolIconName } from "./catalog";
 import { clipMiddle } from "./text";
 import { TOOL_ROW_LABELS, TERMINAL_LABELS } from "./labels";
 import type { ToolBlock } from "./SummaryRow";
 import { SummaryRow } from "./SummaryRow";
 import { FileMutationRow } from "../../../vendor/dsh/chat/tool/toolviews/file-mutation-row";
 import { BashRow } from "../../../vendor/dsh/chat/tool/toolviews/bash-sample";
-import { GenericToolCard } from "../../../vendor/dsh/chat/tool/toolviews/GenericToolCard";
+import { ToolRow } from "../../../vendor/dsh/chat/tool/ToolRow";
+import {
+  IconApiOutline14, IconSearchOutline16, IconBrowseOutline16, IconEditOutline16,
+  IconListPenOutline16, IconTrashOutline16, IconGlobeOutline14, IconChecklistOutline14,
+  IconThinkOutline16, IconPlanOutline14, IconQuestionOutline14, IconAgentPresetOutline16,
+  IconCodeOutline16, IconStopFill16, IconCordisPluginOutline14, IconSparkle16,
+} from "../../../vendor/dsh";
 import { ErrorBoundary } from "../../../shared/ui/ErrorBoundary";
 import { t } from "@roost/i18n";
 
@@ -41,11 +49,13 @@ const deniedSuffix = (block: ToolBlock) =>
 const VIEWS: Record<RendererName, (input: ToolViewInput) => ReactNode> = {
   patch: ({ block }) => (
       <FileMutationRow
-        variant="edit" title={toolLabel(identifyTool(block.name), block.name)}
+        variant={toolCatalogEntry(identifyTool(block.name)).variant}
+        title={toolTitle(toolCatalogEntry(identifyTool(block.name)).titleKey, toolLabel(identifyTool(block.name), block.name))}
         summary={block.patch?.filePath ?? ""} state={stateOf(block)}
         hunks={toDiffHunks(block.patch!)} truncated={block.patch!.truncated}
         truncatedLabel={t.misc.blocks.truncated}
-        output={block.result ?? undefined} labels={TOOL_ROW_LABELS}
+        output={block.result ?? undefined} errorSummary={toolErrorSummary(block)}
+        labels={TOOL_ROW_LABELS}
       />
   ),
   bash: ({ block, args }) => {
@@ -53,7 +63,7 @@ const VIEWS: Record<RendererName, (input: ToolViewInput) => ReactNode> = {
       const output = block.result === null ? undefined : clipMiddle(block.result, 4000).text;
       return (
         <BashRow
-          title={toolLabel(identifyTool(block.name), block.name)}
+          title={toolTitle(toolCatalogEntry(identifyTool(block.name)).titleKey, toolLabel(identifyTool(block.name), block.name))}
           summary={toolSubject(args)!} state={stateOf(block)}
           command={toolSubject(args)} output={output}
           /*
@@ -63,13 +73,19 @@ const VIEWS: Record<RendererName, (input: ToolViewInput) => ReactNode> = {
             编一个退出码出来才是真的撒谎。
           */
           /*
-            **`errorSummary` 不传。** 它是摘要位上的一行短句，而我们失败时手里只有整段输出
-            ——塞进去的后果是那一行直接吐出原始 ANSI 转义码，因为摘要是纯文本渲染、不解析转义。
+            错误摘要走 `error-summary.ts`，**不要直接塞 `block.result`**。
 
-            失败这件事由外层的红点和红色命令行负责；输出本身在展开区里，TerminalBlock 会
-            按 ANSI 上色。真要在摘要上写一句，得先有一个**可靠的错误首行**，而那要么来自
-            上游的结构化字段（我们没有），要么靠猜。
+            直接塞过整段输出，结果那一行吐出原始 ANSI 转义码——摘要位是纯文本渲染、不解析
+            转义。而且「整段输出」本来就不该放在一行短句的位置上。
+
+            `toolErrorSummary` 解决的正是这个：先剥 ANSI，再取**第一条有可见字符的行**
+            （终端输出的首行常常是纯控制序列，死守「第一行」会剥出空串，而真正那句
+            `npm ERR! …` 在下一行），拿不出可靠的一行就返回 null——不编。
+
+            注意它会**替换**摘要文字而不是追加（上游有意的设计），所以失败的 bash 行上
+            命令会被错误行顶掉。
           */
+          errorSummary={toolErrorSummary(block)}
           labels={{ ...TOOL_ROW_LABELS, terminal: TERMINAL_LABELS }}
         />
     );
@@ -85,14 +101,39 @@ export function ToolView({ block }: { block: ToolBlock }) {
   return <ErrorBoundary fallback={fallback}>{VIEWS[name](input)}</ErrorBoundary>;
 }
 
-/** 认不出来、或者专用渲染器崩了的那条路：工具名 + 参数 + 结果，只要有名字就画得出来。 */
+/*
+  图标的 ReactNode 映射只能待在这里——`catalog.ts` 必须是纯 TS（node --test 加载不了
+  CSS Module，见它顶上的说明），所以那边只吐标识，节点在这儿查。
+  尺寸统一 14，和 GenericToolCard 的 VARIANT_ICONS 一致：都在 16px 引导框里画 14。
+*/
+const TOOL_ICONS: Record<ToolIconName, ReactNode> = {
+  terminal: <IconApiOutline14 size={14} />, search: <IconSearchOutline16 size={14} />,
+  read: <IconBrowseOutline16 size={14} />, edit: <IconEditOutline16 size={14} />,
+  write: <IconListPenOutline16 size={14} />, delete: <IconTrashOutline16 size={14} />,
+  web: <IconGlobeOutline14 size={14} />, todo: <IconChecklistOutline14 size={14} />,
+  think: <IconThinkOutline16 size={14} />, plan: <IconPlanOutline14 size={14} />,
+  question: <IconQuestionOutline14 size={14} />, task: <IconAgentPresetOutline16 size={14} />,
+  code: <IconCodeOutline16 size={14} />, stop: <IconStopFill16 size={14} />,
+  plugin: <IconCordisPluginOutline14 size={14} />, generic: <IconSparkle16 size={14} />,
+};
+
+/**
+ * 认不出来、或者专用渲染器崩了的那条路：工具名 + 参数 + 结果，只要有名字就画得出来。
+ *
+ * 直接用 `ToolRow` 而不是 `GenericToolCard`：后者把 `icon` 从 props 里 `Omit` 掉了、
+ * 自己按 variant 算，而我们要的是**按工具**给图标。它除此之外只干「有 filePath 时抹掉
+ * bodyRaw」一件事，而这条路本来就不传 filePath——等价。
+ */
 function Fallback({ block, id, args }: ToolViewInput) {
+  const look = toolCatalogEntry(id);
   return (
-    <GenericToolCard
-      variant="others" title={toolLabel(id, block.name)}
+    <ToolRow
+      variant={look.variant} icon={TOOL_ICONS[look.icon]}
+      title={toolTitle(look.titleKey, toolLabel(id, block.name))}
       summary={toolSummary(args) ?? block.args} summarySuffix={deniedSuffix(block)}
       state={stateOf(block)} bodyRaw={block.args || undefined}
-      output={block.result ?? undefined} labels={TOOL_ROW_LABELS}
+      output={block.result ?? undefined} errorSummary={toolErrorSummary(block)}
+      labels={TOOL_ROW_LABELS}
     />
   );
 }
