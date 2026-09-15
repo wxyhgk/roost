@@ -424,4 +424,37 @@ html[data-theme="light"] {
   */
   --dsw-elevation-soft:
     0 0 0 0.5px var(--dsw-alias-border-l1), 0 4px 16px 0 rgba(0, 0, 0, 0.24), 0 0 24px 0 rgba(0, 0, 0, 0.24);
+
+  /* ---- 侧栏：按钮面与反相文字 ------------------------------------------
+     第三轮搬侧栏（vendor/dsh/sidebar）才需要的三个。前面几批都没有「凸起的按钮」
+     和「反相文字」这两种角色。 */
+
+  /*
+    凸起按钮的面（「新建对话」那颗，以及会话行 hover 时的图标钮）。上游浅色是纯白、
+    深色是 `rgb(67,69,74)`——都是「比所在的面再亮一档」。我们接 `--color-bg-raised`，
+    和 `--dsw-specific-bubble` 是同一个位置。
+
+    **不补的后果是看得见的**：那颗按钮会变成空心的，只剩一圈描边。
+  */
+  --dsw-alias-button-elevated-fill: var(--color-bg-raised);
+
+  /*
+    反相文字：画在实心强调块上的字（版本号徽章）。上游浅色 `#fff`、深色
+    `rgb(53,54,56)`——注意它跟着主题**反着走**，因为底色是不跟主题翻的强调色。
+    我们接 `--color-bg`：深色主题下它是深的、浅色下是浅的，正好是「和页面底同色」，
+    而徽章底是亮的，于是两个主题下都读得出来。
+
+    **不补的后果**：深色白底白字、浅色黑底黑字，徽章变成一条实心杠。
+  */
+  --dsw-alias-label-primary-inverted: var(--color-bg);
+
+  /* 选中态的底。我们已经有等价的 `--color-bg-active`（ghost 按钮的按下态用的也是它）。 */
+  --dsw-alias-interactive-bg-active: var(--color-bg-active);
+
+  /*
+    滚动条 hover 的第二档。上游深浅两套都比 l1 再亮一点；我们的滚动条不读这一层
+    （`index.css` 走 `--color-scrollbar`），所以它在我们这儿是**空转**的——接过来只是
+    让那几条重绑不至于拿到空值。
+  */
+  --dsw-alias-scrollbar-hover-l2: var(--dsw-alias-scrollbar-hover-l1);
 }

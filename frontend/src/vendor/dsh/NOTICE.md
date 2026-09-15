@@ -161,6 +161,25 @@ Copyright (c) 2026 DeepSeek
 `ConversationShell` 的 `publishWidths` 正是发布它的那一段。接上之后实测：栏宽 1280 →
 正文列 819px（0.64 × 1280）、输入卡 851px，两者正好差 32。
 
+### 第三轮之三：左侧栏与会话行（上游 `ui-sidebar/` 和 `ui-workspace/`）
+
+- `sidebar/SidebarRoot.module.css`（429 行）、`sidebar/Rows.module.css`（368 行）、
+  `sidebar/WorkspaceBrowser.module.css`（505 行）——**三份全部逐字，一个字符没改**。
+  折叠态是 **56px 图标轨，不是宽度 0**；会话行高 32、分组头 34。
+- `relative-time.ts`——**逐字**（第一轮的「没搬什么」里点过名，这次要了）。
+  `frontend/tests/relative-time.test.ts` 8 个用例钉住五档边界和跨年。
+- `sidebar/SidebarRoot.tsx` / `Rows.tsx` / `WorkspaceBrowser.tsx`——结构照搬，插槽换 props。
+
+**preflight 这次没撞上**，而且原因值得记下来：上游把每个 inline svg 都装在
+flex/inline-flex 容器里，`svg { display: block }` 被 flex item 的 blockify 吃掉了。
+所以这批不需要 `user-text.module.css` 那种补丁。**这不是运气**——上游那套 CSS 本来就
+不依赖 svg 的 display，是一种更稳的写法。
+
+**一处接口上的取舍**：上游一行只有**一个**前导的 16px 槽，而我们想往里塞两样东西
+（CLI 图标、`coverage.hasGap` 的橙点）。选了状态点：真实数据里 11/17 是同一个 CLI，
+图标的区分度本来就低（这句话在我们自己的旧注释里就写着），而上游那一行之所以干净，
+正是因为只有一个前导标记。CLI 名字那段文字一并丢掉——图标已经说了同一件事。
+
 **其中 `TurnNavigator` 搬了但没接**：它的价值随回合数上涨，而我们是一次读完整段历史、
 不做增量滚动，接上去是个永远指着同一处的导航条。留在目录里是为了将来改成增量加载时不用重搬。
 
@@ -186,6 +205,13 @@ Copyright (c) 2026 DeepSeek
   结构（搜索结果条目、匹配行），而我们的 `ToolBlock.result` 是各家 CLI 落盘的原始文本，
   对不对得上没验过。**接之前先拿真实记录跑一遍 model，对不上再按规矩不接、回来补记。**
   `todo-row` 只读 `argsRaw`（就是我们的 `ToolBlock.args`），数据是够的。
+- **侧栏里喂不满的那些**：`sessionStatuses()` 的五档判定（待审批 / 计划待看 / 待回答 /
+  running / 子代理数 / completed——我们一条都没有）、行内 `…` 菜单的三个动作（重命名 /
+  分叉 / 归档，我们一个都没有）、`SearchResultItem`（要 `snippet`，`listConversations`
+  不返回）、HoverCard 悬停卡、拖拽重排、`blank` 占位会话、定时任务闹钟、工作区管理那一套。
+  **组件侧的 prop 都留着**（`state` / `stateLabel` / `menu` / `menuOpen`），将来有了直接传；
+  对应的 CSS 也一律留在那三份 `.module.css` 里没删——删了，重新同步上游就从「覆盖」
+  变成三方合并。
 - **`ui-layout` 里没搬的那几个**：`DocumentTitle.tsx`（订阅上游 session/panel 投影拼
   `document.title`，两个投影我们都没有，而浏览器标题是 roost 自己的事）；`service.ts` 的
   `LayoutController`（那是给别的插件用的跨插件面，我们没有插件运行时）；`theme-presenter.ts`
