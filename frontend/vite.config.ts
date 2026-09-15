@@ -1,3 +1,6 @@
+import { existsSync } from "node:fs";
+import { createRequire } from "node:module";
+import { join, sep } from "node:path";
 import { defineConfig, type Plugin } from "vite";
 import compression from "compression";
 import react from "@vitejs/plugin-react";
@@ -96,6 +99,60 @@ function ketcherWithoutMonomers(): Plugin {
 }
 
 /**
+ * dev 下把 indigo 的 worker 请求改写回包里的真实路径。
+ *
+ * `ketcher-standalone/dist/binaryWasm/main.js` 里是：
+ *
+ *     new Worker(new URL("indigoWorker-<hash>.js", import.meta.url), { type: "module" })
+ *
+ * 那个 worker 是**包里自带的真实文件**。dev 下依赖预打包把这个包搬进 `node_modules/.vite/deps/`，
+ * `import.meta.url` 跟着变成那个目录，**但预打包不会把 worker 文件一起搬过去**，于是浏览器去要
+ * `/node_modules/.vite/deps/indigoWorker-<hash>.js` 拿到 404：
+ *
+ *     The file does not exist at ".../.vite/deps/indigoWorker-<hash>.js?worker_file&type=module"
+ *
+ * 症状是分子编辑器**停在「正在加载」不动也不报错**——indigo 的 worker 永远起不来。
+ *
+ * **不要改用 `optimizeDeps.exclude`**（Vite 那句报错就是这么建议的，试过，更糟）：ketcher-standalone
+ * 不经预打包就少了 CJS→ESM 的互操作，界面上变成
+ * `Importing binding name 'default' cannot be resolved by star export entries`。
+ *
+ * 也不能把原文件直接喂给浏览器——它自己 `import '@babel/runtime/helpers/defineProperty'`，
+ * 裸导入得由 Vite 解析。所以这里只改写 URL（`/@fs/` 指向 root 之外的真实文件），转换照常走 Vite。
+ *
+ * 只在 dev 生效。构建走 Rollup，`new Worker(new URL(...))` 会被正确识别成资产发出来——
+ * `npm run smoke:molecule` 对着产物验过（含出图那一步）。
+ */
+function ketcherIndigoWorkerInDev(): Plugin {
+  const PACKAGE = "ketcher-standalone";
+  const request = /^\/node_modules\/\.vite\/deps\/(indigoWorker-[A-Za-z0-9_-]+\.js)(\?.*)?$/;
+  return {
+    name: "roost:ketcher-indigo-worker",
+    apply: "serve",
+    configureServer(server) {
+      server.middlewares.use((req, _res, next) => {
+        const found = request.exec(req.url ?? "");
+        if (!found) return next();
+        /*
+          从**包根**往下拼。不要用 `dirname(resolve("ketcher-standalone"))`——那个 resolve 给的是
+          CJS 入口 `dist/cjs/index.js`，拼出来会是 `dist/cjs/binaryWasm/`，而 worker 在
+          `dist/binaryWasm/`（frame.tsx 也是从那儿 import 的）。
+        */
+        const entry = createRequire(import.meta.url).resolve(PACKAGE);
+        const marker = `${sep}${PACKAGE}${sep}`;
+        const at = entry.lastIndexOf(marker);
+        if (at < 0) return next();
+        const real = join(entry.slice(0, at + marker.length), "dist", "binaryWasm", found[1]);
+        // 找不到就放行，让原来那条 404 和它的提示照常出现——比悄悄换成另一个错误好认。
+        if (!existsSync(real)) return next();
+        req.url = `/@fs${real}${found[2] ?? ""}`;
+        next();
+      });
+    },
+  };
+}
+
+/**
  * 给 dev server 加 gzip。
  *
  * 开发模式下依赖是**逐个 chunk** 发的，不像构建产物那样合并压缩过。ketcher（分子
@@ -121,7 +178,7 @@ function devCompression(): Plugin {
 const hmrClientPort = Number(process.env.VITE_HMR_CLIENT_PORT) || undefined;
 
 export default defineConfig({
-  plugins: [devCompression(), react(), tailwindcss(), fileIconSubset(), ketcherRaphaelInterop(), ketcherWithoutMonomers()],
+  plugins: [devCompression(), react(), tailwindcss(), fileIconSubset(), ketcherRaphaelInterop(), ketcherWithoutMonomers(), ketcherIndigoWorkerInDev()],
   resolve: {
     alias: [
       { find: 'events', replacement: 'events/' },

@@ -19,6 +19,14 @@ import { tmpdir } from 'node:os';
 import WebSocket from 'ws';
 
 const CHROME = process.env.CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+/*
+  默认对着 frontend/dist 自起一个静态服务器测。给了 BASE 就改测那个地址——用来分辨
+  「产物坏了」还是「某个服务器坏了」：同一份检查，dist 过而线上不过，问题就在发布或代理，
+  不在代码。
+
+      BASE=http://127.0.0.1:8080 node scripts/smoke-molecule.mjs
+*/
+const BASE = process.env.BASE;
 const DIST = new URL('../frontend/dist/', import.meta.url);
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.wasm': 'application/wasm', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.json': 'application/json' };
 
@@ -39,13 +47,13 @@ const server = createServer(async (req, res) => {
     res.writeHead(404).end('not found');
   }
 });
-await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-const base = `http://127.0.0.1:${server.address().port}`;
+if (!BASE) await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+const base = BASE ?? `http://127.0.0.1:${server.address().port}`;
 
 const profile = await mkdtemp(join(tmpdir(), 'roost-smoke-'));
 const chrome = spawn(CHROME, ['--headless=new', '--disable-gpu', '--no-first-run',
   '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'], { stdio: ['ignore', 'pipe', 'pipe'] });
-const cleanup = async () => { chrome.kill(); server.close(); await rm(profile, { recursive: true, force: true }); };
+const cleanup = async () => { chrome.kill(); if (!BASE) server.close(); await rm(profile, { recursive: true, force: true }); };
 const fail = async (message) => { console.error('✗ ' + message); await cleanup(); process.exit(1); };
 
 // Chrome 把调试端口写在 stderr 第一行。给 0 让它自己挑，避免和别人抢 9222。
@@ -77,13 +85,25 @@ const send = (method, params) => new Promise(resolve => {
 await new Promise(resolve => socket.on('open', resolve));
 await send('Runtime.enable');
 await send('Log.enable');
+await send('Page.enable');
+
+/*
+  **先等页面加载完再求值。** 创建目标之后立刻 Runtime.evaluate，拿到的是导航前那个执行
+  上下文，页面一加载它就被销毁，报 `Execution context was destroyed` ——看起来像编辑器坏了，
+  其实是这个脚本问得太早。dev server 还会在依赖优化完之后再强制刷一次，所以销毁可能发生
+  两次，下面那次重试就是为它准备的。
+*/
+await new Promise(resolve => {
+  const timer = setTimeout(resolve, 30_000);
+  const onLoad = raw => {
+    if (JSON.parse(raw).method === 'Page.loadEventFired') { clearTimeout(timer); socket.off('message', onLoad); resolve(); }
+  };
+  socket.on('message', onLoad);
+});
 
 // 等的是 frame.tsx 在 onInit 里挂上的那个桥——它出现就说明 ketcher 真的初始化完了。
 // indigo 的 wasm 有 11 MB，冷启动慢，所以给到 120 秒。
-const evaluated = await send('Runtime.evaluate', {
-  awaitPromise: true,
-  returnByValue: true,
-  expression: `(async () => {
+const EXPRESSION = `(async () => {
     const deadline = Date.now() + 120000;
     while (!window.moleculeEditor && Date.now() < deadline) await new Promise(r => setTimeout(r, 200));
     if (!window.moleculeEditor) return { ok: false, why: 'moleculeEditor 一直没出现：onInit 没跑到' };
@@ -91,8 +111,14 @@ const evaluated = await send('Runtime.evaluate', {
     const molfile = await window.moleculeEditor.save();
     const image = await window.moleculeEditor.image();
     return { ok: true, carbons: (molfile.match(/ C   0  0/g) || []).length, png: image.size };
-  })()`,
-});
+  })()`;
+
+let evaluated = await send('Runtime.evaluate', { awaitPromise: true, returnByValue: true, expression: EXPRESSION });
+// 上下文在求值途中被销毁（dev server 优化完依赖会刷新一次）：等它稳下来再问一遍。
+if (evaluated.error?.message?.includes('Execution context was destroyed')) {
+  await new Promise(resolve => setTimeout(resolve, 10_000));
+  evaluated = await send('Runtime.evaluate', { awaitPromise: true, returnByValue: true, expression: EXPRESSION });
+}
 const result = evaluated.result?.result?.value;
 if (!result) await fail(`浏览器里没拿到结果：${JSON.stringify(evaluated).slice(0, 400)}`);
 if (!result.ok) await fail(result.why);
