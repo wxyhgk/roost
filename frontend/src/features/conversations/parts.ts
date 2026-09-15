@@ -22,6 +22,13 @@ export type Block =
    * 剩下的东西，藏掉比画错更糟。
    */
   | { kind: "compaction"; text: string }
+  /**
+   * AI 的思考过程（Claude 的 `thinking` 块、codex 的 `summary_text`、qwen 的 `thought`）。
+   *
+   * 四个解析器都在产出它，而前端此前一处都不认——于是它掉进通用文本分支，**被当成普通
+   * 回复画出来，和真正的答复混在一起分不开**。思考是过程不是结论，该折起来。
+   */
+  | { kind: "thinking"; text: string }
   | { kind: "tool"; id: string; name: string; args: string; result: string | null; failed: boolean;
       /**
        * 这次调用被拦下来了，**命令根本没执行**——用户拒绝、auto 模式拦截、权限规则都算。
@@ -67,6 +74,11 @@ export function groupMessages(messages: readonly HistoryMessage[]): Row[] {
         };
         blocks.push(block);
         if (block.id) pending.set(block.id, block);
+        continue;
+      }
+      if (part.type === "thinking") {
+        const value = text(part);
+        if (value) blocks.push({ kind: "thinking", text: value });
         continue;
       }
       if (part.type === "compaction") {
@@ -118,6 +130,7 @@ export type Item =
   | { kind: "tools"; key: string; role: string; tools: ToolBlock[]; status: ToolsStatus; message: HistoryMessage; turnStart: boolean }
   /** 一个回合改了什么的汇总，摆在这个回合的末尾。 */
   | { kind: "compaction"; key: string; text: string; turnStart: false }
+  | { kind: "thinking"; key: string; text: string; turnStart: false }
   | { kind: "diff"; key: string; diff: TurnDiff; turnStart: false };
 
 export type ToolsStatus = "running" | "error" | "completed";
@@ -207,8 +220,8 @@ export function buildItems(rows: readonly Row[]): Item[] {
         压缩摘要**不开新回合**。它在 transcript 里是 user 角色，照常走下面那条就会画出一条
         回合边界——可上下文压缩发生在一个回合中间，不是用户说了新的话。
       */
-      if (block.kind === "compaction") {
-        items.push({ kind: "compaction", key: `${row.message.messageId}:${index}`, text: block.text, turnStart: false });
+      if (block.kind === "compaction" || block.kind === "thinking") {
+        items.push({ kind: block.kind, key: `${row.message.messageId}:${index}`, text: block.text, turnStart: false });
         continue;
       }
       if (isUser && index === 0) { closeTurn(); turnKey = row.message.messageId; }

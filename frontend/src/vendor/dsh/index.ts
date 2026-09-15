@@ -47,3 +47,6 @@ export type {
   CodeFileType, FileType, FileTypeIconProps, FileTypeKind, FileTypeProjectContext,
 } from './FileTypeIcon.tsx'
 export * from './icons/index.tsx'
+
+// ui-chat 里的思考折叠行。它只依赖上面那批积木，所以放同一个桶。
+export { ReasoningRow } from './ReasoningRow.tsx'

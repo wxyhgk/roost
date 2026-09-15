@@ -169,6 +169,9 @@ export const misc = {
       toolNoResult: "没有结果",
       /** `/compact` 的摘要：一条分隔行，点开才看。它不是用户说的话。 */
       compacted: "上下文已压缩",
+      /** AI 的思考过程：折叠行，收起时只看第一行。它是过程不是结论。 */
+      thinking: "思考",
+      thinkingRunning: "正在思考",
       /** 命令输出留尾部：报错和结论都在末尾。 */
       outputClipped: "上面还有更早的输出，已省略",
       /** 「跑完了但没输出」和「结果没拿到」必须分得开。 */

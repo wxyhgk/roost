@@ -9,6 +9,7 @@ import {
 } from "../../shared/api/conversations";
 import { ApiError } from "../../shared/api/errors";
 import { IconChevron } from "../../shared/icons";
+import { ReasoningRow } from "../../vendor/dsh";
 import { ToolView } from "./tools/registry";
 import { identifyTool, toolLabel } from "./tools/identify";
 import { emptyHistory, historyOnReload, isLongReply, mergeMessages, type HistoryState } from "./history";
@@ -63,7 +64,7 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
     let last: string | undefined;
     return items.map(item => {
       // diff 和压缩摘要都没有角色，也都不打断「同一个人在说话」——跨过它们记住上一个角色。
-      if (item.kind === "diff" || item.kind === "compaction") return false;
+      if (item.kind === "diff" || item.kind === "compaction" || item.kind === "thinking") return false;
       const show = item.turnStart || item.role !== last;
       last = item.role;
       return show;
@@ -452,6 +453,16 @@ function CompactionItem({ text }: { text: string }) {
 function TranscriptItem({ item, showRole }: { item: Item; showRole: boolean }) {
   if (item.kind === "diff") return <li className="flex flex-col items-start"><TurnDiffItem diff={item.diff} /></li>;
   if (item.kind === "compaction") return <li className="flex flex-col items-stretch"><CompactionItem text={item.text} /></li>;
+  /*
+    思考单独成一条折叠行，不和正文混在一起——它是过程不是结论。收起时只显示第一行，
+    组件抄自 deepseek-harness（见 vendor/dsh/ReasoningRow.tsx）。
+  */
+  if (item.kind === "thinking") return (
+    <li className="flex flex-col items-stretch">
+      <ReasoningRow text={item.text} running={false}
+        labels={{ think: t.misc.conversations.detail.thinking, running: t.misc.conversations.detail.thinkingRunning }} />
+    </li>
+  );
   const mine = item.role === "user";
   return (
     <li className={`flex flex-col gap-1 ${item.turnStart ? "mt-3 border-t border-border/40 pt-3" : ""} ${

@@ -23,7 +23,10 @@ const say = (role: string, parts: unknown[], content = '') =>
     { cursor: seq, hasGap: false });
 
 say('user', [{ type: 'text', text: '把 xyz 解析器里那个空行的兜底删掉，顺便跑一下测试。' }]);
-say('assistant', [{ type: 'text', text: '我先看一眼那段代码，然后改掉它并跑测试。' }]);
+say('assistant', [
+  { type: 'thinking', text: '用户说「空行的兜底」，但 parse.ts 里有两处和空行有关：一处是文件末尾的空行，\n另一处是原子块中间的空行。前者是 3Dmol 那个 toUpperCase 崩溃的直接原因，后者挡的是\n手写文件里常见的分节空行。他要删的多半是前者，但措辞分不出来——先把两处都看一眼。' },
+  { type: 'text', text: '我先看一眼那段代码，然后改掉它并跑测试。' },
+]);
 
 // 一次 Read：只有路径。
 say('assistant', [{ type: 'tool_call', toolCallId: 't1', name: 'Read', text: 'Read: {"file_path":"/Users/me/roost/frontend/src/plugins/xyz/parse.ts","offset":40,"limit":60}' }]);

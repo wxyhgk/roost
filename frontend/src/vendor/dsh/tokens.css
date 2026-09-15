@@ -30,6 +30,8 @@
   --dsw-alias-label-secondary: var(--color-text-dim);
   /* **[猜]** 上游是 primary/secondary/tertiary 三档，我们只有 text 和 text-dim 两档。
      第三档由 text-dim 再往背景方向淡一步得到，两个主题下都自动成立。 */
+  /* 说明性小字。我们没有单独一档，和次要文字同色——两者在上游的用途本来就重叠。 */
+  --dsw-alias-label-caption: var(--color-text-dim);
   --dsw-alias-label-tertiary: color-mix(in srgb, var(--color-text-dim) 72%, var(--color-bg));
 
   /* ---- 面 ------------------------------------------------------------ */
