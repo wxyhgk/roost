@@ -158,6 +158,18 @@ export function toolsStatus(tools: readonly ToolBlock[]): ToolsStatus {
 export const MIN_GROUPED_TOOLS = 3;
 
 /**
+ * 工具条目一律算 AI 的动作，**不看承载它的那条消息是什么角色**。
+ *
+ * 这不是化简，是纠错。工具结果在 Claude 的 transcript 里装在合成的 user 回合里；平时
+ * `groupMessages` 会把结果并回调用那一条、把空壳消息丢掉，角色自然是 assistant。但配不上
+ * 对的结果（历史分页时调用落在窗口之外、或被截断）会留下一个孤儿块，那条 user 消息因此
+ * 活了下来——照着 `row.role` 走，一整组工具调用就被标成「你」、还靠右对齐成用户气泡的样子。
+ *
+ * 用户没有调用过任何工具。角色在这里是**传输的外壳**，不是说话的人。
+ */
+const TOOL_ROLE = "assistant";
+
+/**
  * 把行拍平成条目，并把**连续的**工具调用收成组。
  *
  * 连续是跨消息的：一次回合里 AI 往往是「调用 → （下一条消息里的结果）→ 再调用」，
@@ -207,11 +219,11 @@ export function buildItems(rows: readonly Row[]): Item[] {
         */
         if (block.patch?.hunks.length) {
           flush();
-          items.push({ kind: "tools", key: `${row.message.messageId}:patch:${index}`, role: row.role,
+          items.push({ kind: "tools", key: `${row.message.messageId}:patch:${index}`, role: TOOL_ROLE,
             tools: [block], status: toolsStatus([block]), message: row.message, turnStart: false });
           continue;
         }
-        pendingTools ??= { tools: [], message: row.message, key: `${row.message.messageId}:tools`, role: row.role };
+        pendingTools ??= { tools: [], message: row.message, key: `${row.message.messageId}:tools`, role: TOOL_ROLE };
         pendingTools.tools.push(block);
         continue;
       }
