@@ -36,7 +36,7 @@ export function TermView({ sessionId, active, onCwd, onCli }: Props) {
   // 轻点判定：按下的位置和抬起的位置差得远就是滑动（滚动），不是点。
   const tapStart = useRef<{ x: number; y: number } | null>(null);
   const {
-    hostRef,
+    mountRef,
     status,
     historyTruncated,
     atBottom,
@@ -192,7 +192,13 @@ export function TermView({ sessionId, active, onCwd, onCli }: Props) {
           onSaveFile={text => { if (text) void saveToFile(text); }}
         />
       )}
-      <div className="term-fit flex-1 min-w-0 min-h-0 overflow-hidden relative" ref={hostRef} />
+      {/*
+        这只是**落点**，xterm 不在这里面长大：真正的宿主 div 归 `session/terminalStage`
+        所有，挂载时被搬进来、卸载时被摘走。这么分是因为同一个终端要能在中栏和右侧停靠面
+        之间换位置，而换位置在 React 里必然是卸载重挂——引擎留在这棵树上就等于每换一次
+        栏丢一次滚动缓冲。`term-fit` 跟着宿主走（那几条 CSS 是后代选择器），这里只剩布局。
+      */}
+      <div className="flex-1 min-w-0 min-h-0 overflow-hidden relative" ref={mountRef} />
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { subscribeFileLinkOpen } from '../features/terminal/public';
-import { Suspense, lazy, useCallback, useEffect, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 /*
   三栏外壳换成搬来的那套（vendor/dsh/layout）。原来用 react-resizable-panels：
   它把栏宽记成百分比、折叠到**宽度 0**，而上游的左栏折叠态是一条 **56px 的图标轨**——
@@ -11,7 +11,7 @@ import { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import { AppFrame } from "../vendor/dsh/layout/AppFrame";
 import { useLayoutState, browserLayoutPersistence } from "../vendor/dsh/layout/layout-state";
 import type { LayoutActions } from "../vendor/dsh/layout/layout-state";
-import { SIDEBAR_DEFAULT } from "../vendor/dsh/layout/columns";
+import { SIDEBAR_DEFAULT, RIGHTBAR_MIN } from "../vendor/dsh/layout/columns";
 /*
   右栏的三档呈现（推挤 / 悬浮 / 全屏）。搬来的那一套：面板盒子 + 纯几何。
   换掉的是这个文件原来自己写的那个薄壳——它只会「占轨展开」一种，而且收起时
@@ -31,6 +31,16 @@ import { ConversationSidebar } from "../features/conversations/ConversationSideb
 import type { MonitorTarget } from '../features/server-monitor/navigation';
 import { StatusBar } from "./StatusBar";
 import { TerminalPane } from "../features/terminal/view/TerminalPane";
+/*
+  对话模式下右栏装的就是这块**活着的**终端画面。它自己不拥有引擎（引擎住在
+  `features/terminal/session/terminalStage`），所以中栏那份和这里这份是同一个终端的
+  两个落点，换落点不重建——这一条是「切一下模式不该把正在跑的终端弄没」的全部依据。
+*/
+import { TerminalSurface } from "../features/terminal/view/TerminalSurface";
+import { ConversationColumn } from "./ConversationColumn";
+import { useWorkspace } from "../shared/store";
+import { sessionTitle } from "../shared/sessionTitle";
+import { PanelHeader } from "../shared/ui/PanelHeader";
 import { TopBar } from "./TopBar";
 import { ErrorBoundary } from '../shared/ui/ErrorBoundary';
 import { EXTERNAL_EDITORS } from '../plugins/external';
@@ -49,7 +59,7 @@ import { EXTERNAL_EDITORS } from '../plugins/external';
 */
 const SettingsDialog = lazy(() => import('./SettingsDialog').then(m => ({ default: m.SettingsDialog })));
 const CommandPalette = lazy(() => import("../features/workspace/CommandPalette").then(m => ({ default: m.CommandPalette })));
-import type { LeftView, Lens, Mode, RightView, Scope } from "../shared/view";
+import type { Lens, Mode, RightPanelView, RightView, Scope, Workbench } from "../shared/view";
 import { t } from "@roost/i18n";
 
 /**
@@ -108,14 +118,6 @@ function loadLens(): Lens {
 }
 
 /*
-  左栏列对话还是列工作区。**默认对话。**
-
-  这两样不是同一份东西的两种排法：对话目录列的是**已保存的对话**（终端关掉、CLI 退出
-  之后它们仍然在），工作区树列的是**活着的终端**。所以是切换，不是筛选。
-
-  跟着一起持久化：翻历史翻到一半刷新一下被扔回工作区树，和刷新被扔回画布是同一种烦。
-*/
-/*
   栏宽和折叠态存哪儿。上游**故意不存**（README: "Layout state resets on reload"），
   我们不跟这一条——原来用 react-resizable-panels 的 autoSaveId 存着，换了外壳不该倒退。
 
@@ -124,10 +126,112 @@ function loadLens(): Lens {
 */
 const LAYOUT_PERSISTENCE = browserLayoutPersistence("roost-shell-layout-v1");
 
-const LEFT_VIEW_KEY = "roost-left-view-v1";
-function loadLeftView(): LeftView {
-  try { return localStorage.getItem(LEFT_VIEW_KEY) === "workspaces" ? "workspaces" : "conversations"; }
-  catch { return "conversations"; }
+/*
+  顶层模式：整套界面是「对话」还是「终端」。**默认对话。**
+
+  这两样不是同一份东西的两种排法：对话那一套围着**已保存的对话**转（终端关掉、CLI 退出
+  之后它们仍然在），终端那一套围着**活着的终端**转。所以是切换，不是筛选。
+
+  跟着一起持久化：翻历史翻到一半刷新一下被扔回终端，和刷新被扔回画布是同一种烦。
+
+  **旧键要迁移。** 上一版这颗开关只切左栏，叫 `roost-left-view-v1`，值是
+  `conversations` / `workspaces`。它现在切的是三栏，语义变了所以换了键；但停在工作区树上
+  的人不该在升级后被莫名其妙扔回对话，所以新键缺席时读一次旧键。
+*/
+const WORKBENCH_KEY = "roost-workbench-v1";
+const LEGACY_LEFT_VIEW_KEY = "roost-left-view-v1";
+function loadWorkbench(): Workbench {
+  try {
+    const raw = localStorage.getItem(WORKBENCH_KEY);
+    if (raw === "conversation" || raw === "terminal") return raw;
+    return localStorage.getItem(LEGACY_LEFT_VIEW_KEY) === "workspaces" ? "terminal" : "conversation";
+  } catch { return "conversation"; }
+}
+
+/**
+ * 右栏在一种模式下的样子：开没开、装的是哪一档。
+ *
+ * **两种模式各存一份，不共用。** 它们在右栏里放的根本不是同一类东西：对话模式下右栏
+ * 默认是终端（那是这个模式的第二主角），终端模式下右栏是文件树这类资料面板、而且默认
+ * 收起（中栏那个终端要地方）。共用一份的后果是每次切模式都要重新摆一次右栏，
+ * 而「切过去、切回来、东西还在原处」正是这次要守的那条。
+ */
+type RightSeatState = { open: boolean; view: RightView };
+/**
+ * 对话正文列的宽度下限，取自 `vendor/dsh/skeleton/ConversationRoot.module.css` 里
+ * `clamp(680px, 栏宽 × 0.64, 920px)` 的下限。**写在这儿是一份拷贝**——那个值长在一份要
+ * 保持逐字的 CSS 里，读不出来；改了那边这里要跟着改。
+ */
+const CONVERSATION_CONTENT_MIN = 680;
+
+/** 两条图标轨的宽度（各 40px）。框宽 = 视口 − 它。 */
+const RAILS_WIDTH = 80;
+
+/**
+ * 对话模式下终端那一栏的**默认**宽度：框里去掉左栏、再给对话留够它的内容轴下限，剩下的全给终端。
+ *
+ * **不用上游的 `RIGHTBAR_DEFAULT_RATIO = 0.45`。** 上游那条栏装的是文件树、文档预览这类
+ * 「看一眼就走」的东西，占掉近一半无所谓；我们这一栏装的是终端，而中栏是被定为主角的对话。
+ * 实测 0.45 在 1440 上给对话只剩 468px——代码块折行、表格压扁，而终端拿走 612。
+ *
+ * 返回值小于 `RIGHTBAR_MIN` 就是「这个宽度下两者不可兼得」，调用方据此默认收起。
+ */
+export function conversationTerminalWidth(frameWidth: number): number {
+  return Math.round(frameWidth - SIDEBAR_DEFAULT - CONVERSATION_CONTENT_MIN);
+}
+const RIGHT_SEAT_KEY = "roost-right-seat-v1";
+/* 终端模式的右栏收不下 `"terminal"`：那时终端已经占着中栏，同一份东西画两处。 */
+const PANEL_VIEWS: readonly RightView[] = ["files", "server", "notes", "snippets"];
+/**
+ * 没存过时右栏的摆法。
+ *
+ * 对话模式**默认开着**：那一档装的是终端，而「对话在中间、终端在旁边」就是这个模式的
+ * 全部内容，默认收起等于默认把它藏起来。
+ *
+ * **但只在放得下的时候。** 判据不是拍一个断点，是按已有的两条契约算：对话的内容轴下限是
+ * 680px（`vendor/dsh/skeleton/ConversationRoot.module.css` 的 `clamp`），右栏下限是 300px
+ * （`columns.ts` 的 `RIGHTBAR_MIN`）。视口给不出 `两条图标轨 + 左栏 + 680 + 300` 时，
+ * 让步顺序会把中栏一路压到 `CENTER_MIN = 400`——**被定为主角的对话反而缩到最小，
+ * 终端拿走更多**。实测 1280 视口就是这样：左 280 + 中 400 + 右 520，代码块折行、表格压扁。
+ *
+ * 所以放不下就默认收起。右轨那颗终端还在，点一下照常出来——那是用户自己挑的，
+ * 和「一进来就被挤成这样」是两回事。上游的停靠面本来也是默认折叠的。
+ *
+ * 顺带把 768 那一档也覆盖了：窄框下右栏只能全屏（`RIGHTBAR_AUTO_FULLSCREEN`），
+ * 默认开着就是一进对话模式整屏只剩终端——实测 400px 视口下对话一个字都看不见。
+ */
+function defaultRightSeat(): Record<Workbench, RightSeatState> {
+  const roomy = conversationTerminalWidth(window.innerWidth - RAILS_WIDTH) >= RIGHTBAR_MIN
+    && window.innerWidth >= RIGHTBAR_AUTO_FULLSCREEN;
+  return {
+    conversation: { open: roomy, view: "terminal" },
+    terminal: { open: false, view: "files" },
+  };
+}
+function loadRightSeat(): Record<Workbench, RightSeatState> {
+  /*
+    存下来的值**必须校验**再用，理由同 vendor/dsh/layout/layout-state.ts 里 `initLayout`
+    那段：躺在 localStorage 里的可能是上一个版本写的，也可能被人手改过。一个
+    `view: "terminal"` 落到终端模式那一档，右栏就会是一块永远空着的面板。
+  */
+  const fix = (raw: unknown, fallback: RightSeatState, allowed: readonly RightView[]): RightSeatState => {
+    if (typeof raw !== "object" || raw === null) return fallback;
+    const { open, view } = raw as Partial<RightSeatState>;
+    return {
+      open: typeof open === "boolean" ? open : fallback.open,
+      view: typeof view === "string" && allowed.includes(view as RightView) ? view as RightView : fallback.view,
+    };
+  };
+  const fallback = defaultRightSeat();
+  try {
+    const raw: unknown = JSON.parse(localStorage.getItem(RIGHT_SEAT_KEY) ?? "null");
+    if (typeof raw !== "object" || raw === null) return fallback;
+    const stored = raw as Partial<Record<Workbench, unknown>>;
+    return {
+      conversation: fix(stored.conversation, fallback.conversation, [...PANEL_VIEWS, "terminal"]),
+      terminal: fix(stored.terminal, fallback.terminal, PANEL_VIEWS),
+    };
+  } catch { return fallback; }
 }
 
 /*
@@ -161,21 +265,70 @@ export function Shell() {
     别的档次。现在这个布尔值是 Shell 自己的状态，占位者按它加上档次和框宽解出三个布尔
     值再报回去，和上游 index.ts 139-141 行那条约定一致。
   */
-  const [rightOpen, setRightOpen] = useState(false);
+  const [workbench, setWorkbench] = useState<Workbench>(loadWorkbench);
+  const [rightSeat, setRightSeat] = useState<Record<Workbench, RightSeatState>>(loadRightSeat);
+  /*
+    右栏的两个状态都按模式取。**只改当前这一档**，另一档原样留着——切过去再切回来
+    还在原处，这是 `RightSeatState` 上面那段的全部意思。
+  */
+  const updateRight = useCallback((update: (seat: RightSeatState) => RightSeatState) => {
+    setRightSeat(previous => ({ ...previous, [workbench]: update(previous[workbench]) }));
+  }, [workbench]);
+  /*
+    **首次给终端那一栏一个按契约算出来的宽度**，而不是让它落到上游的 0.45 上。
+
+    只在「一次都没拖过」（`layout.rightbar === null`）时种一次：拖过之后那是用户的偏好，
+    谁也不许替他改——这和 `initLayout` 里「窄窗口不许改掉存下来的偏好」是同一条规矩。
+  */
+  useEffect(() => {
+    if (layout.rightbar !== null || workbench !== "conversation") return;
+    /*
+      **从视口减轨宽算，不读 `layout.viewportWidth`。** 那个字段首帧是 `initLayout` 拿
+      `window.innerWidth` 引导的，框自己的 ResizeObserver 要下一帧才把真实框宽报上来；
+      而这段 effect 在「一次都没拖过」时只跑一次，正好落在引导值上——实测种出来的是
+      1440 − 280 − 680 = 480，而按真实框宽（1375）该是 415。差的正是这两条轨。
+    */
+    const width = conversationTerminalWidth(window.innerWidth - RAILS_WIDTH);
+    if (width >= RIGHTBAR_MIN) actions.setRightbar(width);
+  }, [layout.rightbar, workbench, actions]);
+
+  const rightOpen = rightSeat[workbench].open;
+  const rightView = rightSeat[workbench].view;
   const [rightMode, setRightMode] = useState<RightbarMode>(loadRightMode);
   const rightCollapsed = !rightOpen;
-  const expandRight = useCallback(() => { setRightOpen(true); }, []);
+  /*
+    框从宽跨到窄的那一下，把对话模式那一档终端收起来。
+
+    768 以下右栏只能全屏（`RIGHTBAR_AUTO_FULLSCREEN`，上游唯一那处硬编码的断点），而对话
+    模式默认开着右栏——不收的话，把窗口拉窄的那一下会有一块全屏终端盖掉整个对话，看起来
+    像模式自己变了（实测 400px 视口：整屏只剩终端）。
+
+    **只在跨越那一下做一次，不是持续压制**：窄框里用户自己点亮右轨那颗终端仍然照常全屏
+    打开——那是他挑的，压制掉就等于那颗钮点了没反应。同一个套路在
+    vendor/dsh/layout/layout-state.ts 的 setViewportWidth 里（跨断点丢掉 narrowExpanded）。
+  */
+  const roomy = layout.viewportWidth >= RIGHTBAR_AUTO_FULLSCREEN;
+  const wasRoomy = useRef(roomy);
+  useEffect(() => {
+    if (wasRoomy.current === roomy) return;
+    wasRoomy.current = roomy;
+    if (roomy) return;
+    setRightSeat(previous => previous.conversation.open && previous.conversation.view === "terminal"
+      ? { ...previous, conversation: { ...previous.conversation, open: false } }
+      : previous);
+  }, [roomy]);
+  const expandRight = useCallback(() => { updateRight(seat => seat.open ? seat : { ...seat, open: true }); }, [updateRight]);
   useEffect(() => {
     try { localStorage.setItem(RIGHT_MODE_KEY, rightMode); } catch { /* 存不了就下次从推挤开始 */ }
   }, [rightMode]);
-  const [rightView, setRightView] = useState<RightView>("files");
   const [monitorTarget, setMonitorTarget] = useState<MonitorTarget>({ tab: 'overview', revision: 0 });
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [scope, setScope] = useState<Scope>(loadScope);
   const [mode, setMode] = useState<Mode>(loadMode);
   const [lens, setLens] = useState<Lens>(loadLens);
-  const [leftView, setLeftView] = useState<LeftView>(loadLeftView);
+  /* 中栏那条对话可以指回它正在跑的终端——跳过去等于切模式 + 选中那个终端。 */
+  const { selectSession } = useWorkspace("selectSession");
   useEffect(() => {
     try { localStorage.setItem(SCOPE_KEY, scope === null ? "" : scope); } catch { /* 存不了就下次从「全部」开始 */ }
   }, [scope]);
@@ -186,8 +339,11 @@ export function Shell() {
     try { localStorage.setItem(LENS_KEY, lens); } catch { /* 存不了就下次从对话开始 */ }
   }, [lens]);
   useEffect(() => {
-    try { localStorage.setItem(LEFT_VIEW_KEY, leftView); } catch { /* 存不了就下次从对话目录开始 */ }
-  }, [leftView]);
+    try { localStorage.setItem(WORKBENCH_KEY, workbench); } catch { /* 存不了就下次从对话开始 */ }
+  }, [workbench]);
+  useEffect(() => {
+    try { localStorage.setItem(RIGHT_SEAT_KEY, JSON.stringify(rightSeat)); } catch { /* 存不了就下次从默认摆法开始 */ }
+  }, [rightSeat]);
 
   /*
     换工作区**不动**中间栏在看什么。
@@ -207,28 +363,25 @@ export function Shell() {
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   }, []);
+  /* 点文件链接一律去文件树。两种模式的右栏都装得下它，所以只动当前这一档。 */
   useEffect(() => subscribeFileLinkOpen(() => {
-    expandRight();
-    setRightView('files');
-  }), [expandRight]);
+    updateRight(() => ({ open: true, view: 'files' }));
+  }), [updateRight]);
   function toggleLeft() {
     actions.toggleSidebar();
   }
 
   function toggleRight() {
-    setRightOpen(open => !open);
+    updateRight(seat => ({ ...seat, open: !seat.open }));
   }
 
   function showRight(view: RightView) {
-    expandRight();
-    setRightView(view);
+    updateRight(() => ({ open: true, view }));
   }
 
   function selectRight(view: RightView) {
     // 点当前这个视图等于收起——和左栏那两颗图标钮是同一个手势。
-    if (rightView === view && !rightCollapsed) { setRightOpen(false); return; }
-    expandRight();
-    setRightView(view);
+    updateRight(seat => seat.view === view && seat.open ? { ...seat, open: false } : { open: true, view });
   }
 
   // ⌘B 收起/展开会话栏，⌘J 右侧栏；Ctrl 在终端输入区内直通给 shell。
@@ -269,9 +422,13 @@ export function Shell() {
         onToggleRight={toggleRight}
       />
       <div className="flex min-h-0 flex-1">
-        <LeftRail collapsed={leftCollapsed} onToggle={toggleLeft} view={leftView} onView={setLeftView} onSettings={() => { setPaletteOpen(false); setSettingsOpen(true); }}
-          /* 和 Sidebar 走同一条路：组件自己选中，切回终端由这里给。 */
-          inbox={<InboxButton onEnterTerminal={() => setMode("terminal")} />} />
+        <LeftRail collapsed={leftCollapsed} onToggle={toggleLeft} workbench={workbench} onWorkbench={setWorkbench}
+          onSettings={() => { setPaletteOpen(false); setSettingsOpen(true); }}
+          /*
+            收件箱里点一条是「去看那个终端」，所以要连模式一起切——不切的话，在对话
+            模式下点它只会把一个看不见的中栏状态改掉，看起来像点了没反应。
+          */
+          inbox={<InboxButton onEnterTerminal={() => { setWorkbench("terminal"); setMode("terminal"); }} />} />
         {/*
           **这一层是块级的，不是 flex——框要靠它才撑得满。**
 
@@ -303,31 +460,52 @@ export function Shell() {
           actions={actions}
           sidebar={
             /*
-              左栏两种内容。对话目录是默认的那个：点一行让中栏切到那条对话
-              （中栏的镜头本来就默认是对话），所以不需要再切一次视图。
+              左栏跟着模式走。对话模式是那份搬来的对话目录：点一行让中栏切到那条对话，
+              而中栏此刻装的就是对话正文，所以点完不用再切任何视图。
 
               **只有对话目录认识 56px 折叠轨**——它是照上游搬的，轨上是一列图标。
               工作区树还是我们自己那份，折叠时整块不画（宽度已经由框收到 56，再画
               一棵按 280px 排版的树只会被裁掉一半）。
             */
-            leftView === "conversations"
+            workbench === "conversation"
               ? <ConversationSidebar collapsed={leftCollapsed} width={geometry.sidebarPreference || SIDEBAR_DEFAULT}
-                  onToggle={toggleLeft} onEnterTerminal={() => setMode("terminal")} />
+                  /*
+                    **这里的「去终端」是空操作，而且只能是空操作。** 这个 prop 被两处共用：
+                    点一行（选中那条对话）和点「新建对话」。在对话模式下点一行本来就已经
+                    到位了——中栏就是对话正文——所以它不该再切走；而按模式切走的话，每点
+                    一行都会把人踢进终端模式。代价是「新建对话」那颗钮在这个模式下不动作
+                    （它本来也只是「去终端画布开一个」的别名，见 ConversationSidebar 里那段）。
+                    TODO: 要让那颗钮活过来，得给 ConversationSidebar 分出第二个 prop，
+                    而这一轮不动 features/conversations。
+                  */
+                  onToggle={toggleLeft} onEnterTerminal={() => {}} />
               : leftCollapsed ? null
               : <Sidebar scope={scope} onScope={setScope} onEnterTerminal={() => setMode("terminal")} />
           }
           main={
-            <TerminalPane
-              scope={scope}
-              mode={mode}
-              onMode={setMode}
-              lens={lens}
-              onLens={setLens}
-              leftCollapsed={leftCollapsed}
-              rightCollapsed={rightCollapsed}
-              onExpandLeft={() => { if (leftCollapsed) actions.toggleSidebar(); }}
-              onExpandRight={expandRight}
-            />
+            /*
+              中栏也跟着模式走，**而且是真的换掉、不是盖住**：终端引擎不在这棵 React 树上
+              （`features/terminal/session/terminalStage`），卸掉 `TerminalPane` 不会把正在跑的
+              终端弄没，它只是换了个落点——对话模式下那个落点在右栏。这和栏内那几层
+              （画布 / 对话视角盖在 TUI 上）不是一回事：那几层盖着是因为它们和终端共用一栏。
+            */
+            workbench === "conversation"
+              ? <ConversationColumn onJumpToTerminal={sessionId => {
+                  selectSession(sessionId);
+                  setWorkbench("terminal");
+                  setMode("terminal");
+                }} />
+              : <TerminalPane
+                  scope={scope}
+                  mode={mode}
+                  onMode={setMode}
+                  lens={lens}
+                  onLens={setLens}
+                  leftCollapsed={leftCollapsed}
+                  rightCollapsed={rightCollapsed}
+                  onExpandLeft={() => { if (leftCollapsed) actions.toggleSidebar(); }}
+                  onExpandRight={expandRight}
+                />
           }
           rightbar={
             /*
@@ -338,22 +516,24 @@ export function Shell() {
               open={rightOpen}
               mode={rightMode}
               onMode={setRightMode}
-              onCollapse={() => { setRightOpen(false); }}
+              onCollapse={() => { updateRight(seat => ({ ...seat, open: false })); }}
               actions={actions}
               viewportWidth={layout.viewportWidth}
               normalWidth={geometry.normal.rightbar}
               preference={geometry.rightbarPreference}
               view={rightView}
-              onChangeView={setRightView}
+              onChangeView={view => { updateRight(seat => ({ ...seat, view })); }}
               monitorTarget={monitorTarget}
             />
           }
         />
         </div>
-        <RightRail view={rightView} collapsed={rightCollapsed} onSelect={selectRight} />
+        {/* 终端那一档只在对话模式下有意义：终端模式下它已经占着中栏。 */}
+        <RightRail view={rightView} collapsed={rightCollapsed} withTerminal={workbench === "conversation"}
+          onSelect={selectRight} />
       </div>
       <StatusBar monitorVisible={rightView === 'server' && !rightCollapsed} onOpenMonitor={tab => { setMonitorTarget(previous => ({ tab, revision: previous.revision + 1 })); showRight('server'); }} />
-      {settingsOpen && <ErrorBoundary region={t.misc.shell.regionSettings}><Suspense fallback={null}><SettingsDialog onClose={() => setSettingsOpen(false)} onResetLayout={() => { actions.setSidebar(SIDEBAR_DEFAULT); actions.setRightbar(0); setRightOpen(false); setRightMode("push"); }} /></Suspense></ErrorBoundary>}
+      {settingsOpen && <ErrorBoundary region={t.misc.shell.regionSettings}><Suspense fallback={null}><SettingsDialog onClose={() => setSettingsOpen(false)} onResetLayout={() => { actions.setSidebar(SIDEBAR_DEFAULT); actions.setRightbar(0); setRightSeat(defaultRightSeat()); setRightMode("push"); }} /></Suspense></ErrorBoundary>}
       {paletteOpen && <ErrorBoundary region={t.misc.shell.regionPalette}><Suspense fallback={null}><CommandPalette open onClose={() => setPaletteOpen(false)} onShowView={showRight} /></Suspense></ErrorBoundary>}
       {/*
         弹窗之外的编辑器挂在这一层，而不是文件树里。
@@ -396,7 +576,7 @@ function RightbarSeat({
   normalWidth: number;
   preference: number;
   view: RightView;
-  onChangeView: (view: RightView) => void;
+  onChangeView: (view: RightPanelView) => void;
   monitorTarget: MonitorTarget;
 }) {
   /* 正常宽度的右栏在中栏 400px 旁边还留不留得住 300px。上游 `RightbarOwnerProps.canShow`
@@ -414,7 +594,17 @@ function RightbarSeat({
     内容等第一次打开——**而且此后不再摘掉**，收起再打开不用重新拉一遍目录树。
   */
   const [everOpened, setEverOpened] = useState(false);
-  useEffect(() => { if (open) setEverOpened(true); }, [open]);
+  /*
+    终端那一档不算「打开过面板」：它走的是下面那条独立的分支，一个懒加载的块都不碰。
+    不这么分的话，对话模式一进来（右栏默认开着、装的是终端）就会把 FilesView / NotesView /
+    ServerMonitorView 三个 chunk 拉回首屏——正是把首屏从 770 压到 516 KB 的那一笔。
+  */
+  const showsPanel = view !== "terminal";
+  useEffect(() => { if (open && showsPanel) setEverOpened(true); }, [open, showsPanel]);
+
+  /* 三档呈现那排控制钮两条分支共用同一个节点——写两份必然漂移。 */
+  const chrome = <RightbarChrome mode={mode} autoFullscreen={viewportWidth < RIGHTBAR_AUTO_FULLSCREEN}
+    onMode={onMode} onCollapse={onCollapse} />;
 
   const report = useCallback((next: RightbarPresentation) => {
     // 约定同上游 index.ts 139-141 行。
@@ -436,14 +626,46 @@ function RightbarSeat({
       className={presentation.mode === "float" ? "shadow-modal" : undefined}
     >
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-bg-panel">
-        {everOpened && (
-          <ErrorBoundary region={t.misc.shell.regionLibraryFiles} key={view}>
-            <RightPanel view={view} onChangeView={onChangeView} visible={open} monitorTarget={monitorTarget}
-              chrome={<RightbarChrome mode={mode} autoFullscreen={viewportWidth < RIGHTBAR_AUTO_FULLSCREEN}
-                onMode={onMode} onCollapse={onCollapse} />} />
-          </ErrorBoundary>
-        )}
+        {view === "terminal"
+          ? <ErrorBoundary region={t.terminal.pane.title}><RightTerminal chrome={chrome} /></ErrorBoundary>
+          : everOpened && (
+            <ErrorBoundary region={t.misc.shell.regionLibraryFiles} key={view}>
+              <RightPanel view={view} onChangeView={onChangeView} visible={open} monitorTarget={monitorTarget}
+                chrome={chrome} />
+            </ErrorBoundary>
+          )}
       </div>
     </RightbarPanel>
+  );
+}
+
+/**
+ * 对话模式下右栏那块终端。
+ *
+ * **它和中栏的 `TerminalPane` 是同一个终端的两个落点**，不是两份：引擎住在
+ * `features/terminal/session/terminalStage`，`TerminalSurface` 只是一个落点（见那个文件的
+ * 注释）。所以切模式不会重建 xterm，滚动缓冲和 PTY 连接都留着。
+ *
+ * 这里只决定**此刻看哪个终端**：选中的那个，没有就退回第一个开着的——判据和 `TerminalPane`
+ * 里那行逐字相同，两处必须一致，否则切模式时前台会跳到另一个终端上。
+ */
+function RightTerminal({ chrome }: { chrome: ReactNode }) {
+  const { sessions, selectedId } = useWorkspace("sessions", "selectedId");
+  const openSessions = sessions.filter(s => !s.closed);
+  const session = openSessions.find(s => s.id === selectedId) ?? openSessions[0] ?? null;
+  return (
+    <section className="flex h-full min-h-0 flex-col bg-bg-panel">
+      {/*
+        用 36px 的 `PanelHeader` 而不是中栏那个 76px 的 `ColumnHeader`：这是右栏，
+        和文件树、监控共用一条头的高度（`ColumnHeader` 的 76 = 右栏标签条 38 + 窗格头 38，
+        两条规则在栏边接得上，见那个文件的注释）。换成 76 会让右栏的头比左右邻居都高一截。
+      */}
+      <PanelHeader title={session ? sessionTitle(session) : t.misc.rightRail.titles.terminal}
+        sub={session?.cwd} actions={chrome} />
+      {/* TermView 是 `absolute inset-0`，所以落点必须自己是定位上下文。 */}
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-bg">
+        <TerminalSurface sessionId={session?.id ?? null} />
+      </div>
+    </section>
   );
 }

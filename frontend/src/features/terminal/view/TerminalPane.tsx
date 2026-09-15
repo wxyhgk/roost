@@ -1,13 +1,12 @@
 import { IconChevron, IconDownload, IconSearch } from "../../../shared/icons";
 import { downloadTerminalLog } from "../exportLog";
 import { useTerminalHandle } from "../useTerminalHandle";
-import { TermView } from "./TermView";
+import { TerminalSurface } from "./TerminalSurface";
 import { ConversationLens } from "./TerminalLens";
 import { useTerminalConversation } from "../../conversations/useTerminalConversation";
 import { SessionCanvas } from "./SessionCanvas";
 import { TerminalSearchBar, useTerminalSearch } from "./TerminalSearch";
 import type { Lens, Mode, Scope } from "../../../shared/view";
-import { Empty } from "../../../shared/ui/Empty";
 import { IconButton } from "../../../shared/ui/IconButton";
 /*
   **中栏只有一个头。** 三个视角（画布 / TUI / 对话）用的是同一个组件、同一条 76px
@@ -45,13 +44,13 @@ export function TerminalPane({
   onExpandLeft: () => void;
   onExpandRight: () => void;
 }) {
-  const { sessions, selectedId, patchCwd, patchCli, selectSession, addSession, pinnedSessionIds, selectedConversationId } =
-    useWorkspace("sessions", "selectedId", "patchCwd", "patchCli", "selectSession", "addSession", "pinnedSessionIds",
+  const { sessions, selectedId, selectSession, addSession, pinnedSessionIds, selectedConversationId } =
+    useWorkspace("sessions", "selectedId", "selectSession", "addSession", "pinnedSessionIds",
       "selectedConversationId");
   /*
-    **所有**打开的会话都要挂 TermView，不能按工作区筛。切换工作区只是换个看法，
-    不该把别处正在跑的终端卸掉——那会丢掉它的滚动缓冲，回来还要重放一遍。
-    筛的只有画布上的卡片。
+    这里的「打开着的会话」只用来挑出「点进去的是哪一个」、画布上列哪几张卡、以及一个都
+    没有时强制回画布。**挂哪些终端不归这里管**，归 `TerminalSurface`——它照样是全部挂着、
+    不按工作区筛（切工作区只是换个看法，不该把别处正在跑的终端卸掉）。
   */
   const openSessions = sessions.filter((s) => !s.closed);
   const session = openSessions.find((s) => s.id === selectedId) ?? openSessions[0] ?? null;
@@ -166,32 +165,15 @@ export function TerminalPane({
       {/* 查找条跟着它的头走：对话视角下那个头不在，这条也不该冒出来。 */}
       {mode === "terminal" && search.open && session && !showGui && <TerminalSearchBar search={search} />}
       <div className="relative flex flex-1 flex-col overflow-hidden bg-bg shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-        {openSessions.length === 0 ? (
-          <div className="m-auto">
-            <Empty title={t.terminal.pane.emptyTitle} hint={t.terminal.pane.emptyHint} />
-          </div>
-        ) : (
-          openSessions.map((item) => (
-            <TermView
-              key={item.id}
-              sessionId={item.id}
-              /*
-                active 的含义是「此刻是不是前台」，所以画布和对话视图盖上来时
-                一个终端都不是前台。这样每次回到终端都会走一遍 setActive(true)——
-                重新申请 WebGL、按当前尺寸重算、整屏重绘、接回键盘焦点；被盖住
-                期间的那一帧才不会留在画布上变成撕裂。反过来 setActive(false)
-                会交出键盘，按键就不会再漏进底下的 PTY。
-                这只影响前台身份，**不影响连接**：后台终端照常收输出。
-              */
-              active={mode === "terminal" && !showGui && item.id === session?.id}
-              onCwd={(cwd) => patchCwd(item.id, cwd)}
-              onCli={(cli, cliId) => patchCli(item.id, cli, cliId)}
-            />
-          ))
-        )}
         {/*
-          GUI 盖在终端之上，**不卸载终端**：xterm 的滚动缓冲、渲染器和 PTY 连接
-          都在 TermView 里，卸载重挂等于把整屏内容丢掉。
+          终端画面整块交给 `TerminalSurface`：它是一个能换落点的落点（对话模式下同一个
+          终端出现在右栏），所以「挂哪些会话、谁是前台、空态长什么样」都归它，这里只说
+          **此刻中栏要看哪个终端**。画布和对话视角盖上来时一个终端都不是前台，传 null。
+        */}
+        <TerminalSurface sessionId={mode === "terminal" && !showGui ? session?.id ?? null : null} />
+        {/*
+          GUI 盖在终端之上，**不卸载终端**：传 null 只是把前台身份收走，终端还挂着。
+          （即便真卸了，引擎也活在 terminalStage 上——但盖着比卸掉少一次重新 fit。）
         */}
         {showGui && session && (
           <div className="absolute inset-0 z-[5] flex flex-col bg-bg-panel">
@@ -203,8 +185,7 @@ export function TerminalPane({
           </div>
         )}
         {/*
-          画布盖在终端之上而不是替换它，理由和 GUI 那层一样：卸载 TermView 会把
-          xterm 的滚动缓冲一起丢掉，回来要重放一遍。卡片本身不建终端，盖着不花钱。
+          画布盖在终端之上而不是替换它，理由和 GUI 那层一样。卡片本身不建终端，盖着不花钱。
         */}
         {mode === "canvas" && (
           <div className="absolute inset-0 z-[6] flex flex-col bg-bg-panel">

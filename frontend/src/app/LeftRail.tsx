@@ -7,22 +7,27 @@ import { Suspense, lazy, useState, type ReactNode } from "react";
   ConversationDetail，只要这条链还在，那边的 lazy() 就不起作用。见 TerminalLens.tsx。
 */
 const BookmarksDialog = lazy(() => import("../features/bookmarks/BookmarksDialog").then(m => ({ default: m.BookmarksDialog })));
-import type { LeftView } from "../shared/view";
+import type { Workbench } from "../shared/view";
 import { t } from "@roost/i18n";
 
 export function LeftRail({
   collapsed,
   onToggle,
-  view,
-  onView,
+  workbench,
+  onWorkbench,
   onSettings,
   inbox,
 }: {
   collapsed: boolean;
   onToggle: () => void;
-  /** 左栏列的是对话还是工作区。两颗按钮各自负责一种，点当前那颗等于收起。 */
-  view: LeftView;
-  onView: (view: LeftView) => void;
+  /**
+   * 顶层模式。两颗按钮各自负责一种，**点当前那颗等于收起左栏**。
+   *
+   * 它切的是整套三栏（见 `shared/view.ts` 的 `Workbench`），不再只是左栏的内容；
+   * 收起左栏之后这两颗仍然亮着当前模式，因为模式和左栏开没开是两件事。
+   */
+  workbench: Workbench;
+  onWorkbench: (workbench: Workbench) => void;
   onSettings: () => void;
   /** 「有几个会话在等你」那个角标。一个都没有时它自己不渲染，所以这里不必判空。 */
   inbox?: ReactNode;
@@ -34,14 +39,17 @@ export function LeftRail({
       aria-label={t.misc.leftRail.view}
     >
       {/*
-        两颗按钮，两种左栏内容。**点当前这颗等于收起左栏**——和原来那颗单独的开关是
+        两颗按钮，两种模式。**点当前这颗等于收起左栏**——和原来那颗单独的开关是
         同一个手势，只是现在有两个目的地。收着的时候点任意一颗都是「展开并切到它」。
+
+        `aria-pressed` 跟的是「左栏展开着并且停在这一档」，不是「模式是不是这一档」：
+        收起状态下两颗都不高亮，否则轨上会有一颗按钮亮着、旁边却什么都没有。
       */}
       {([
-        ["conversations", ChatBubbleLeftRightIcon, t.misc.leftRail.conversations, t.misc.leftRail.conversationsTitle],
-        ["workspaces", CommandLineIcon, t.misc.leftRail.sessions, t.misc.leftRail.workspacesTitle],
+        ["conversation", ChatBubbleLeftRightIcon, t.misc.leftRail.conversations, t.misc.leftRail.conversationsTitle],
+        ["terminal", CommandLineIcon, t.misc.leftRail.terminal, t.misc.leftRail.terminalTitle],
       ] as const).map(([value, Icon, label, title]) => {
-        const active = !collapsed && view === value;
+        const active = !collapsed && workbench === value;
         return (
           <button
             key={value}
@@ -53,7 +61,7 @@ export function LeftRail({
             aria-label={label}
             aria-pressed={active}
             aria-expanded={active}
-            onClick={() => { if (active) { onToggle(); return; } onView(value); if (collapsed) onToggle(); }}
+            onClick={() => { if (active) { onToggle(); return; } onWorkbench(value); if (collapsed) onToggle(); }}
           >
             <Icon className="size-5" />
           </button>

@@ -135,3 +135,50 @@ test('性质：整个宽度区间上，只要右栏还有轨道，中栏就不�
     }
   }
 })
+
+import { initLayout } from '../src/vendor/dsh/layout/layout-state.ts';
+
+/*
+  **窄窗口不许改掉存下来的右栏偏好。**
+
+  这里曾经按当前视口夹上界。后果是：在一个窄窗口里打开一次页面，存的 648 被夹成 300，
+  而持久化那一侧跟着把 300 写回去——再拉回宽屏，右栏永远停在 300。一次临时的窗口大小
+  把偏好抹掉了。上界该由渲染时的 computeColumns 按当前视口夹，那是它的活。
+*/
+test('a narrow viewport must not shrink the stored rightbar preference', () => {
+  const stored = { sidebar: 280, rightbar: 648 };
+  assert.equal(initLayout(stored, 400).rightbar, 648, '窄窗口只是当下画不下，不该改掉偏好');
+  assert.equal(initLayout(stored, 1920).rightbar, 648);
+  // 下界仍然守着：比自己下限还窄的值是旧版本或手改留下的。
+  assert.equal(initLayout({ sidebar: 280, rightbar: 120 }, 1920).rightbar, RIGHTBAR_MIN);
+  // 不是有限数就当没存过。
+  assert.equal(initLayout({ sidebar: 280, rightbar: Number.NaN }, 1920).rightbar, null);
+});
+
+/*
+  **对话模式下终端那一栏的默认宽度，是按契约算的，不是拍一个比例。**
+
+  上游的 `RIGHTBAR_DEFAULT_RATIO = 0.45` 对我们不成立：它那条栏装的是文件树这类看一眼就走
+  的东西，我们这一栏装终端，而中栏是被定为主角的对话。实测 0.45 在 1440 上给对话只剩
+  468px（代码块折行、表格压扁），终端拿走 612。
+
+  改成「先给对话喂满内容轴下限 680，剩下的全给终端」。放不下 RIGHTBAR_MIN 就该默认收起。
+*/
+test('the terminal seat takes what is left after the conversation gets its content axis', () => {
+  const RAILS = 80, CONTENT_MIN = 680;
+  const width = (viewport: number) => viewport - RAILS - SIDEBAR_DEFAULT - CONTENT_MIN;
+
+  // 1280：算出来 240 < 300，两者不可兼得 → 默认收起，对话独占。
+  assert.ok(width(1280) < RIGHTBAR_MIN, `1280 只剩 ${width(1280)}，放不下`);
+  // 1340 是那个分界：正好 300。
+  assert.equal(width(1340), RIGHTBAR_MIN);
+  // 1440：终端 400px（13px 等宽约 46 列），而对话拿满 680。
+  assert.equal(width(1440), 400);
+  const roomy = computeColumns(1440 - RAILS, SIDEBAR_DEFAULT, width(1440));
+  assert.equal(roomy.center, CONTENT_MIN, '对话该正好拿到内容轴下限');
+  assert.equal(roomy.rightbar, 400);
+
+  // 反证上游那个比例为什么不能用：同样 1440，中栏掉到 468。
+  const byRatio = computeColumns(1440 - RAILS, SIDEBAR_DEFAULT, (1440 - RAILS) * 0.45);
+  assert.ok(byRatio.center < CONTENT_MIN, `0.45 会让中栏掉到 ${byRatio.center}`);
+});

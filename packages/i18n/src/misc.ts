@@ -129,6 +129,8 @@ export const misc = {
     search: "搜索标题或正文…",
     clearSearch: "清除搜索",
     empty: "还没有已保存的对话",
+    /** 对话模式下中栏没有选中对话时的那一句。 */
+    columnEmpty: "在左栏选一条对话；还没有的话，去终端里和 AI 说一句",
     emptyHint: "在终端里用 AI 聊过之后，对话会自动出现在这里，终端关掉也不会消失。",
     noMatch: "没有匹配的对话",
     noMatchHint: "换个关键词试试。搜索会同时找标题和正文。",
@@ -457,8 +459,10 @@ export const misc = {
     collapseSessions: "收起工作区栏",
     sessions: "工作区",
     conversations: "对话",
-    conversationsTitle: "跨终端的对话目录",
-    workspacesTitle: "工作区与终端",
+    /* 两颗按钮切的是整套三栏，不只是左栏，所以副标题要把另外两栏也说出来。 */
+    conversationsTitle: "对话：目录 · 正文 · 终端",
+    terminal: "终端",
+    terminalTitle: "终端：工作区 · 终端画面 · 文件",
     catalog: "历史对话",
     catalogTitle: "翻看历史对话",
     settings: "设置",
@@ -470,6 +474,8 @@ export const misc = {
       files: "文件",
       notes: "笔记",
       snippets: "代码片段",
+      /** 只在对话模式下出现：那时终端住在右栏。 */
+      terminal: "终端",
     },
     view: "右侧视图",
   },

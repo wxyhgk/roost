@@ -188,9 +188,22 @@ export function initLayout(persisted: PersistedLayout | null, viewportWidth: num
   const sidebar = persisted !== null && Number.isFinite(persisted.sidebar)
     ? (persisted.sidebar === 0 ? 0 : clampWidth(persisted.sidebar, SIDEBAR_MIN, SIDEBAR_MAX))
     : SIDEBAR_DEFAULT
+  /*
+    **右栏的偏好不按当前视口夹上界。**
+
+    曾经这里是 `clampWidth(stored, RIGHTBAR_MIN, viewport * RIGHTBAR_MAX_RATIO)`。后果是：
+    在一个窄窗口里打开一次页面，存下来的 648 会被夹成 300，而持久化那一侧**跟着把 300
+    写回去**——再拉回宽屏，右栏就永远停在 300 了。一次临时的窗口大小把用户的偏好抹掉，
+    这不是夹逼，是数据损坏。
+
+    上界交给渲染时的 `computeColumns`（`resolveFrame` 每帧都会按当前视口夹一遍），
+    那本来就是它的活。这里只做**存储层该做的校验**：不是有限数就当没存过，
+    下界仍然守住 `RIGHTBAR_MIN`——比它还小的值是旧版本或手改留下的，喂进去会画出一条
+    比自己下限还窄的栏。
+  */
   const stored = persisted?.rightbar
   const rightbar = typeof stored === 'number' && Number.isFinite(stored)
-    ? clampWidth(stored, RIGHTBAR_MIN, Math.max(RIGHTBAR_MIN, viewportWidth * RIGHTBAR_MAX_RATIO))
+    ? Math.max(RIGHTBAR_MIN, stored)
     : null
   return {
     sidebar,
