@@ -8,6 +8,10 @@
   分出来不是洁癖：我们自己的 `shared/code-highlight.ts` 是懒加载 shiki 的，首屏体积上量过。
   要代码高亮的地方**显式从这里拿**，并且自己决定要不要 lazy——别让一个不相干的积木替它做主。
 
+  **WebBlock 也在这里**：它自己不碰 shiki，但它用 MarkdownText 画搜索结果正文，而完整的
+  markdown 树里 `render.tsx → CodeBlock → markdown/highlight.ts` 是静态引用。也就是说
+  「谁 import 谁」的隔离只要有一次间接引用就破——搬进完整渲染器那天，桶又被接回去了。
+
   这个文件不是抄来的，是我们为了隔离副作用而拆的。
 */
 import './tokens.css'
@@ -16,3 +20,7 @@ export { ReadBlock, DEFAULT_READ_MAX_LINES } from './ReadBlock.tsx'
 export type { ReadBlockProps, ReadBlockLine, ReadBlockLabels } from './ReadBlock.tsx'
 export { CodeBlock } from './markdown/CodeBlock.tsx'
 export type { CodeBlockProps } from './markdown/CodeBlock.tsx'
+export { WebBlock } from './WebBlock.tsx'
+export type {
+  WebBlockProps, WebSearchBlockProps, WebFetchBlockProps, WebSourceView, WebBlockLabels,
+} from './WebBlock.tsx'

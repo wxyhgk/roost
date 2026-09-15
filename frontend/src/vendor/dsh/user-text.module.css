@@ -1,0 +1,55 @@
+/*
+  逐字取自 deepseek-harness（MIT，`packages/client/ui-primitives/src/user-text.module.css`，
+  提交 0d1f500）。ROOST-CHANGE 只有一处，标在原位：`.refIcon` 加了一行 `display: inline`。
+*/
+/* Inline projection of sent user text: plain runs and reference chips flow in
+   the consumer's own line box (bubble or queue row); nothing here is block.
+   White-space policy stays with the consumer: the bubble wraps with pre-wrap,
+   the queue preview keeps its single nowrap/ellipsis line. */
+
+.plainRun {
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.refChip {
+  /* Plain inline, NOT inline-flex: a flex container takes its baseline from
+     its first flex item — the icon svg, which has no text baseline — so the
+     chip's label rode ~3px above the surrounding text in both surfaces. An
+     inline chip shares the consumer's baseline by construction. */
+  display: inline;
+  margin: 0 2px;
+  color: var(--dsw-alias-state-business-primary);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* Skill and command tokens read as code: the theme's code family at the
+   consumer's own size and line height, so the chip sits on the bubble line
+   like the plain runs around it. `@` chips keep the body face — a file or
+   session name is a label, not code. */
+.slashChip {
+  font-family: var(--dsw-font-markdown-code-font-family);
+}
+
+/* Inline reference glyphs (always ReferenceIcon svgs) ride the consumer's own
+   font: 1em keeps the glyph at the text's size in the bubble (14px + user
+   setting), the queue preview's fixed 13px line, and any future consumer — a
+   px+delta size followed only the bubble axis and left the glyph oversized in
+   the queue row. */
+.refIcon {
+  /* ROOST-CHANGE：上游没有这一行，靠的是 svg 的 UA 默认值 inline。我们的 index.css 第一行
+     是 `@import "tailwindcss"`，而 Tailwind 的 preflight 里有
+     `img, svg, video, canvas, ... { display: block }`——于是这枚字形会自己占一行，把
+     `@文件` 芯片拆成「图标一行、文字一行」。**实测**：不写这一行，气泡里
+     `照 @[昨天那次排查](dsh-session:…) 的结论改` 画出来是三行。
+     写 inline 而不是 inline-block，是因为下面那条 vertical-align 的光学对齐是按基线算的。 */
+  display: inline;
+  width: 1em;
+  height: 1em;
+  margin-right: 4px;
+  /* Optical centering against the text: drops the glyph below the baseline by
+     a font-relative amount, so it holds across the font axis. */
+  vertical-align: -0.125em;
+}
+

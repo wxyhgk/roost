@@ -177,6 +177,8 @@ export const misc = {
       copied: "Copied",
       branch: "Branch from here",
       branchUnavailable: "Cannot branch here",
+      /** markdown 里脚注那一节的标题。 */
+      footnotes: "Footnotes",
       /** 非当天的消息才显示日期：同年只给月日，跨年才给年份。 */
       clockMd: (m: number, d: number) => `${m}/${d}`,
       clockYmd: (y: number, m: number, d: number) => `${y}/${m}/${d}`,

@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { buildItems, groupMessages, MIN_GROUPED_TOOLS, type Item, type TurnDiff } from "./parts";
-import { renderMarkdown, useCodeHighlight } from "../../shared/markdown";
 import { afterGesture, afterScroll, initialFollowIntent, isViewportScrollKey } from "../../shared/followBottom";
-import { useTheme } from "../../shared/theme";
 import {
   connectConversationStream, fetchMessage, fetchMessages, fetchRuns, fetchSnapshot, locateRuntime,
   type Conversation, type ConversationRun, type SnapshotRun,
@@ -12,6 +10,8 @@ import { IconChevron } from "../../shared/icons";
 import { ReasoningRow } from "../../vendor/dsh";
 import { MessageIconActions } from "../../vendor/dsh/chat/MessageIconActions";
 import { CompactionItem } from "../../vendor/dsh/chat/CompactionItem";
+import { ChatView, ChatFlowItem } from "../../vendor/dsh/chat/ChatView";
+import { MarkdownText } from "../../vendor/dsh/markdown/MarkdownText";
 import { TurnProcessNodeView } from "../../vendor/dsh/chat/TurnProcessNodeView";
 import { useSearchableHidden } from "../../vendor/dsh/chat/searchable-hidden";
 import { ToolView } from "./tools/registry";
@@ -183,7 +183,11 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
 
       <ConversationMeta conversation={conversation} onChanged={setConversation} />
 
-      <div ref={listHost} className="min-h-0 flex-1 overflow-auto">
+      {/*
+        `data-conversation-scroll` 是 ChatView 的逃生口：祖先上有它，ChatView 自己那层
+        滚动就退成普通盒子。我们的滚动、跟随底部、加载更早全挂在这个 div 上，不能让它抢。
+      */}
+      <div ref={listHost} data-conversation-scroll className="min-h-0 flex-1 overflow-auto">
         {loading && <div className="px-2.5 py-2 text-caption text-text-dim">{t.misc.conversations.detail.loading}</div>}
         {error && <div role="alert" className="px-2.5 py-2 text-caption text-danger">{error}</div>}
         {!loading && !error && history.items.length === 0 && <Empty title={t.misc.conversations.detail.noMessages} />}
@@ -194,20 +198,30 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
           </button>
         )}
         {/*
-          消息列**居中封顶**，滚动条仍然满铺——照 deepseek-harness 的 `.column`
-          （`max-width` + `margin: 0 auto`）。满宽的长行在宽屏上读起来费劲，而对话里
-          助手的段落是最长的那种文本。间距从 10px 提到 16px，也是跟着它们的节奏。
+          消息列整个交给 deepseek-harness 的 ChatView（vendor/dsh/chat/ChatView）：列宽
+          `clamp(680px, 面板宽 × 0.64, 920px)`、居中、16px 的流式节奏、以及
+          **隐藏条目不贡献间距**——那一条和我们用 `hidden="until-found"` 折叠工具组是配套的，
+          自己写 gap 做不到（gap 对 height:0 的元素照样生效，会留下双倍空隙）。
+
+          还有一条自己写不出来的：折叠着的回合过程和它的答复之间是 8px 而不是 16px
+          （`data-turn-process-answer`），展开后自动变回 16px——收起时它们读起来是一件事。
         */}
-        <ul className="mx-auto flex w-full max-w-[52rem] flex-col gap-4 px-3 py-2">
-          {items.map((item, i) => <TranscriptItem key={item.key} item={item} showRole={showRole[i]} />)}
+        <ChatView>
+          {items.map((item, i) => (
+            <ChatFlowItem key={item.key} flowKey={item.key} kind={item.kind}>
+              <TranscriptItem item={item} showRole={showRole[i]} />
+            </ChatFlowItem>
+          ))}
           {/* 待发的消息就在流的末尾——它会进 TUI、再从 transcript 回来，本来就属于这里。 */}
           {outgoing.pending.map(item => (
-            <li key={item.message.id} className="flex flex-col items-end gap-1">
-              <PendingMessage readOnly={readOnly} detail={item} onCancel={outgoing.cancel} onRetry={() => void outgoing.submit()}
-                onJump={jumpTarget ? () => onJumpToTerminal?.(jumpTarget) : undefined} />
-            </li>
+            <ChatFlowItem key={item.message.id} flowKey={item.message.id} kind="user">
+              <div className="flex flex-col items-end gap-1">
+                <PendingMessage readOnly={readOnly} detail={item} onCancel={outgoing.cancel} onRetry={() => void outgoing.submit()}
+                  onJump={jumpTarget ? () => onJumpToTerminal?.(jumpTarget) : undefined} />
+              </div>
+            </ChatFlowItem>
           ))}
-        </ul>
+        </ChatView>
       </div>
 
       {/* 没有在跑的终端时不给输入框：投递不出去，摆一个能打字的框只会让人白写一段。 */}
@@ -295,20 +309,45 @@ export function ConversationRuns({ conversationId }: { conversationId: string })
   AI 的回复按 Markdown 渲染，**用户自己发的那条不渲染**——那是他敲进去的原文，
   重新排版等于把他写的东西改了样子。工具输出同理：那是程序的输出，不是文档。
 */
+/*
+  正文的 markdown 渲染换成 deepseek-harness 那棵树（vendor/dsh/markdown/MarkdownText）。
+
+  原来是 markdown-it 渲染成 HTML 串 + `dangerouslySetInnerHTML` + 事后补代码高亮；现在是
+  mdast 直接渲染成 React 节点，代码块由内部的 CodeBlock 自己上色。观感上的差别主要在排版
+  尺度（标题、列表、表格、行内代码的字号和间距都成套），那正是「看起来像不像」的大头。
+
+  **`streaming` 不传。** 我们只读历史，正文到达时已完整；流式那条路会走增量解析器，而且
+  上游明说它在 settle 之前 `$$` 块当段落、文件提及不生效。
+
+  **KaTeX 是按需加载的**：第一条公式出现时才取那个 chunk（引擎 + 样式表 83.6 KB gz），
+  期间显示 TeX 原文。对调用方完全透明。
+
+  `shared/markdown.ts` 和 markdown-it **不能删**：文件预览那个插件还在用
+  （`src/plugins/markdown/markdown.tsx`）。
+
+  丢掉的一样东西：原来那个 try/catch 兜底（渲染失败退回纯文本）。MarkdownText 是渲染期
+  调用，catch 不住；micromark 对任意字符串是全函数、不会抛，所以风险很低。
+*/
+const MARKDOWN_LABELS = {
+  code: { copyLabel: t.misc.conversations.detail.copy, copiedLabel: t.misc.conversations.detail.copied },
+  footnotes: t.misc.conversations.detail.footnotes,
+};
+
 function Prose({ value }: { value: string }) {
-  const { theme } = useTheme();
-  const host = useRef<HTMLDivElement>(null);
-  const html = useMemo(() => { try { return renderMarkdown(value); } catch { return null; } }, [value]);
-  useCodeHighlight(host, html ?? "", theme);
-  // 渲染失败就退回纯文本：宁可样子朴素，也不能把内容吞掉。
-  if (html === null) return <div className="whitespace-pre-wrap break-words">{value}</div>;
-  return <div ref={host} className="md-body" dangerouslySetInnerHTML={{ __html: html }} />;
+  return <MarkdownText text={value} labels={MARKDOWN_LABELS} />;
 }
 
 function TextBlock({ text: value, mine, role }: { text: string; mine: boolean; role: string }) {
   const [expanded, setExpanded] = useState(false);
-  const collapsible = !mine && isLongReply(value);
   const prose = !mine && role !== "tool";
+  /*
+    **markdown 正文不折叠**——`line-clamp-4` 只留给工具那种纯文本。
+
+    这条折叠是纯文本时代的设计：>4 行或 >240 字就掐成四行。正文改成结构化渲染之后它反而
+    有害——掐掉的恰恰是表格、代码块、列表这些**最有信息的部分**，只留下开头两行散文。
+    deepseek-harness 的助手回复根本不折叠，长回合靠「回合过程折叠」解决，不靠掐答复。
+  */
+  const collapsible = !mine && !prose && isLongReply(value);
   /*
     **气泡只给用户消息，助手的不套框。**
 
@@ -466,31 +505,31 @@ function TurnDiffItem({ diff }: { diff: TurnDiff }) {
 
 /* 一个回合从用户说话开始；边界靠上方的留白和一条细线，而不是给每条消息加框。 */
 function TranscriptItem({ item, showRole }: { item: Item; showRole: boolean }) {
-  if (item.kind === "diff") return <li className="flex flex-col items-start"><TurnDiffItem diff={item.diff} /></li>;
+  if (item.kind === "diff") return <div className="flex flex-col items-start"><TurnDiffItem diff={item.diff} /></div>;
   /*
     压缩标记行换成 deepseek-harness 的（vendor/dsh/chat/CompactionItem）。
     **`renderSummary` 是我们加的**：它默认用纯文本替身画正文，而压缩摘要是一万多字的
     markdown，丢掉渲染是实打实的退步——所以塞我们自己的 Prose 进去。
   */
   if (item.kind === "compaction") return (
-    <li className="flex flex-col items-stretch">
+    <div className="flex flex-col items-stretch">
       <CompactionItem summary={item.text} renderSummary={value => <Prose value={value} />}
         title={t.misc.conversations.detail.compacted} detail={t.misc.conversations.detail.compactedDetail} />
-    </li>
+    </div>
   );
   /*
     思考单独成一条折叠行，不和正文混在一起——它是过程不是结论。收起时只显示第一行，
     组件抄自 deepseek-harness（见 vendor/dsh/ReasoningRow.tsx）。
   */
   if (item.kind === "thinking") return (
-    <li className="flex flex-col items-stretch">
+    <div className="flex flex-col items-stretch">
       <ReasoningRow text={item.text} running={false}
         labels={{ think: t.misc.conversations.detail.thinking, running: t.misc.conversations.detail.thinkingRunning }} />
-    </li>
+    </div>
   );
   const mine = item.role === "user";
   return (
-    <li className={`flex flex-col gap-1 ${item.turnStart ? "mt-3 border-t border-border/40 pt-3" : ""} ${
+    <div className={`flex flex-col gap-1 ${item.turnStart ? "mt-3 border-t border-border/40 pt-3" : ""} ${
       mine ? "items-end" : "items-start"}`}>
       <div className="flex items-center gap-2 text-caption text-text-dim">
         {/*
@@ -517,6 +556,6 @@ function TranscriptItem({ item, showRole }: { item: Item; showRole: boolean }) {
         <MessageIconActions text={item.text} time={item.message.event.createdAt}
           clock={mine ? "start" : "end"} labels={ACTION_LABELS} />
       )}
-    </li>
+    </div>
   );
 }

@@ -189,3 +189,132 @@ html[data-theme="light"] {
      --dsw-font-markdown-code-block 是同一手法，只是行高矮一档。 */
   --dsw-font-markdown-code-block-small: 11px/16px var(--font-mono);
 }
+
+/*
+  ---- chat/ChatView + chat/AssistantMarkdown 追加的一批 ------------------
+  对话容器（居中封顶的消息列、流式间距、回到底部按钮、回合状态行）用到、上面几张表里
+  没有的。同样单独一块。
+*/
+:root {
+  /*
+    **消息列的宽度。** 上游由他们的 ConversationRoot 发布，这里逐字接过来那个表达式：
+    `clamp(680px, 列宽 × 0.64, 920px)`——下限 680px（比 figma 的 748px 低一档，因为满宽
+    阅读在各种屏幕上都显宽），更宽的容器取 64%，920px 封顶保证行长可读（约 113 字符）。
+
+    **必须有默认值，这不是可选项。** `.column` 的 `max-width` 和 `.toBottomSlot` 的
+    `padding-right: max(0px, calc((100% - 本变量) / 2))` 都直接吃它，而 calc() 里碰上
+    未定义变量是**整条属性作废**——那样列会摊满全宽，也就是这一路搬运要解决的问题本身。
+
+    两个自适应入口，都不用改 module.css：
+    - `--dsh-conversation-column-width`：容器的实测宽度（上游用 ResizeObserver 发布；
+      没有它时兜底 0px，clamp 落到 680px 下限）。
+    - `--dsh-chat-user-width`：读者拖出来的宽度偏好，整体替换掉自适应项。
+  */
+  --dsh-chat-content-width: var(
+    --dsh-chat-user-width,
+    clamp(680px, calc(var(--dsh-conversation-column-width, 0px) * 0.64), 920px)
+  );
+
+  /*
+    列里相邻两条之间的间距。规则本身写的是 `var(--dsh-chat-flow-gap, 16px)`，已经自带
+    兜底，这里再写一次是为了**给它一个能改的地方**——想整体松一档就覆盖这一行，而不是
+    去动逐字抄来的 module.css。折叠过程的答复那一条（`[data-turn-process-answer]`）会在
+    自己身上把它压到 8px，那是继承覆盖，不受这里影响。
+  */
+  --dsh-chat-flow-gap: 16px;
+
+  /* 回合状态行（「思考中…」那条流光）的字体。上游原值 `500 14px/22px`，14px 与我们的
+     --text-body 相差一档但这一行本来就比正文重，所以只换字族。 */
+  --dsw-font-s-strong-14: 500 14px/22px var(--dsw-font-family);
+
+  /* 流光的亮色端。上游 deepseek-200 是浅蓝，和上面已经留着的 deepseek-500 是同一支色阶，
+     所以照抄原值——不是猜的。 */
+  --dsw-static-deepseek-200: rgb(211, 226, 255);
+
+  /*
+    **[猜]** 中间那档发丝线（上游浅色 12% 黑、深色 16% 白），只用在「回到底部」那颗圆钮的
+    描边上。上面 l1/l2/l4 是按上游 4%/10%/16% 兑成 --color-border 的 35%/70%/100%，
+    12% 落在 l2 和 l4 之间，按同一条线取 85%。
+  */
+  --dsw-alias-border-l3: color-mix(in srgb, var(--color-border) 85%, transparent);
+
+  /*
+    **[猜]** 浮起来的圆钮的底色和 hover 底色。上游浅色是纯白 / 极浅灰，深色是
+    bluish-850 / bluish-800——也就是「比页面底色亮一档的面板色，hover 再亮一档」。
+    我们的 --color-bg-panel / --color-bg-hover 正好是这两个位置，深浅主题都自动跟着走。
+    要紧的是它**不能透明**：这颗钮浮在滚动的正文上面，透出底下的字就没法看了。
+  */
+  --dsw-alias-button-floating-fill: var(--color-bg-panel);
+  --dsw-alias-button-floating-hover: var(--color-bg-hover);
+}
+
+/*
+  ---- chat/MessageItem + user-text 追加的一批 ---------------------------
+  消息主体（用户气泡、附件卡片、重试行）和它带进来的 user-text 引用芯片用到、
+  上面几张表里没有的四个。同样单独一块。
+*/
+:root {
+  /*
+    **[猜]** 用户气泡的底色。上游浅色是 deepseek-50（一层极淡的蓝），深色是
+    bluish-850——也就是「比页面底色亮/暗一档的面」。我们是单色主题，没有那层淡蓝，
+    所以两个主题都落在 --color-bg-raised 上：深色下 #2c2c2e 压在 #111113 的页面上，
+    浅色下纯白压在 #f4f4f6 上，两边都能把气泡从底色里读出来。
+
+    要给用户消息一个色相的话，改这一行就够——气泡是整个对话里唯一吃它的地方。
+  */
+  --dsw-specific-bubble: var(--color-bg-raised);
+
+  /*
+    文件附件卡片的底色。上游深色下和上面的气泡底**是同一个值**（都是 bluish-850），
+    浅色下是 bluish-00（纯白，同样比页面底亮一档）。我们这边 --color-bg-raised 在两个
+    主题下都满足这个关系，所以指同一个值，不是猜的——附件卡片挂在气泡上方、和气泡同层。
+  */
+  --dsw-specific-input-major: var(--color-bg-raised);
+
+  /*
+    **[猜]** 重试行展开控件的键盘焦点环。上游取品牌蓝（deepseek-400/500）。同
+    --dsw-alias-state-business-primary 那一条的理由：单色主题里 --color-accent 和周围的
+    文字同色，拿它画焦点环等于没画，所以沿用已经留着的那支 deepseek 蓝。
+  */
+  --dsw-alias-button-info-fill: var(--dsw-static-deepseek-450);
+
+  /* `/技能` 芯片的字族。上游原值就是 `var(--ds-font-family-code)`，而那个别名上面
+     第 22 行已经接好了，所以这里逐字照抄——不是猜的。 */
+  --dsw-font-markdown-code-font-family: var(--ds-font-family-code);
+}
+
+/*
+  ---- markdown/MarkdownText 追加的一批 ---------------------------------
+  完整 markdown 渲染树（render.tsx + MarkdownText.module.css）用到、上面几张表里
+  没有的十个：正文/标题/表格/代码的字型九个，加行内代码的底色一个。
+
+  **字型这九个在上游都带 `calc(… + var(--dsh-content-font-delta))`**，那是他们的
+  「正文字号」滑杆：用户调 --dsh-content-font-size，标题和行高按同一个差值跟着长。
+  我们没有这根滑杆，delta 恒等于 0，所以这里把 calc 化开写成定值——留着 calc 只会让
+  每个字号都依赖一个永远不存在的变量，读的人还得去翻它为什么是 0。
+  字号本身逐字照抄上游（h1 21/30、h2 19/28、h3 18/26、h4 14/24、正文 14/24、
+  表格 13/22、行内代码 12/19），不是猜的。
+*/
+:root {
+  --dsw-font-markdown-h1: 700 21px/30px var(--dsw-font-family);
+  --dsw-font-markdown-h2: 700 19px/28px var(--dsw-font-family);
+  --dsw-font-markdown-h3: 700 18px/26px var(--dsw-font-family);
+  --dsw-font-markdown-h4: 600 14px/24px var(--dsw-font-family);
+  --dsw-font-markdown-base: 14px/24px var(--dsw-font-family);
+  --dsw-font-markdown-base-strong: 600 14px/24px var(--dsw-font-family);
+  --dsw-font-markdown-table: 13px/22px var(--dsw-font-family);
+  --dsw-font-markdown-table-head: 500 13px/22px var(--dsw-font-family);
+  /* 上游是 `12px/19px var(--ds-font-family-code)`，那个别名第 22 行已经接好。 */
+  --dsw-font-markdown-code: 12px/19px var(--ds-font-family-code);
+
+  /*
+    **[猜]** 行内代码的底色。上游浅色是 neutral-50、深色是 neutral-800——都是**比所在
+    的那张面挪开一档**的中性灰（注意不是围栏代码块用的 bluish 系）。我们这边「比面挪开
+    一档」正好就是 --color-bg-hover：深色 #38383b 压在 raised #2c2c2e 上，浅色 #ededf0
+    压在白底上，两边都能把行内代码从正文里读出来，而不至于像围栏块那样自成一块。
+
+    标 [猜] 是因为我们没有独立的「行内代码」语义令牌，借的是 hover 态那支。要给它单独
+    一个值的话，改这一行就够——整棵渲染树里只有 `code` 这一处吃它。
+  */
+  --dsw-alias-markdown-inline-code: var(--color-bg-hover);
+}

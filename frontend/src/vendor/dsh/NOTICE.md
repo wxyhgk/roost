@@ -40,7 +40,7 @@ Copyright (c) 2026 DeepSeek
 | `NOTICE.md` | 本文件 |
 | `index.ts` | 上游 `index.ts` 删到只剩留下那批之后的版本 |
 | `tokens.css` | `--dsw-*` → 我们 `--color-*` 的桥接表，文件里标了哪些值是猜的 |
-| `markdown/MarkdownText.tsx` | **我们自己写的纯文本替身**，理由写在文件头 |
+| `markdown/katex-lazy.ts` | **我们自己写的**：把 katex 引擎和它的样式表包成一个异步模块 |
 
 ### 逐字之外的两处改动
 
@@ -49,9 +49,32 @@ Copyright (c) 2026 DeepSeek
    import 行，旁边标了 `ROOST-CHANGE`。那份拷贝的颜色映射换成了我们的主题令牌（所以它
    **不**逐字，不适合放进这个目录），配套测试是 `frontend/tests/ansi.test.ts`，75 个用例。
    搬第二份的代价是两份会各自漂移，而测试只钉着其中一份。
-2. **`markdown/MarkdownText.tsx` 是替身，不是上游实现。** 见该文件头部：上游那棵树约
-   1800 行、外带 8 个我们没装的 npm 包（含 katex），而它在这批积木里唯一的消费方是
-   `WebBlock` 里 web_search 的那段 answer。
+2. **markdown 渲染树已经整棵搬进来了**（第二轮）。第一轮曾用一个纯文本替身顶着，理由是
+   它要拖 12 个 npm 包；后来推翻了那个取舍——正文排版是对话观感的大头。三处
+   `ROOST-CHANGE`：`katex.tsx` 的引擎改成按需注入、`MarkdownText.tsx` 去掉样式表的静态
+   import、`MarkdownText.module.css` 末尾加一条 `list-style-type: revert`（Tailwind 的
+   preflight 把 `ul/ol` 的标记清零了，而上游这份 CSS 依赖浏览器默认值，不加就是所有列表
+   的序号和圆点全不见）。
+
+3. **两处是被我们自己的 CSS reset 逼出来的**，上游没有这两条：
+
+   - `markdown/MarkdownText.module.css` 末尾的 `list-style-type: revert`——Tailwind 的
+     preflight 有 `ol, ul, menu { list-style: none }`，而上游这份 CSS 从头到尾不提
+     `list-style`（它只要浏览器默认值），不加就是**所有列表的序号和圆点全不见**。
+   - `user-text.module.css` 里 `.refIcon` 的 `display: inline`——preflight 把 `svg` 设成
+     `display: block`，引用芯片会被拆成「图标一行、文字一行」。
+
+   **这是个模式**：上游那批 CSS 建立在它自己的 reset 之上，搬到我们的 reset 上必然缺一块。
+   而且两次都是 typecheck 和测试看不出、只有画出来才发现。以后再搬带 inline svg 或列表的
+   组件，先照着截图查一遍。
+
+4. **`MessageItem.module.css` 删掉了上游的 52–193 行**——那 20 条 `.compaction*` 已经在
+   `chat/CompactionItem.module.css` 里，搬第二份会让两处各自漂移。
+
+5. **`WebBlock` 在 `highlighted.ts` 而不是 `index.ts`。** 它自己不碰 shiki，但它用
+   `MarkdownText` 画搜索结果正文，而完整树里 `render.tsx → CodeBlock → markdown/highlight.ts`
+   是静态引用——「谁 import 谁」的隔离只要有一次间接引用就破。实测：桶里只取一个
+   `TerminalBlock`，挪之前 shiki 会跟着进来，挪之后 shiki 和 katex 都是 0 次、产物 154 KB。
 
 ## 搬了什么
 
@@ -71,13 +94,19 @@ Copyright (c) 2026 DeepSeek
 
 - 品牌与外壳：`BrandWordmark` `FishLogo` `ConnectionIndicator` `OnboardingSurface`
 - 通用控件：`Button` `Input` `Switch` `Tag` `Menu` `Modal` `Toast` `Tooltip`
-  `HoverCard` `RiskConfirmation` `JsonTree` `ReferenceIcon` `user-text`
+  `HoverCard` `RiskConfirmation` `JsonTree` ~~`ReferenceIcon`~~（第二轮随 MessageItem 搬入） ~~`user-text`~~（第二轮随 MessageItem 搬入）
 - 定位与杂项 hook：`useAnchoredMaxHeight` `useAnchoredPosition`
-  `useDismissOnOutsidePointer` `pointer-grace` `relative-time` `rank-by-name` `file-size`
-- markdown 渲染树：`markdown/` 下的 `MarkdownText`（换成替身）`render` `parse`
-  `incremental` `cjkFriendlyStrong` `mathCompatibility` `katex` `plain-text`
+  `useDismissOnOutsidePointer` `pointer-grace` `relative-time` `rank-by-name` ~~`file-size`~~（第二轮随 MessageItem 搬入）
+- `markdown/plain-text.ts`——闭包里没人引它
 
 ## 运行时依赖
 
-`react`、`clsx`、`diff`、`anser`、`shiki`（`@shikijs/langs` 由 `shiki` 带入）。
-`clsx` 和 `diff` 是为这次 vendor 加进 `frontend/package.json` 的。
+`react`、`clsx`、`diff`、`anser`、`shiki`（`@shikijs/langs` 由 `shiki` 带入），
+以及 markdown 树要的一串：`katex`、`micromark-core-commonmark`、`micromark-extension-gfm`、
+`micromark-extension-math`、`micromark-factory-space`、`micromark-util-{character,
+classify-character,symbol,sanitize-uri}`、`mdast-util-{from-markdown,gfm,math}`
+（类型侧另有 `micromark-util-types`、`@types/mdast`）。连传递依赖共 57 个包。
+
+**katex 是按需加载的**：引擎 75.7 KB gz + 样式表 7.9 KB gz，只在第一条公式出现时才取；
+它还带 59 个字体文件（合计 1.02 MB raw）进 `assets/`，浏览器只取用到字形的那几张。
+markdown 树本身的净代价是 +65.0 KB gz，落在对话那个懒加载 chunk 里，首屏一字节未动。
