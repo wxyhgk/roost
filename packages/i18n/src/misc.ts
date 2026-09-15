@@ -168,6 +168,8 @@ export const misc = {
       toolDenied: "已拒绝",
       toolNoResult: "没有结果",
       /** `/compact` 的摘要：一条分隔行，点开才看。它不是用户说的话。 */
+      /* 注入进模型的上下文。行上折起来，点开看全文。 */
+      contextInjected: "注入的上下文",
       compacted: "上下文已压缩",
       /** 命令输出留尾部：报错和结论都在末尾。 */
       outputClipped: "上面还有更早的输出，已省略",

@@ -22,6 +22,17 @@ export type Block =
    * 剩下的东西，藏掉比画错更糟。
    */
   | { kind: "compaction"; text: string }
+  /**
+   * 注入进模型的上下文——「这次对话模型实际看到了什么」。
+   *
+   * 各家 CLI 的形状不同：Claude 写成独立的 attachment 行，qwen 把它**拼进用户消息自己的
+   * text 部件里**（`systemPayload.displayText` 才是用户真正打的那一段）。共同点是
+   * **它不是用户说的话**——当普通文本画就会让用户看到自己「说」了一堆从没说过的话。
+   *
+   * `label` 是供应商自己的类型名（`environment` / `skill_listing` / …）。那是这条注入唯一
+   * 自带的、准确的身份，比我们另编一套分类靠谱；取不到就空着，行上只写「上下文」。
+   */
+  | { kind: "context"; label: string; text: string }
   | { kind: "tool"; id: string; name: string; args: string; result: string | null; failed: boolean;
       /**
        * 这次调用被拦下来了，**命令根本没执行**——用户拒绝、auto 模式拦截、权限规则都算。
@@ -67,6 +78,12 @@ export function groupMessages(messages: readonly HistoryMessage[]): Row[] {
         };
         blocks.push(block);
         if (block.id) pending.set(block.id, block);
+        continue;
+      }
+      if (part.type === "context") {
+        const value = text(part);
+        const label = typeof part.contextLabel === "string" ? part.contextLabel : "";
+        if (value) blocks.push({ kind: "context", label, text: value });
         continue;
       }
       if (part.type === "compaction") {
@@ -118,6 +135,7 @@ export type Item =
   | { kind: "tools"; key: string; role: string; tools: ToolBlock[]; status: ToolsStatus; message: HistoryMessage; turnStart: boolean }
   /** 一个回合改了什么的汇总，摆在这个回合的末尾。 */
   | { kind: "compaction"; key: string; text: string; turnStart: false }
+  | { kind: "context"; key: string; label: string; text: string; turnStart: false }
   | { kind: "diff"; key: string; diff: TurnDiff; turnStart: false };
 
 export type ToolsStatus = "running" | "error" | "completed";
@@ -143,6 +161,18 @@ export function toolsStatus(tools: readonly ToolBlock[]): ToolsStatus {
  * 直接展开免得界面看着空，长的保持折叠免得「用一整块高高的内容霸占对话底部」。
  */
 export const MIN_GROUPED_TOOLS = 3;
+
+/**
+ * 工具条目一律算 AI 的动作，**不看承载它的那条消息是什么角色**。
+ *
+ * 这不是化简，是纠错。工具结果在 Claude 的 transcript 里装在合成的 user 回合里；平时
+ * `groupMessages` 会把结果并回调用那一条、把空壳消息丢掉，角色自然是 assistant。但配不上
+ * 对的结果（历史分页时调用落在窗口之外、或被截断）会留下一个孤儿块，那条 user 消息因此
+ * 活了下来——照着 `row.role` 走，一整组工具调用就被标成「你」、还靠右对齐成用户气泡的样子。
+ *
+ * 用户没有调用过任何工具。角色在这里是**传输的外壳**，不是说话的人。
+ */
+const TOOL_ROLE = "assistant";
 
 /**
  * 把行拍平成条目，并把**连续的**工具调用收成组。
@@ -194,11 +224,11 @@ export function buildItems(rows: readonly Row[]): Item[] {
         */
         if (block.patch?.hunks.length) {
           flush();
-          items.push({ kind: "tools", key: `${row.message.messageId}:patch:${index}`, role: row.role,
+          items.push({ kind: "tools", key: `${row.message.messageId}:patch:${index}`, role: TOOL_ROLE,
             tools: [block], status: toolsStatus([block]), message: row.message, turnStart: false });
           continue;
         }
-        pendingTools ??= { tools: [], message: row.message, key: `${row.message.messageId}:tools`, role: row.role };
+        pendingTools ??= { tools: [], message: row.message, key: `${row.message.messageId}:tools`, role: TOOL_ROLE };
         pendingTools.tools.push(block);
         continue;
       }
@@ -207,6 +237,15 @@ export function buildItems(rows: readonly Row[]): Item[] {
         压缩摘要**不开新回合**。它在 transcript 里是 user 角色，照常走下面那条就会画出一条
         回合边界——可上下文压缩发生在一个回合中间，不是用户说了新的话。
       */
+      if (block.kind === "context") {
+        /*
+          **注入不开新回合。** 它夹在一次工具循环中间是常态（Bash 里 `cd` 一下就有一条
+          环境注入），当成用户发言会凭空多出一条回合边界，而那条边界不对应任何一件事。
+        */
+        items.push({ kind: "context", key: `${row.message.messageId}:${index}`,
+          label: block.label, text: block.text, turnStart: false });
+        continue;
+      }
       if (block.kind === "compaction") {
         items.push({ kind: "compaction", key: `${row.message.messageId}:${index}`, text: block.text, turnStart: false });
         continue;

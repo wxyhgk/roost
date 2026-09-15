@@ -211,3 +211,29 @@ test("/compact 的摘要不是用户发言：单独成条，也不开新回合",
   // 内容不能丢：摘要是那段历史唯一剩下的东西。
   assert.match((compaction[0] as { text: string }).text, /这段对话的摘要/);
 });
+
+/*
+  历史是分页拉的：第一页往往从一次回合的中间开始，于是 tool_call 落在窗口之外、只有
+  tool_result 在里面。`groupMessages` 会把这个配不上对的结果当孤儿留下（丢掉更糟——用户
+  会以为那一步没发生），而装着它的是 Claude 合成的 user 回合，那条消息因此不会被丢掉。
+
+  这个用例钉的是：**孤儿结果不能让整组工具挂上「用户」这个角色**。挂上之后渲染层的
+  `mine = role === "user"` 会把它靠右排成用户气泡，头上标「你」——用户从没调用过任何工具。
+*/
+test("an orphaned tool result stays the agent's action, not the user's", () => {
+  const rows = groupMessages([
+    // 这条就是分页边界：结果在，调用不在。
+    msg("user", "", [{ type: "tool_result", toolCallId: "gone", text: "212 passed" }]),
+    msg("assistant", "", [{ type: "tool_call", name: "Read", toolCallId: "c2", text: "Read: a.ts" }]),
+    msg("user", "", [{ type: "tool_result", toolCallId: "c2", text: "…" }]),
+  ]);
+  assert.equal(rows[0].role, "user", "承载孤儿的那条消息本身确实是 user——这一层不动它");
+
+  const items = buildItems(rows);
+  const tools = items.filter(item => item.kind === "tools");
+  assert.ok(tools.length > 0, "孤儿结果要留在条目里");
+  for (const item of tools) {
+    assert.equal(item.kind === "tools" && item.role, "assistant",
+      "工具条目一律算 AI 的动作，不跟着承载它的消息角色走");
+  }
+});

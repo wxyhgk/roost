@@ -25,6 +25,13 @@ export type MessagePart = {
   name?: string;
   /** 只有改文件的工具结果才有。 */
   patch?: EditPatch;
+  /**
+   * 只有 `type: "context"` 的段才有：供应商自己的注入类型名（`environment` / `skill_listing`…）。
+   *
+   * **可选**：库里按旧形状写进去的记录没有这个字段，也不该因此解析失败——缺了就是一条
+   * 没有类型名的注入，行上只写「上下文」。
+   */
+  contextLabel?: string;
 };
 
 export type HistoryEvent = {

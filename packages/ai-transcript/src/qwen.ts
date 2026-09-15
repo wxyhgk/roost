@@ -54,8 +54,30 @@ function normalize(row: Record<string, any>, ref: TranscriptItem["data"]["detail
     const output = text.slice(0, Math.max(0, limit - total)); total += output.length;
     truncated ||= output.length < text.length; parts.push({ type, text: output, ...extra });
   }
+  /*
+    **Qwen 把注入拼进用户消息自己的 text 部件里**，`systemPayload.displayText` 是用户真正
+    打的那一段。这里曾经的处置是「有 displayText 就只画它、`message.parts` 整个跳过」——
+    那躲开了「用户看到自己说了一堆没说过的话」，代价是**把注入整个丢掉**：模型实际看到的
+    那部分在界面上不存在。仓库自己的 fixture 就写着 parts 是 `original + injected hook`
+    而 displayText 是 `original`，那个 hook 从来没画出来过。
+
+    现在两样都给：用户气泡里是 displayText，注入单独成一段 `type: "context"`
+    （前端画成一条折起来的分隔行，见 `features/conversations/parts.ts` 的 `context` 那一档）。
+
+    **拆法只认前缀。** Qwen 是往后追加，所以拼起来的正文正常以 displayText 开头，剩下那截
+    就是注入。对不上前缀时**不猜怎么切**——把整段作为注入给出去仍然是一句真话（模型确实
+    收到了这些），而硬切会造出一段谁都没写过的文本。
+  */
   const display = row.type === "user" && typeof row.systemPayload?.displayText === "string" ? row.systemPayload.displayText : undefined;
-  if (display !== undefined) add("text", display);
+  if (display !== undefined) {
+    add("text", display);
+    const whole = row.message.parts
+      .slice(0, 512)
+      .map((p: unknown) => (object(p) && typeof (p as { text?: unknown }).text === "string" ? (p as { text: string }).text : ""))
+      .join("");
+    const injected = whole.startsWith(display) ? whole.slice(display.length) : whole;
+    if (injected.trim()) add("context", injected, { contextLabel: "qwen_prompt_injection" });
+  }
   else for (const p of row.message.parts.slice(0, 512)) {
     if (!object(p)) { partial = true; continue; }
     if (typeof p.text === "string") add(p.thought === true ? "thinking" : "text", p.text);
@@ -73,7 +95,14 @@ function normalize(row: Record<string, any>, ref: TranscriptItem["data"]["detail
   const timestamp = Date.parse(row.timestamp);
   return { partial, item: { eventId: "qwen:" + ref.nativeSessionId + ":" + row.uuid, type: "message",
     role: row.type === "tool_result" ? "tool" : row.provenance === "system" || row.provenance === "goal_runtime" ? "system" : row.type,
-    content: parts.map(p => p.type === "thinking" ? "[已记录的思考]\n" + p.text : p.text ?? "").join("\n"),
+    /*
+      **注入不进 `content`。** 这个字段是那条消息的扁平正文——预览取它
+      （`conversation-preview.ts` 取首条 user 的 content）、搜索也扫它。注入是模型收到的
+      东西，不是用户打的字；混进去会让「这条对话讲了什么」的预览显示成一段 hook，
+      也会让搜索在用户从没写过的词上命中他的消息。注入一个字没丢，它在 `parts` 里。
+    */
+    content: parts.filter(p => p.type !== "context")
+      .map(p => p.type === "thinking" ? "[已记录的思考]\n" + p.text : p.text ?? "").join("\n"),
     ...(Number.isFinite(timestamp) ? {createdAt: timestamp} : {}),
     data: {source: "transcript", nativeMessageId: row.uuid, parentId: typeof row.parentUuid === "string" ? row.parentUuid : null,
       parts, truncated, detail: {...ref, recordId: row.uuid}},

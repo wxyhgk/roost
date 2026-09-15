@@ -166,6 +166,7 @@ export const misc = {
       toolDenied: "denied",
       toolNoResult: "no result",
       /** `/compact` 的摘要：一条分隔行，点开才看。它不是用户说的话。 */
+      contextInjected: "Context injected",
       compacted: "Context compacted",
       /** 命令输出留尾部：报错和结论都在末尾。 */
       outputClipped: "Earlier output omitted",

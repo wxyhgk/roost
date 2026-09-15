@@ -63,7 +63,7 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
     let last: string | undefined;
     return items.map(item => {
       // diff 和压缩摘要都没有角色，也都不打断「同一个人在说话」——跨过它们记住上一个角色。
-      if (item.kind === "diff" || item.kind === "compaction") return false;
+      if (item.kind === "diff" || item.kind === "compaction" || item.kind === "context") return false;
       const show = item.turnStart || item.role !== last;
       last = item.role;
       return show;
@@ -428,6 +428,39 @@ function TurnDiffItem({ diff }: { diff: TurnDiff }) {
  * 事，不是「这段没发生过」；而摘要本身是那段历史唯一剩下的东西，藏掉比画错更糟。
  * 默认折起来只是因为它实测有一万四千字起。
  */
+/**
+ * 一条注入进模型的上下文。
+ *
+ * **和压缩摘要同一个形状**（一条细分隔线 + 折起来的正文），因为它们是同一类东西：
+ * 记录里真实存在、但**不是任何人说的话**。当普通消息画就会让用户看到自己「说」了一堆
+ * 从没说过的话——qwen 那条 bug 当初就是为了躲开这个才把注入整个丢掉的。
+ *
+ * 正文按**原文**画，不走 markdown：注入的内容是喂给模型的纯文本，里面的 `#` `-` `*`
+ * 是它自己的格式，当 markdown 解析会把它重排成另一个样子。
+ */
+function ContextItem({ label, text: value }: { label: string; text: string }) {
+  const [open, setOpen] = useState(false);
+  const title = t.misc.conversations.detail.contextInjected;
+  return (
+    <div className="my-1">
+      <button type="button" aria-expanded={open} onClick={() => setOpen(v => !v)}
+        className="flex w-full items-center gap-2 text-caption text-text-dim hover:text-text">
+        <span className="h-px flex-1 bg-border/60" />
+        <span className="shrink-0"><IconChevron open={open} /></span>
+        <span className="shrink-0">{title}</span>
+        {/* 供应商自己的类型名，等宽画——它是标识符不是句子。 */}
+        {label && <span className="shrink-0 font-mono text-text-dim/70">{label}</span>}
+        <span className="h-px flex-1 bg-border/60" />
+      </button>
+      {open && (
+        <div className="mt-1.5 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border/60 bg-bg px-2.5 py-2 font-mono text-caption leading-[1.55] text-text-dim">
+          {value}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CompactionItem({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
   return (
@@ -452,6 +485,7 @@ function CompactionItem({ text }: { text: string }) {
 function TranscriptItem({ item, showRole }: { item: Item; showRole: boolean }) {
   if (item.kind === "diff") return <li className="flex flex-col items-start"><TurnDiffItem diff={item.diff} /></li>;
   if (item.kind === "compaction") return <li className="flex flex-col items-stretch"><CompactionItem text={item.text} /></li>;
+  if (item.kind === "context") return <li className="flex flex-col items-stretch"><ContextItem label={item.label} text={item.text} /></li>;
   const mine = item.role === "user";
   return (
     <li className={`flex flex-col gap-1 ${item.turnStart ? "mt-3 border-t border-border/40 pt-3" : ""} ${
