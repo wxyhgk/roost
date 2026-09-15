@@ -64,8 +64,14 @@ export function ToolView({ block }: { block: ToolBlock }) {
   const renderer = RENDERERS.find(r => r.match(input));
   if (!renderer) return <SummaryRow block={block} />;
   return (
-    // region 用工具名：真炸了的时候，报错里得说得出是哪个工具的哪个渲染器。
-    <ErrorBoundary region={`${renderer.name}(${block.name})`}>
+    /*
+      崩了退回兜底，而不是在对话里留一块「XX 不可用」。
+
+      上面第 1 条写着「加渲染器永远是加法」，而在此之前这句话在**崩溃**这条路上是不成立的：
+      认不出来会兜底，认出来但画崩了反而比不加渲染器更差。一个渲染器炸掉的正确结果，
+      和它压根不认领这次调用是同一个——用户照样看得到工具名、参数和结果。
+    */
+    <ErrorBoundary fallback={<SummaryRow block={block} />}>
       {renderer.View(input)}
     </ErrorBoundary>
   );

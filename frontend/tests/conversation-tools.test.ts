@@ -120,7 +120,7 @@ test('摘要行：参数为空 / 非对象 / 半截 JSON 都不崩，只是没�
 });
 
 import { rendererNameFor } from '../src/features/conversations/tools/registry.tsx';
-import { tailText } from '../src/features/conversations/tools/text.ts';
+import { clipMiddle } from '../src/features/conversations/tools/text.ts';
 
 const patch = { filePath: 'a.ts', truncated: false, hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-a', '+b'] }] };
 
@@ -145,12 +145,17 @@ test('数据不够就不认领——认领了画不出来比不认领更糟', ()
   assert.equal(rendererNameFor({ ...tool(''), name: 'Edit', patch: { hunks: [], truncated: true } } as never), null);
 });
 
-test('命令输出截断留尾部——报错和结论都在末尾', () => {
+test('长输出掐中间，两头都留', () => {
+  /*
+    只留尾部的话开头就没了，而开头有「跑的是什么、前几行报了什么」；最没用的是中间那截
+    重复的进度行。同样的预算，留两头信息量更高。
+  */
   const lines = Array.from({ length: 100 }, (_, i) => `line ${i}`).join('\n');
-  const { text, clipped } = tailText(lines, 200);
+  const { text, clipped } = clipMiddle(lines, 200);
   assert.equal(clipped, true);
-  assert.ok(text.endsWith('line 99'), '尾巴必须留着');
-  assert.ok(!text.includes('line 0\n'), '头部该被砍掉');
-  assert.ok(text.startsWith('line '), '从完整的一行开始，不劈开一行');
-  assert.deepEqual(tailText('short', 200), { text: 'short', clipped: false });
+  assert.ok(text.startsWith('line 0'), '开头必须留着');
+  assert.ok(text.endsWith('line 99'), '结论在末尾，尾巴也必须留着');
+  assert.ok(/中间省略 \d+ 字符/.test(text), '砍掉多少要自己报数');
+  assert.ok(!text.includes('line 50'), '中间那截该被砍掉');
+  assert.deepEqual(clipMiddle('short', 200), { text: 'short', clipped: false });
 });

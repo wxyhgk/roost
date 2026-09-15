@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { SummaryRow, type ToolBlock } from "./SummaryRow";
-import { tailText } from "./text";
+import { clipMiddle } from "./text";
 import { t } from "@roost/i18n";
 
 /** 展开后最多显示多少字符的输出。上游把工具结果截到 4000 字，这里再留一道。 */
@@ -21,8 +21,9 @@ const MAX_OUTPUT = 4000;
 /**
  * 命令输出。封顶加滚动，**而且一上来就停在底部**。
  *
- * 结论在末尾——退出码、报错、最后一行汇总。这也是 `tailText` 截断留尾部的同一条理由：
- * 给个高度上限但停在开头，等于让人先滚过四十行「通过」才看得到那一行「失败」。
+ * 结论在末尾——退出码、报错、最后一行汇总。给个高度上限但停在开头，等于让人先滚过四十行
+ * 「通过」才看得到那一行「失败」。（截断本身是掐中间的，见 text.ts：两头都有信息，
+ * 中间那截重复的进度行才是最没用的。）
  */
 function Output({ text, failed }: { text: string; failed: boolean }) {
   const box = useRef<HTMLDivElement | null>(null);
@@ -35,7 +36,7 @@ function Output({ text, failed }: { text: string; failed: boolean }) {
 
 export function BashTool({ block, command }: { block: ToolBlock; command: string }) {
   const output = block.result ?? "";
-  const { text, clipped } = tailText(output, MAX_OUTPUT);
+  const { text, clipped } = clipMiddle(output, MAX_OUTPUT);
   return (
     <SummaryRow block={block} title={command}>
       <div className="border-t border-border/60 px-2.5 py-1.5 font-mono">
