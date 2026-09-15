@@ -1,0 +1,117 @@
+/*
+  令牌桥：上游 `--dsw-*` → 我们的 `--color-*`。
+
+  **这个文件不是抄来的，是这次 vendor 的接线。** 上游 ui-primitives 的 CSS 只认
+  `--dsw-*`（它们的 ui-theme 包定义）和 `--dsl-*`（组件自己在 module.css 里定义）。
+  `--dsl-*` 自带，不用管；`--dsw-*` 在我们这儿一个都不存在，所以整批 CSS Module
+  全都会拿到空值——不是「颜色不对」，是根本不上色。
+
+  没有把 ui-theme 整个搬过来：那是一张 300+ 行、两套主题、上百个令牌的表，而我们只用到
+  其中 28 个，且我们自己的 `src/index.css` 里已经有一套等价的语义令牌。把 28 个逐个接过去，
+  主题切换（`html[data-theme="light"]`）就自动跟着走，不需要在这里再写一份浅色表。
+
+  下面凡是标了 **[猜]** 的，都是我们这边没有对应语义令牌、写死了一个看着合理的值。
+  重新从上游同步时，这些是最该复核的地方。
+*/
+
+:root {
+  /* ---- 字体 ---------------------------------------------------------- */
+  --dsw-font-family: var(--font-sans);
+  /* 上游 base.css 的 `--ds-font-family-code`，被 --dsw-font-markdown-code-block 和
+     几个 module.css 直接引用。 */
+  --ds-font-family-code: var(--font-mono);
+  /* 上游是 `13px/20px`，和我们的 --text-body（13px）正好同号，所以只换字族。 */
+  --dsw-font-xs-13: 13px/20px var(--font-sans);
+  /* 上游 `11px/19px`；11px 与我们的 --text-caption 同号。 */
+  --dsw-font-markdown-code-block: 11px/19px var(--font-mono);
+
+  /* ---- 文字三档 ------------------------------------------------------ */
+  --dsw-alias-label-primary: var(--color-text);
+  --dsw-alias-label-secondary: var(--color-text-dim);
+  /* **[猜]** 上游是 primary/secondary/tertiary 三档，我们只有 text 和 text-dim 两档。
+     第三档由 text-dim 再往背景方向淡一步得到，两个主题下都自动成立。 */
+  --dsw-alias-label-tertiary: color-mix(in srgb, var(--color-text-dim) 72%, var(--color-bg));
+
+  /* ---- 面 ------------------------------------------------------------ */
+  --dsw-alias-bg-base: var(--color-bg);
+  --dsw-alias-bg-layer-2: var(--color-bg-raised);
+  /* 每一块卡片（终端、diff、read、search、web、json、code）的底色都是这一个。 */
+  --dsw-alias-markdown-code-block: var(--color-bg-raised);
+  /* 卡片顶部那条文件名/路径横幅，要比卡片本体再亮/暗一档。 */
+  --dsw-alias-markdown-code-block-banner: var(--color-bg-hover);
+
+  /* ---- 描边 ---------------------------------------------------------- */
+  /* **[猜]** 上游这两条是极淡的 alpha 发丝线（浅色 4%/10% 黑，深色 6%/12% 白），
+     我们的 --color-border 是实色且重得多，直接用会把卡片框死。按上游的相对关系
+     兑成透明度。 */
+  --dsw-alias-border-l1: color-mix(in srgb, var(--color-border) 35%, transparent);
+  --dsw-alias-border-l2: color-mix(in srgb, var(--color-border) 70%, transparent);
+
+  /* ---- 交互态 -------------------------------------------------------- */
+  --dsw-alias-interactive-bg-hover: var(--color-bg-hover);
+  --dsw-alias-button-ghost-active-fill: var(--color-bg-active);
+  --dsw-alias-button-ghost-active-border: var(--color-border);
+
+  /* ---- 语义色 -------------------------------------------------------- */
+  --dsw-alias-state-error-primary: var(--color-danger);
+  --dsw-alias-state-success-primary: var(--color-success);
+  --dsw-alias-state-warn-primary: var(--color-warning);
+  /* 我们是单色主题，链接不另给色相，跟 --color-accent 走（深色下白、浅色下黑）。 */
+  --dsw-alias-link: var(--color-accent);
+
+  /* ---- static 档：上游自己也不随主题变的那些 -------------------------- */
+  /*
+    上游 `--dsw-static-*` 在浅色和深色两个块里取值相同，是画在图标里的固定色，不是主题色。
+    所以这里照抄字面值，不接我们的令牌——接过去反而会让文件类型图标变成一片单色。
+  */
+  --dsw-static-neutral-00: rgb(255, 255, 255);
+  --dsw-static-neutral-400: rgb(162, 164, 166);
+  --dsw-static-neutral-bluish-300: rgb(207, 211, 214);
+  --dsw-static-red-600: rgb(236, 19, 19);
+  --dsw-static-green-500: rgb(34, 197, 94);
+  --dsw-static-amber-400: rgb(247, 173, 49);
+  --dsw-static-amber-500: rgb(245, 158, 11);
+  /*
+    **[猜]** 这两支蓝是 DeepSeek 的品牌色。用在两处：文件类型图标的默认色，以及
+    StateDot 的「进行中」。我们这套是刻意的单色主题，没有「信息/进行中」这一档色相
+    （--color-accent 是黑白），所以留着上游的蓝——一个进行中的蓝点在单色界面里仍然读得懂，
+    而把它压成白点会和「已完成」撞上。要改成单色的话，改这两行就够。
+  */
+  --dsw-static-deepseek-450: rgb(86, 134, 254);
+  --dsw-static-deepseek-500: rgb(65, 118, 230);
+
+  /*
+    ---- shiki 的高亮色板 ------------------------------------------------
+    CodeBlock / ReadBlock 走 shiki 的 css-variables 主题：每个 token 的颜色都是一个
+    `--shiki-*` 自定义属性，值必须由外部提供，否则整段代码只有前景色。
+    背景/前景接我们的令牌；下面十档 token 色照抄上游 ui-theme/src/styles/shiki.css
+    （这是一张配好的色板，不是主题语义，我们这边没有对应物）。此处是深色值。
+  */
+  --shiki-foreground: var(--color-text);
+  --shiki-background: var(--color-bg-raised);
+  --shiki-token-constant: #4dabf7;
+  --shiki-token-string: #69db7c;
+  --shiki-token-comment: #adb5bd;
+  --shiki-token-keyword: #faa2c1;
+  --shiki-token-parameter: #ffa94d;
+  --shiki-token-function: #b197fc;
+  --shiki-token-string-expression: #8ce99a;
+  --shiki-token-punctuation: #ced4da;
+  --shiki-token-link: #74c0fc;
+}
+
+/*
+  浅色只需要翻这十档：其余令牌都指向 --color-*，`html[data-theme="light"]` 一改，
+  它们自己就跟着走了。上游把浅色放 :root、深色放 body 属性，我们的默认是深色，所以顺序相反。
+*/
+html[data-theme="light"] {
+  --shiki-token-constant: #1c7ed6;
+  --shiki-token-string: #2f9e44;
+  --shiki-token-comment: #868e96;
+  --shiki-token-keyword: #d6336c;
+  --shiki-token-parameter: #e8590c;
+  --shiki-token-function: #6741d9;
+  --shiki-token-string-expression: #2b8a3e;
+  --shiki-token-punctuation: #495057;
+  --shiki-token-link: #1971c2;
+}

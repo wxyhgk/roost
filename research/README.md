@@ -15,3 +15,7 @@
 订阅面板接口：[Claude、Codex 与 OpenCode Go 额度调研](ai-subscription-apis.md)。
 
 工具渲染与上下文管理：[DeepSeek Harness 工具调用渲染](deepseek-harness-ui.md)。
+
+积木适配规格：[DeepSeek Harness UI 积木 → 我们的数据](deepseek-harness-adapter.md)。
+
+消息体搬运评估：[DeepSeek Harness 对话消息体（ui-chat / ui-conversation）](deepseek-harness-chat-port.md)。
