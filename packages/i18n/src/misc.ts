@@ -306,6 +306,11 @@ export const misc = {
     notifyBody: (cwd: string) => `${cwd} · 可以回来查看结果了`,
   },
 
+  /** 左栏那个角标：有几个会话在等你（AI 卡在权限上、或者跑完了你还没看）。 */
+  inbox: {
+    title: (count: number) => `${count} 个会话在等你`,
+  },
+
   media: {
     imageFailed: "图片加载失败",
     binary: "二进制文件",

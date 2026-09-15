@@ -2,6 +2,7 @@ import { subscribeFileLinkOpen } from '../features/terminal/public';
 import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelHandle, type ImperativePanelGroupHandle } from "react-resizable-panels";
 import { LeftRail } from "./LeftRail";
+import { InboxButton } from "../features/inbox/InboxButton";
 import { RightPanel } from "./RightPanel";
 import { RightRail } from "./RightRail";
 import { Sidebar } from "../features/workspace/Sidebar";
@@ -178,7 +179,9 @@ export function Shell() {
         onToggleRight={toggleRight}
       />
       <div className="flex min-h-0 flex-1">
-        <LeftRail collapsed={leftCollapsed} onToggle={toggleLeft} onSettings={() => { setPaletteOpen(false); setSettingsOpen(true); }} />
+        <LeftRail collapsed={leftCollapsed} onToggle={toggleLeft} onSettings={() => { setPaletteOpen(false); setSettingsOpen(true); }}
+          /* 和 Sidebar 走同一条路：组件自己选中，切回终端由这里给。 */
+          inbox={<InboxButton onEnterTerminal={() => setMode("terminal")} />} />
         <PanelGroup
           ref={layoutRef}
           className="flex h-full w-full min-w-0 flex-1 overflow-hidden rounded-xl"
