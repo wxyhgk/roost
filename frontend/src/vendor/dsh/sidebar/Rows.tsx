@@ -32,6 +32,17 @@
   5. **搜索结果行 `SearchResultItem` 没搬。** 它读 `SearchResultNode` 的 workspace / snippet
      两个字段，我们的搜索接口（`shared/api/conversations`）不返回 snippet。
      CSS 同样留着。
+
+  6. **`.rowActions` 和 `.time` 各加一个 `data-*` 钩子**（`data-row-actions` / `data-row-time`）。
+     **不改任何类名、结构或 CSS**，只多两个属性。
+
+     上游这两个的显隐全靠 `:hover`（`Rows.module.css:241-251`），而**上游没有任何触屏分支**
+     （那份 CSS 里 `hover: none` / `pointer: coarse` 零命中）。搬过来之后触屏上那两颗行内动作
+     按钮就永远够不到——这是相对我们旧侧栏的**功能倒退**：旧的在 `index.css` 的
+     `@media (hover: none)` 里让工具条常驻，而那条补丁瞄的是旧标记的 `.session-toolbar`。
+
+     CSS Module 的类名是哈希的，`index.css` 点不到，所以给一个稳定属性当钩子。
+     触屏那条规则写在 `index.css` 里，这个文件的 CSS 一条没动。
 */
 import { useEffect, useRef, type ReactNode } from 'react'
 import clsx from 'clsx'
@@ -134,8 +145,8 @@ export function SessionRow({
         </span>
       )}
       <span className={css.title}>{title}</span>
-      {timeLabel !== undefined && <span className={css.time}>{timeLabel}</span>}
-      {menu !== undefined && <span className={css.rowActions}>{menu}</span>}
+      {timeLabel !== undefined && <span data-row-time className={css.time}>{timeLabel}</span>}
+      {menu !== undefined && <span data-row-actions className={css.rowActions}>{menu}</span>}
     </div>
   )
 }
@@ -183,7 +194,7 @@ export function GroupRow({
       <span className={css.projectText}>
         <span className={css.title}>{label}</span>
       </span>
-      {actions !== undefined && <span className={css.rowActions}>{actions}</span>}
+      {actions !== undefined && <span data-row-actions className={css.rowActions}>{actions}</span>}
     </div>
   )
 }

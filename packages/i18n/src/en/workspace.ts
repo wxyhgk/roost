@@ -166,6 +166,24 @@ export const workspace = {
       quiet: "No new output",
       none: "No terminals yet",
     },
+    /* 见中文那一份的说明：对话模式的同形状文案在 misc.ts 的 conversations.sidebar 里。 */
+    newTerminal: "New terminal",
+    toggleOpen: "Expand sidebar",
+    toggleCollapse: "Collapse sidebar",
+    panels: "Views",
+    search: "Search terminals or paths…",
+    searchClear: "Clear search",
+    noMatch: "No matching terminals",
+    more: (hidden: number) => `${hidden} more`,
+    collapseOverflow: "Collapse",
+    when: {
+      now: "now",
+      minutes: (n: number) => `${n}min`,
+      hours: (n: number) => `${n}h`,
+      days: (n: number) => `${n}d`,
+      months: (n: number) => `${n}mo`,
+      years: (n: number) => `${n}y`,
+    },
   },
 
   project: {

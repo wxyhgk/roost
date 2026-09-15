@@ -460,12 +460,14 @@ export function Shell() {
           actions={actions}
           sidebar={
             /*
-              左栏跟着模式走。对话模式是那份搬来的对话目录：点一行让中栏切到那条对话，
-              而中栏此刻装的就是对话正文，所以点完不用再切任何视图。
+              左栏跟着模式走，**而两边现在是同一套外壳**（`vendor/dsh/sidebar/SidebarRoot`）：
+              同样的 60px 品牌行、同样的 32px 行、同样的 56px 折叠轨，只是浏览区里装的
+              一个是对话目录、一个是工作区树。
 
-              **只有对话目录认识 56px 折叠轨**——它是照上游搬的，轨上是一列图标。
-              工作区树还是我们自己那份，折叠时整块不画（宽度已经由框收到 56，再画
-              一棵按 280px 排版的树只会被裁掉一半）。
+              在此之前工作区树是我们自己的 Tailwind 盒子，而且**折叠时整块不画**——
+              框把列收到 56px，那一侧就是一条空白的灰条，对话模式那边却是一列图标。
+              两种模式对「折叠」的定义不一样，正是割裂最刺眼的一处。现在两边都把
+              `collapsed` 传下去，由搬来的那套自己排成轨。
             */
             workbench === "conversation"
               ? <ConversationSidebar collapsed={leftCollapsed} width={geometry.sidebarPreference || SIDEBAR_DEFAULT}
@@ -479,8 +481,9 @@ export function Shell() {
                     而这一轮不动 features/conversations。
                   */
                   onToggle={toggleLeft} onEnterTerminal={() => {}} />
-              : leftCollapsed ? null
-              : <Sidebar scope={scope} onScope={setScope} onEnterTerminal={() => setMode("terminal")} />
+              : <Sidebar collapsed={leftCollapsed} width={geometry.sidebarPreference || SIDEBAR_DEFAULT}
+                  onToggle={toggleLeft} scope={scope} onScope={setScope}
+                  onEnterTerminal={() => setMode("terminal")} />
           }
           main={
             /*
