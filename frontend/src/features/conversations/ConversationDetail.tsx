@@ -15,6 +15,7 @@ import { TurnUsagePanel, TurnTimePanel } from "../../vendor/dsh/chat/TurnUsagePa
 import { turnStatsByItemKey } from "./turn-usage";
 import { TURN_STAT } from "./turn-stat-labels";
 import { MarkdownText } from "../../vendor/dsh/markdown/MarkdownText";
+import assistantCss from "../../vendor/dsh/chat/AssistantMarkdown.module.css";
 import { TurnProcessNodeView } from "../../vendor/dsh/chat/TurnProcessNodeView";
 import { useSearchableHidden } from "../../vendor/dsh/chat/searchable-hidden";
 import { ToolView } from "./tools/registry";
@@ -361,8 +362,23 @@ const MARKDOWN_LABELS = {
   footnotes: t.misc.conversations.detail.footnotes,
 };
 
-function Prose({ value }: { value: string }) {
-  return <MarkdownText text={value} labels={MARKDOWN_LABELS} />;
+/**
+ * 助手正文。`breakout` 决定宽表格能不能挣脱消息列。
+ *
+ * 那个壳只是**作用域锚点**：`AssistantMarkdown.module.css` 里的宽表格规则写成
+ * `.body :global(.md-table-wide)`，靠 `.body` 这个祖先类名限定范围。四列以上的表格
+ * （`render.tsx` 会给它打 `md-table-wide`）因此能靠负 margin 摊到整个转录区宽度，而
+ * 正文仍从消息列左缘起排；没有这个祖先，它就只能在列宽里横向滚。
+ *
+ * **只借样式，不接 `AssistantMarkdown` 组件本身**：它九成是块分发（我们在 parts.ts 的
+ * 数据层已经做完，接进来是两套）和流式设施（我们读的是落盘 transcript，没有流），
+ * 为一条 CSS 规则把这些一起吃进来不划算。
+ *
+ * `.root` 不要：那几行 font/color 在 `.markdown` 内部会被它自己的 `font` 简写盖掉，加了是噪音。
+ */
+function Prose({ value, breakout = true }: { value: string; breakout?: boolean }) {
+  const markdown = <MarkdownText text={value} labels={MARKDOWN_LABELS} />;
+  return breakout ? <div className={assistantCss.body}>{markdown}</div> : markdown;
 }
 
 function TextBlock({ text: value, mine, role }: { text: string; mine: boolean; role: string }) {
@@ -541,7 +557,11 @@ function TranscriptItem({ item, showRole }: { item: Item; showRole: boolean }) {
   */
   if (item.kind === "compaction") return (
     <div className="flex flex-col items-stretch">
-      <CompactionItem summary={item.text} renderSummary={value => <Prose value={value} />}
+      {/*
+        压缩摘要里的宽表格**不许突破**：上游把那条规则限定在助手正文之下，正是为了不让
+        压缩行、工具卡这些次级表面横向撑开。
+      */}
+      <CompactionItem summary={item.text} renderSummary={value => <Prose value={value} breakout={false} />}
         title={t.misc.conversations.detail.compacted} detail={t.misc.conversations.detail.compactedDetail} />
     </div>
   );
