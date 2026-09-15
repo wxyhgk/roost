@@ -10,7 +10,18 @@ test('Qwen native parts, display text, tools and incremental identity', async ()
  try {
   await writeFile(path,[row('u','user',[{text:'original + injected hook'}],{systemPayload:{displayText:'original'}}),row('a','assistant',[{text:'thinking',thought:true},{functionCall:{id:'call-1',name:'run_shell_command',args:{command:'pwd'}}}]),row('t','tool_result',[{functionResponse:{id:'call-1',name:'run_shell_command',response:{output:'x'.repeat(10000)}}}])].map(v=>JSON.stringify(v)+'\n').join(''));
   const first=await readQwenTranscript(path,'native-qwen');
-  assert.deepEqual(first.items.map(v=>v.role),['user','assistant','tool']);assert.equal(first.items[0].content,'original');assert.equal(first.items[1].data.parts[1].toolCallId,'call-1');assert.equal(first.items[2].data.truncated,true);
+  assert.deepEqual(first.items.map(v=>v.role),['user','assistant','tool']);assert.equal(first.items[0].content,'original');
+  /*
+    **注入不许被丢掉。** Qwen 把注入拼进用户消息自己的 text 部件里，`displayText` 是用户真正
+    打的那一段。这里的 fixture 写着 parts 是 `original + injected hook`、displayText 是
+    `original`——那个 hook 曾经从来没画出来过：解析器有 displayText 就只画它、parts 整个跳过。
+    气泡里仍然只该有 `original`（用户没说过那个 hook），但 hook 要作为一段注入留下来。
+  */
+  assert.deepEqual(first.items[0].data.parts.map(p=>p.type),['text','context'],'用户那段之外还要有一段注入');
+  assert.equal(first.items[0].data.parts[0].text,'original','气泡里不许出现用户没说过的话');
+  assert.equal(first.items[0].data.parts[1].text,' + injected hook','注入是掐掉前缀之后剩下的那截');
+  assert.equal(first.items[0].data.parts[1].context.kind,'qwen_prompt_injection');
+assert.equal(first.items[1].data.parts[1].toolCallId,'call-1');assert.equal(first.items[2].data.truncated,true);
   assert.ok((await readQwenDetail(first.items[2].data.detail))!.content.length>4000);
   const unchanged=await readQwenTranscript(path,'native-qwen',first.checkpoint);assert.equal(unchanged.bytesRead,0);assert.equal(unchanged.items.length,0);
   await appendFile(path,JSON.stringify(row('u2','user',[{text:'你好'}]))+'\n');
