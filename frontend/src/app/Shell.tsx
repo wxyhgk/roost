@@ -6,6 +6,9 @@ import { InboxButton } from "../features/inbox/InboxButton";
 import { RightPanel } from "./RightPanel";
 import { RightRail } from "./RightRail";
 import { Sidebar } from "../features/workspace/Sidebar";
+/* 静态引入：它不碰 ConversationDetail（列表和详情早就分开了），
+   自己只有搜索框和一列行，没什么可省的，而懒加载会让首屏的左栏先闪一下空白。 */
+import { ConversationSidebar } from "../features/conversations/ConversationSidebar";
 import type { MonitorTarget } from '../features/server-monitor/navigation';
 import { StatusBar } from "./StatusBar";
 import { TerminalPane } from "../features/terminal/view/TerminalPane";
@@ -27,7 +30,7 @@ import { EXTERNAL_EDITORS } from '../plugins/external';
 */
 const SettingsDialog = lazy(() => import('./SettingsDialog').then(m => ({ default: m.SettingsDialog })));
 const CommandPalette = lazy(() => import("../features/workspace/CommandPalette").then(m => ({ default: m.CommandPalette })));
-import type { Lens, Mode, RightView, Scope } from "../shared/view";
+import type { LeftView, Lens, Mode, RightView, Scope } from "../shared/view";
 import { t } from "@roost/i18n";
 
 /**
@@ -85,6 +88,20 @@ function loadLens(): Lens {
   try { return localStorage.getItem(LENS_KEY) === "tui" ? "tui" : "gui"; } catch { return "gui"; }
 }
 
+/*
+  左栏列对话还是列工作区。**默认对话。**
+
+  这两样不是同一份东西的两种排法：对话目录列的是**已保存的对话**（终端关掉、CLI 退出
+  之后它们仍然在），工作区树列的是**活着的终端**。所以是切换，不是筛选。
+
+  跟着一起持久化：翻历史翻到一半刷新一下被扔回工作区树，和刷新被扔回画布是同一种烦。
+*/
+const LEFT_VIEW_KEY = "roost-left-view-v1";
+function loadLeftView(): LeftView {
+  try { return localStorage.getItem(LEFT_VIEW_KEY) === "workspaces" ? "workspaces" : "conversations"; }
+  catch { return "conversations"; }
+}
+
 export function Shell() {
   const layoutRef = useRef<ImperativePanelGroupHandle>(null);
   const leftRef = useRef<ImperativePanelHandle>(null);
@@ -98,6 +115,7 @@ export function Shell() {
   const [scope, setScope] = useState<Scope>(loadScope);
   const [mode, setMode] = useState<Mode>(loadMode);
   const [lens, setLens] = useState<Lens>(loadLens);
+  const [leftView, setLeftView] = useState<LeftView>(loadLeftView);
   useEffect(() => {
     try { localStorage.setItem(SCOPE_KEY, scope === null ? "" : scope); } catch { /* 存不了就下次从「全部」开始 */ }
   }, [scope]);
@@ -107,6 +125,9 @@ export function Shell() {
   useEffect(() => {
     try { localStorage.setItem(LENS_KEY, lens); } catch { /* 存不了就下次从对话开始 */ }
   }, [lens]);
+  useEffect(() => {
+    try { localStorage.setItem(LEFT_VIEW_KEY, leftView); } catch { /* 存不了就下次从对话目录开始 */ }
+  }, [leftView]);
 
   /*
     换工作区**不动**中间栏在看什么。
@@ -198,7 +219,7 @@ export function Shell() {
         onToggleRight={toggleRight}
       />
       <div className="flex min-h-0 flex-1">
-        <LeftRail collapsed={leftCollapsed} onToggle={toggleLeft} onSettings={() => { setPaletteOpen(false); setSettingsOpen(true); }}
+        <LeftRail collapsed={leftCollapsed} onToggle={toggleLeft} view={leftView} onView={setLeftView} onSettings={() => { setPaletteOpen(false); setSettingsOpen(true); }}
           /* 和 Sidebar 走同一条路：组件自己选中，切回终端由这里给。 */
           inbox={<InboxButton onEnterTerminal={() => setMode("terminal")} />} />
         <PanelGroup
@@ -221,7 +242,13 @@ export function Shell() {
             onExpand={() => setLeftCollapsed(false)}
             className="h-full min-w-0 overflow-hidden"
           >
-            <Sidebar scope={scope} onScope={setScope} onEnterTerminal={() => setMode("terminal")} />
+            {/*
+              左栏两种内容。对话目录是默认的那个：点一行让中栏切到那条对话
+              （中栏的镜头本来就默认是对话），所以不需要再切一次视图。
+            */}
+            {leftView === "conversations"
+              ? <ConversationSidebar onEnterTerminal={() => setMode("terminal")} />
+              : <Sidebar scope={scope} onScope={setScope} onEnterTerminal={() => setMode("terminal")} />}
           </Panel>
           <PanelResizeHandle className="resize" />
           <Panel defaultSize={59} minSize={38} className="h-full min-w-0">

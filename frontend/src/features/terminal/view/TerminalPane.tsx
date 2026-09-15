@@ -41,8 +41,9 @@ export function TerminalPane({
   onExpandLeft: () => void;
   onExpandRight: () => void;
 }) {
-  const { sessions, selectedId, patchCwd, patchCli, selectSession, addSession, pinnedSessionIds } =
-    useWorkspace("sessions", "selectedId", "patchCwd", "patchCli", "selectSession", "addSession", "pinnedSessionIds");
+  const { sessions, selectedId, patchCwd, patchCli, selectSession, addSession, pinnedSessionIds, selectedConversationId } =
+    useWorkspace("sessions", "selectedId", "patchCwd", "patchCli", "selectSession", "addSession", "pinnedSessionIds",
+      "selectedConversationId");
   /*
     **所有**打开的会话都要挂 TermView，不能按工作区筛。切换工作区只是换个看法，
     不该把别处正在跑的终端卸掉——那会丢掉它的滚动缓冲，回来还要重放一遍。
@@ -145,7 +146,8 @@ export function TerminalPane({
         */}
         {showGui && session && (
           <div className="absolute inset-0 z-[5] flex flex-col bg-bg-panel">
-            <ConversationLens key={session.id} terminalId={session.id} conversationId={conversationId} current={currentConversation} />
+            <ConversationLens key={session.id} terminalId={session.id} conversationId={conversationId}
+              current={currentConversation} pinned={selectedConversationId} />
           </div>
         )}
         {/*

@@ -27,6 +27,15 @@ export type Mode = "canvas" | "terminal";
 export type Lens = "tui" | "gui";
 
 /**
+ * 左栏此刻列的是什么。
+ *
+ * `"conversations"` 是跨终端的对话目录（默认），`"workspaces"` 是工作区树。
+ * 两者不是同一份东西的两种排法：前者列**已保存的对话**（终端关掉了也还在），
+ * 后者列**活着的终端**。所以是切换，不是筛选。
+ */
+export type LeftView = "conversations" | "workspaces";
+
+/**
  * 右侧面板此刻在看什么。和上面三个同一根轴，所以住在一起。
  *
  * 它**没有**写成 `"files" | "server" | NotesTab`——那样这个文件就要引用

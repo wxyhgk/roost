@@ -63,7 +63,18 @@ export function LensSwitch({ lens, onChange, available, fallbackTitle }: {
 }
 
 /** 当前身份与历史选择分开：历史永远只读，跟随时身份变化会卸载旧详情。 */
-export function ConversationLens({ terminalId, conversationId, current }: { terminalId: string; conversationId: string | null; current: boolean }) {
+export function ConversationLens({ terminalId, conversationId, current, pinned }: {
+  terminalId: string;
+  conversationId: string | null;
+  current: boolean;
+  /**
+   * 左栏选中的那条对话。**它压过本终端的当前对话**——你在目录里点了一条，就是要看那条，
+   * 哪怕它属于别的终端。等于本终端当前那条时不算压过（那就是同一件事）。
+   *
+   * 只读：它未必是这个终端正在跑的对话，往这里发消息会发错地方。
+   */
+  pinned: string | null;
+}) {
   const [selected, setSelected] = useState('');
   const [items, setItems] = useState<Conversation[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -90,7 +101,9 @@ export function ConversationLens({ terminalId, conversationId, current }: { term
     } catch { if (version === epoch.current) setError(true); }
     finally { if (version === epoch.current) setLoading(false); }
   }
-  const active = selected || conversationId;
+  // 下拉里手选的优先级最高（那是在这个终端的历史里翻），其次是左栏钉住的，最后才是当前。
+  const pinnedOther = pinned && pinned !== conversationId ? pinned : null;
+  const active = selected || pinnedOther || conversationId;
   return <div className="flex min-h-0 flex-1 flex-col">
     <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-2.5 py-2 text-caption text-text-dim">
       <label className="flex min-w-0 flex-1 items-center gap-2"><span className="shrink-0">{t.bookmarks.terminalHistory}</span><select aria-label={t.bookmarks.terminalHistory} value={selected} onChange={event => setSelected(event.target.value)} className="min-w-0 flex-1 rounded border border-border bg-bg p-1 text-text"><option value="">{current ? t.bookmarks.followCurrent : t.bookmarks.latestHistory}</option>{selected && !items.some(item => item.id === selected) && <option value={selected}>{t.bookmarks.readingHistory}</option>}{items.map(item => <option key={item.id} value={item.id}>{item.source.cliId} · {item.title} · {new Date(item.lastMessageAt ?? item.createdAt).toLocaleString()}</option>)}</select></label>
@@ -98,7 +111,7 @@ export function ConversationLens({ terminalId, conversationId, current }: { term
     </div>
     {error && <p role="status" className="px-3 text-caption text-text-dim">{t.bookmarks.historyFailed}</p>}
     {active && !current && !selected && <p className="border-b border-border px-3 py-1.5 text-caption text-text-dim">{t.bookmarks.historyFallback}</p>}
-    {active ? <ConversationContent key={active} conversationId={active} readOnly={!!selected || !current} /> : <p role="status" className="p-4 text-caption text-text-dim">{loading ? t.bookmarks.loading : t.bookmarks.noTerminalHistory}</p>}
+    {active ? <ConversationContent key={active} conversationId={active} readOnly={!!selected || !!pinnedOther || !current} /> : <p role="status" className="p-4 text-caption text-text-dim">{loading ? t.bookmarks.loading : t.bookmarks.noTerminalHistory}</p>}
   </div>;
 }
 
