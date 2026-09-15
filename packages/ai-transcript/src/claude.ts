@@ -110,6 +110,18 @@ function normalize(row: Record<string, any>, ref: TranscriptItem["data"]["detail
   const content = typeof message.content === "string" ? [{ type: "text", text: message.content }] : message.content;
   if (!Array.isArray(content)) return { partial: true };
   const isTool = content.length > 0 && content.every((p: any) => p?.type === "tool_result");
+  /*
+    **`/compact` 留下的摘要不是用户说的话。**
+
+    Claude Code 把压缩摘要写成一条 `role: "user"` 的普通记录，只用记录级的
+    `isCompactSummary: true` 标记它。不认这个字段的后果很具体：本机的三条实测各有
+    14000~16000 字，在对话里会长成一条一万六千字的「用户发言」——右对齐、用户气泡样式，
+    而且因为是 user 角色，前端还会凭空给它画一条回合边界。
+
+    标出来交给前端自己决定怎么画。**不丢内容**：摘要本身是这段历史唯一剩下的东西，
+    藏起来比画错更糟。
+  */
+  const compaction = row.isCompactSummary === true;
   const parts: TranscriptItem["data"]["parts"] = [];
   let partial = false, truncated = false, total = 0;
   const limit = full ? 256 * 1024 : isTool ? PREVIEW : 64 * 1024;
@@ -136,7 +148,7 @@ function normalize(row: Record<string, any>, ref: TranscriptItem["data"]["detail
   const denied = soleResult && typeof row.toolDenialKind === "string" && row.toolDenialKind.length > 0;
   for (const block of content.slice(0, 512)) {
     if (!object(block)) { partial = true; continue; }
-    if (block.type === "text" && typeof block.text === "string") add("text", block.text);
+    if (block.type === "text" && typeof block.text === "string") add(compaction ? "compaction" : "text", block.text);
     else if (block.type === "thinking" && typeof block.thinking === "string") add("thinking", block.thinking);
     else if (block.type === "tool_use" && typeof block.name === "string" && typeof block.id === "string") {
       // 预览态按结构截断而不是压成一个标量：Grep 的 pattern、TodoWrite 的 todos 以前在这里就丢干净了。

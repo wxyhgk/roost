@@ -56,13 +56,14 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
     每条上面要不要标「你 / AI」。同一个角色连着说好几条时只标第一条——一次回合里 AI 往往是
     「调用 → 改动 → 再调用」，每条都顶一个「AI」纯属噪音，还把真正的分界（换人说话）淹掉。
 
-    **diff 条目不算换人**：它没有角色，夹在同一个回合中间，所以要跨过它记住上一个真实角色，
-    否则它后面那条会莫名其妙又标一次。
+    **diff 条目和压缩摘要都不算换人**：它们没有角色、夹在同一个回合中间，所以要跨过它们
+    记住上一个真实角色，否则它们后面那条会莫名其妙又标一次。
   */
   const showRole = useMemo(() => {
     let last: string | undefined;
     return items.map(item => {
-      if (item.kind === "diff") return false;
+      // diff 和压缩摘要都没有角色，也都不打断「同一个人在说话」——跨过它们记住上一个角色。
+      if (item.kind === "diff" || item.kind === "compaction") return false;
       const show = item.turnStart || item.role !== last;
       last = item.role;
       return show;
@@ -420,9 +421,37 @@ function TurnDiffItem({ diff }: { diff: TurnDiff }) {
   );
 }
 
+/**
+ * `/compact` 留下的上下文摘要：一条横贯的分隔行，点开才看内容。
+ *
+ * **不替换历史，也不藏内容。** 上面被压缩掉的那些消息该显示照样显示——压缩是模型侧的
+ * 事，不是「这段没发生过」；而摘要本身是那段历史唯一剩下的东西，藏掉比画错更糟。
+ * 默认折起来只是因为它实测有一万四千字起。
+ */
+function CompactionItem({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="my-1">
+      <button type="button" aria-expanded={open} onClick={() => setOpen(value => !value)}
+        className="flex w-full items-center gap-2 text-caption text-text-dim hover:text-text">
+        <span className="h-px flex-1 bg-border/60" />
+        <span className="shrink-0"><IconChevron open={open} /></span>
+        <span className="shrink-0">{t.misc.conversations.detail.compacted}</span>
+        <span className="h-px flex-1 bg-border/60" />
+      </button>
+      {open && (
+        <div className="mt-1.5 max-h-96 overflow-auto rounded-lg border border-border/60 bg-bg px-2.5 py-2 text-body leading-[1.55] text-text-dim">
+          <Prose value={text} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* 一个回合从用户说话开始；边界靠上方的留白和一条细线，而不是给每条消息加框。 */
 function TranscriptItem({ item, showRole }: { item: Item; showRole: boolean }) {
   if (item.kind === "diff") return <li className="flex flex-col items-start"><TurnDiffItem diff={item.diff} /></li>;
+  if (item.kind === "compaction") return <li className="flex flex-col items-stretch"><CompactionItem text={item.text} /></li>;
   const mine = item.role === "user";
   return (
     <li className={`flex flex-col gap-1 ${item.turnStart ? "mt-3 border-t border-border/40 pt-3" : ""} ${

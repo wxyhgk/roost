@@ -165,6 +165,8 @@ export const misc = {
       toolFailed: "failed",
       toolDenied: "denied",
       toolNoResult: "no result",
+      /** `/compact` 的摘要：一条分隔行，点开才看。它不是用户说的话。 */
+      compacted: "Context compacted",
       /** 命令输出留尾部：报错和结论都在末尾。 */
       outputClipped: "Earlier output omitted",
       /** 「跑完了但没输出」和「结果没拿到」必须分得开。 */

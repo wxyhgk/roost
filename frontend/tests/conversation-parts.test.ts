@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { groupMessages, type Row } from "../src/features/conversations/parts.ts";
+import { buildItems, groupMessages, type Row } from "../src/features/conversations/parts.ts";
 import type { HistoryMessage, MessagePart } from "../src/shared/api/conversationPayloads.ts";
 
 let seq = 0;
@@ -191,4 +191,23 @@ test("an orphan denial keeps the distinction too", () => {
 test("a denied tool does not turn its group red", () => {
   assert.equal(toolsStatus([{ kind: "tool", id: "a", name: "", args: "", result: "x", failed: false, denied: true }]),
     "completed");
+});
+
+test("/compact 的摘要不是用户发言：单独成条，也不开新回合", () => {
+  /*
+    Claude Code 把压缩摘要写成一条 role:"user" 的普通记录，只用记录级的 isCompactSummary
+    标记它（本机实测每条 14000 字起）。当普通文本画会得到一条巨型用户气泡；而且因为是
+    user 角色，还会凭空多画一条回合边界——压缩发生在一个回合中间，不是用户说了新的话。
+  */
+  const items = buildItems(groupMessages([
+    msg("user", "帮我改一下", [{ type: "text", text: "帮我改一下" }]),
+    msg("assistant", "好的", [{ type: "text", text: "好的" }]),
+    msg("user", "", [{ type: "compaction", text: "这段对话的摘要……" }]),
+    msg("assistant", "接着说", [{ type: "text", text: "接着说" }]),
+  ]));
+  const compaction = items.filter(i => i.kind === "compaction");
+  assert.equal(compaction.length, 1, "压缩摘要要单独成条");
+  assert.equal(items.filter(i => i.turnStart).length, 1, "只有真正的用户发言开新回合");
+  // 内容不能丢：摘要是那段历史唯一剩下的东西。
+  assert.match((compaction[0] as { text: string }).text, /这段对话的摘要/);
 });

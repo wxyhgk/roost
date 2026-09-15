@@ -16,8 +16,17 @@ const MAX_OUTPUT = 4000;
  * 选它作为第一个专用渲染器，是因为命令是**唯一在所有 CLI 上都拿得到**的参数之一
  * （解析器的预览态按 `command ?? file_path ?? path` 挑那个唯一保留的标量，命令排第一）。
  *
- * 拿不到 stdout / stderr / 退出码——我们的 result 是拍平的一坨字符串，后端没有分流。
- * 要真正分开，得在 `MessagePart` 上补一个和 `patch` 平行的结构化字段。
+ * 拿不到 stdout / stderr / 退出码——但**原因不是「上游没给」，是我们自己丢的**，这一条
+ * 之前写反了：Claude 的 `toolUseResult` 里 stdout 和 stderr 就是两个独立字段（本机 20 份
+ * transcript 里 1050 条记录带着它们），而 `packages/ai-transcript/src/claude.ts` 只读了
+ * `block.content` 那份拍平文本——那份正是两者拼起来的，中间没有任何分隔标记。
+ *
+ * 不过**真要分流的收益很小**：实测 stderr 非空只占 0.3%（1050 条里 3 条），单独为它做一个
+ * 双栏视图，九成时间会是个空面板。同一批数据里更值的是 Read 的 totalLines、WebFetch 的
+ * HTTP 状态码、WebSearch 的结果数组——同样在源文件里，同样没取。
+ *
+ * **退出码是唯一真正的上游缺口**：Claude 的 transcript 里根本没有这个字段，只有
+ * `returnCodeInterpretation` 这种人话（"No matches found"）。
  */
 /**
  * 命令输出。封顶加滚动，**而且一上来就停在底部**。

@@ -13,6 +13,15 @@ import type { EditPatch, HistoryMessage, MessagePart } from "../../shared/api/co
 
 export type Block =
   | { kind: "text"; text: string }
+  /**
+   * `/compact` 留下的上下文摘要。
+   *
+   * 它在 transcript 里是一条 `role: "user"` 的记录（解析器按记录级的 `isCompactSummary`
+   * 认出来），但**不是用户说的话**——实测每条一万四千字起。当普通文本画会得到一条巨型
+   * 用户气泡，还会凭空多一条回合边界。画成分隔行，内容折起来但留着：摘要是这段历史唯一
+   * 剩下的东西，藏掉比画错更糟。
+   */
+  | { kind: "compaction"; text: string }
   | { kind: "tool"; id: string; name: string; args: string; result: string | null; failed: boolean;
       /**
        * 这次调用被拦下来了，**命令根本没执行**——用户拒绝、auto 模式拦截、权限规则都算。
@@ -60,6 +69,11 @@ export function groupMessages(messages: readonly HistoryMessage[]): Row[] {
         if (block.id) pending.set(block.id, block);
         continue;
       }
+      if (part.type === "compaction") {
+        const value = text(part);
+        if (value) blocks.push({ kind: "compaction", text: value });
+        continue;
+      }
       if (part.type === "tool_result" || part.type === "tool_error" || part.type === "tool_denied") {
         const target = part.toolCallId ? pending.get(part.toolCallId) : undefined;
         if (target) {
@@ -103,6 +117,7 @@ export type Item =
   | { kind: "text"; key: string; role: string; text: string; message: HistoryMessage; turnStart: boolean }
   | { kind: "tools"; key: string; role: string; tools: ToolBlock[]; status: ToolsStatus; message: HistoryMessage; turnStart: boolean }
   /** 一个回合改了什么的汇总，摆在这个回合的末尾。 */
+  | { kind: "compaction"; key: string; text: string; turnStart: false }
   | { kind: "diff"; key: string; diff: TurnDiff; turnStart: false };
 
 export type ToolsStatus = "running" | "error" | "completed";
@@ -188,6 +203,14 @@ export function buildItems(rows: readonly Row[]): Item[] {
         continue;
       }
       flush();
+      /*
+        压缩摘要**不开新回合**。它在 transcript 里是 user 角色，照常走下面那条就会画出一条
+        回合边界——可上下文压缩发生在一个回合中间，不是用户说了新的话。
+      */
+      if (block.kind === "compaction") {
+        items.push({ kind: "compaction", key: `${row.message.messageId}:${index}`, text: block.text, turnStart: false });
+        continue;
+      }
       if (isUser && index === 0) { closeTurn(); turnKey = row.message.messageId; }
       items.push({ kind: "text", key: `${row.message.messageId}:${index}`, role: row.role,
         text: block.text, message: row.message, turnStart: isUser && index === 0 });
