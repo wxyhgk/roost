@@ -29,11 +29,11 @@ Copyright (c) 2026 DeepSeek
 
 ## 这份拷贝的规矩
 
-**除下面点名的四个文件外，每个文件都逐字取自上游**，顶上压着一行出处（路径 + 提交号）。
-这样做是为了将来还能重新同步：改动只要还锁在那四个文件里，重新拉一遍上游就是覆盖，
+**除下面点名的五个文件外，每个文件都逐字取自上游**，顶上压着一行出处（路径 + 提交号）。
+这样做是为了将来还能重新同步：改动只要还锁在那五个文件里，重新拉一遍上游就是覆盖，
 而不是一场三方合并。要改样式请改 `tokens.css`，不要改进 `*.module.css`。
 
-### 不是上游的四个文件
+### 不是上游的五个文件
 
 | 文件 | 是什么 |
 | --- | --- |
@@ -41,8 +41,9 @@ Copyright (c) 2026 DeepSeek
 | `index.ts` | 上游 `index.ts` 删到只剩留下那批之后的版本 |
 | `tokens.css` | `--dsw-*` → 我们 `--color-*` 的桥接表，文件里标了哪些值是猜的 |
 | `markdown/katex-lazy.ts` | **我们自己写的**：把 katex 引擎和它的样式表包成一个异步模块 |
+| `highlighted.ts` | **我们自己写的**第二个入口，装会拖进 shiki 的那几块，理由写在文件顶上 |
 
-### 逐字之外的两处改动
+### 逐字之外的改动
 
 1. **`ansi.ts` / `head-tail-cap.ts` 不在这个目录里。** `TerminalBlock.tsx` 和
    `SearchBlock.tsx` 改指 `frontend/src/shared/terminal-text/` 下已有的那一份——两条
@@ -78,6 +79,8 @@ Copyright (c) 2026 DeepSeek
 
 ## 搬了什么
 
+### 第一轮：积木（上游 `packages/client/ui-primitives/src/`）
+
 `DiffBlock` `TerminalBlock` `ReadBlock` `SearchBlock` `WebBlock` `CodeBlock` `JsonBlock`
 `DisclosureRow` `StateDot` `Pill` `FoldToggle`，以及它们的依赖闭包：
 
@@ -87,6 +90,25 @@ Copyright (c) 2026 DeepSeek
 - `WebBlock` 的链接图标一路：`LinkIcon.tsx` → `FileTypeIcon.tsx` → `CodeFileIcon.tsx`
   → `code-file-icon-artwork.ts` + `.manifest.json` + `code-file-types.ts`
   （`.manifest.json` 不能写注释，出处只记在这里）
+
+### 第二轮起：对话外壳与消息体（上游 `packages/client/ui-chat/src/client/`）
+
+从「搬几个零件、外壳还是我们自己的」改成**整半边换掉**之后搬进来的：
+
+- 容器与正文：`chat/ChatView.tsx`、`chat/AssistantMarkdown.tsx`、`markdown/` 整棵渲染树
+- 消息体与装饰：`chat/MessageItem.tsx`、`ReasoningRow.tsx`、`chat/CompactionItem.tsx`、
+  `chat/MessageIconActions.tsx`、`user-text.tsx`、`ReferenceIcon.tsx`
+- 回合统计：`chat/TurnProcessNodeView.tsx`、`chat/TurnUsagePanel.tsx`（两个药丸）、
+  `chat/TurnNavigator.tsx`，以及它们共用的 `chat/stat-dialog.ts`、
+  `chat/message-chrome.ts`、`chat/token-format.ts`、`chat/use-calendar-day.ts`、
+  `chat/searchable-hidden.ts`、`file-size.ts`、`accessibility.module.css`
+- 命令卡片：`chat/GenericCommandCard.tsx`、`chat/CompactionCommandCard.tsx`
+- 工具卡片（这一撮的上游是 **`packages/client/ui-tool/src/client/`**，不是 `ui-chat`）：
+  `chat/tool/ToolRow.tsx`，七个 `chat/tool/models/*`，以及 `chat/tool/toolviews/` 里的
+  `GenericToolCard` `file-mutation-row` `read-row` `read-family-row` `bash-sample`
+
+**其中 `TurnNavigator` 搬了但没接**：它的价值随回合数上涨，而我们是一次读完整段历史、
+不做增量滚动，接上去是个永远指着同一处的导航条。留在目录里是为了将来改成增量加载时不用重搬。
 
 ## 没搬什么
 
@@ -98,6 +120,15 @@ Copyright (c) 2026 DeepSeek
 - 定位与杂项 hook：`useAnchoredMaxHeight` `useAnchoredPosition`
   `useDismissOnOutsidePointer` `pointer-grace` `relative-time` `rank-by-name` ~~`file-size`~~（第二轮随 MessageItem 搬入）
 - `markdown/plain-text.ts`——闭包里没人引它
+- **上游 `ui-tool` 里另外六个 toolview**：`search-row` `web-row` `todo-row` `read-image-row`
+  `ask-question-row`，以及 `plan-summary`。不是嫌麻烦：它们读的是上游自己那套工具结果信封
+  （`raw-tool-call.ts` / `auto-review-denial.ts` 的形状），我们的 transcript 里没有对应字段，
+  接上去画出来的是一个个**言之凿凿的空壳**——有标题有边框，里面永远没内容。宁可落到
+  `GenericToolCard`。配套的 `ask-question-card-model.ts` `auto-review-denial.ts`
+  `primitive-labels.ts` `raw-tool-call.ts` 同理没搬。
+- `ui-tool` 的外壳与接线：`ToolCallTree` `AskQuestionCard` `apply.ts` `contract/slots.ts`
+  `locale.ts` `index.ts`——那是上游的插槽运行时，我们的分派写在
+  `features/conversations/tools/dispatch.ts` 里。
 
 ## 运行时依赖
 
