@@ -3,7 +3,7 @@ import { constants } from 'node:fs';
 import { open, opendir, realpath } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { TranscriptError, type TranscriptCheckpoint, type TranscriptItem } from './index.ts';
-import { previewToolArgs } from './truncate.ts';
+import { previewToolArgs, previewToolText } from './truncate.ts';
 const BATCH = 256 * 1024, LINE = 1024 * 1024;
 const object = (value: unknown): value is Record<string, any> => !!value && typeof value === 'object' && !Array.isArray(value);
 function fingerprint(stat: {dev:number;ino:number;birthtimeMs:number}) { return `${stat.dev}:${stat.ino}:${stat.birthtimeMs}`; }
@@ -55,13 +55,37 @@ function normalize(row: Record<string, any>, ref: TranscriptItem['data']['detail
     add(update.sessionUpdate === 'agent_thought_chunk' ? 'thinking' : 'text', update.content.text);
   } else if (['tool_call','tool_call_update'].includes(update.sessionUpdate)) {
     if (typeof update.toolCallId !== 'string' || !update.toolCallId || update.toolCallId.length > 512) return {partial:true};
-    const extra = {toolCallId:update.toolCallId, ...(typeof update.title === 'string' ? {name:update.title.slice(0,512)} : {})};
-    add('tool_call',typeof update.title === 'string' ? update.title : update.toolCallId,extra);
-    if (update.rawInput !== undefined) {
-      // 预览态按结构截断，详情态给完整 JSON。
-      const args = full ? {text:JSON.stringify(update.rawInput),truncated:false} : previewToolArgs(update.rawInput);
-      truncated ||= args.truncated; add('tool_input',args.text,extra);
-    }
+    /*
+      `name` 是前端用来对号入座渲染器的键（frontend/src/features/conversations/tools/identify.ts
+      → registry.tsx），所以只能放工具身份，不能放人话标题。
+
+      **ACP 的 tool_call 里没有 `Bash` / `apply_patch` 那种具体工具名**：协议只给 `kind`
+      （read / edit / execute / search / fetch / think / other 这几个类别）、一句给人看的
+      `title`、以及 `rawInput`。grok 走的就是标准 ACP（见 tasks/cli-adapters/grok.md），
+      happier 对 grok 也是拿 `kind` 当工具名的（它给 gemini/opencode/codex 那几家实现了
+      extractToolNameFromId，唯独 grok 没有，于是回落到 kind）。
+
+      于是这里写 `kind`：它是这条记录里唯一机器可读的身份，而且 identify.ts 的别名表本来就
+      认得它——execute→bash、search→grep、view→read 这几条就是从 happier 的 ACP 归一化搬来的。
+      title 不再进 `name`：它是「Read sanitized-001.txt」这种句子，既匹配不上任何渲染器，
+      又会让摘要行上本该显示工具名的位置变成一整句话。kind 缺失时宁可不给名字，不编一个。
+    */
+    const kind = typeof update.kind === 'string' && update.kind.trim() ? update.kind.trim().slice(0,512) : undefined;
+    const extra = {toolCallId:update.toolCallId, ...(kind ? {name:kind} : {})};
+    /*
+      正文拼成 `name: 参数`，和另外六家一致——`parts.ts` 的 toolArgs 靠这个前缀把参数剥出来，
+      剥出来得是可解析的 JSON，渲染器才拿得到字段。原来另起了一种 `tool_input` part，
+      而 parts.ts 只认 tool_call / tool_result / tool_error，它会掉进通用文本分支，
+      把一串 JSON 参数当成聊天气泡画出来。预览态按结构截断，详情态给完整 JSON。
+
+      没有 rawInput 时退回 title（ACP 允许只发标题不发参数）：那时它是这条记录里唯一说得清
+      「干了什么」的东西，比一个空的 `{}` 有用。它不是 JSON，前端解不出对象就按原文显示。
+    */
+    const args = update.rawInput === undefined && typeof update.title === 'string'
+      ? (full ? {text:update.title,truncated:false} : previewToolText(update.title))
+      : (full ? {text:JSON.stringify(update.rawInput ?? {}),truncated:false} : previewToolArgs(update.rawInput));
+    truncated ||= args.truncated;
+    add('tool_call',kind ? `${kind}: ${args.text}` : args.text,extra);
     if (Array.isArray(update.content)) {
       if (update.content.length > 512) partial = true;
       for (const block of update.content.slice(0,512)) {
