@@ -15,7 +15,9 @@ import { emptyHistory, historyOnReload, isLongReply, mergeMessages, type History
 import { startConversationRecovery } from "./recovery";
 
 import { ConversationComposer, PendingMessage } from "./ConversationComposer";
-import type { SendBlock } from "./sendability";
+import { shouldOfferRun, type SendBlock } from "./sendability";
+import { createSession } from "../../shared/api/session";
+import { useWorkspace } from "../../shared/store";
 import { useOutgoing } from "./useOutgoing";
 import { ConversationMeta } from "./ConversationMeta";
 import { Empty } from "../../shared/ui/Empty";
@@ -205,7 +207,8 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
       </div>
 
       {/* 没有在跑的终端时不给输入框：投递不出去，摆一个能打字的框只会让人白写一段。 */}
-      {jumpTarget && !readOnly ? <ConversationComposer outgoing={outgoing} /> : <SendBlocked blocked={blocked} readOnly={readOnly} />}
+      {jumpTarget && !readOnly ? <ConversationComposer outgoing={outgoing} />
+        : <SendBlocked blocked={blocked} readOnly={readOnly} conversation={conversation} />}
     </div>
   );
 }
@@ -229,7 +232,9 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
  * **`blocked` 为 null 时退回原文案，不猜**：目录（`ConversationList`）里进来时根本没有
  * 终端上下文，这里编一个理由出来只是把一句假话换成另一句。
  */
-function SendBlocked({ blocked, readOnly }: { blocked: SendBlock | null; readOnly: boolean }) {
+function SendBlocked({ blocked, readOnly, conversation }: {
+  blocked: SendBlock | null; readOnly: boolean; conversation: Conversation;
+}) {
   const m = t.misc.conversations.detail.send.blocked;
   const [text, hint]: [string, string | null] =
     blocked === "history" ? [t.bookmarks.readingHistory, null]
@@ -238,10 +243,61 @@ function SendBlocked({ blocked, readOnly }: { blocked: SendBlock | null; readOnl
     : blocked === "noCli" ? [m.noCli, m.noCliHint]
     : blocked === "unbound" ? [m.unbound, m.unboundHint]
     : [readOnly ? t.bookmarks.readingHistory : t.misc.conversations.detail.send.noRun, null];
+  const showRun = shouldOfferRun(blocked, conversation.source.cliId, conversation.source.nativeSessionId);
   return (
-    <div role="status" className="shrink-0 border-t border-border px-2.5 py-2 text-caption text-text-dim">
-      <p>{text}</p>
-      {hint && <p className="mt-0.5 text-text-dim/70">{hint}</p>}
+    <div className="shrink-0 border-t border-border px-2.5 py-2 text-caption text-text-dim">
+      <div role="status">
+        <p>{text}</p>
+        {/* 有按钮时不再留那句「先自己去终端里启动一个」——它和正下方的按钮说的是同一件事，
+            摆在一起像是在让用户绕远路。按钮自己那行说明已经讲清了会发生什么。 */}
+        {hint && !showRun && <p className="mt-0.5 text-text-dim/70">{hint}</p>}
+      </div>
+      {showRun && <RunConversation conversation={conversation} />}
+    </div>
+  );
+}
+
+/**
+ * 「把这条对话跑起来」。
+ *
+ * 这是「只能看不能说」的正解。输入框的门禁是一条 active 的 run，而 run 只在 CLI 自己
+ * 报到之后才有——所以这里不去猜一个绑定，而是**真的把 CLI 拉起来**：新开一个终端，
+ * 第一个进程就是 `claude --resume <这条对话的会话 id>`。CLI 起来后自己发 SessionStart，
+ * 绑定和 run 顺势成立，输入框自然出现。身份自始至终由 CLI 确认，我们一个字都没猜。
+ *
+ * 起来之后直接切到那个终端：这正是「GUI 和 TUI 同一份」该有的样子——你在这里点一下，
+ * 那边就真的有一个能用的 TUI 跑着同一条会话。
+ */
+function RunConversation({ conversation }: { conversation: Conversation }) {
+  const m = t.misc.conversations.detail.send.blocked;
+  const { selectSession } = useWorkspace("selectSession");
+  const [starting, setStarting] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  async function run() {
+    setStarting(true); setFailed(null);
+    try {
+      const session = await createSession({ resumeConversation: conversation.id });
+      selectSession(session.id);
+    } catch (error) {
+      const code = error instanceof ApiError ? error.code : null;
+      // 已经在跑就直接把人送过去——那是他要的结果，不是一个错误。
+      if (code === "already_running") {
+        const target = error instanceof ApiError ? (error.body as { webSessionId?: unknown } | undefined)?.webSessionId : undefined;
+        if (typeof target === "string") { selectSession(target); return; }
+        setFailed(m.runAlreadyRunning);
+      } else if (code === "unsupported_cli" || code === "unusable_session_id" || code === "no_conversation") {
+        setFailed(m.runUnsupported);
+      } else setFailed(error instanceof Error ? error.message : m.runFailed);
+    } finally { setStarting(false); }
+  }
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-2">
+      <button type="button" disabled={starting} title={m.runHint}
+        onClick={() => void run()}
+        className="shrink-0 rounded border border-border px-2 py-1 text-caption text-text hover:bg-bg-hover disabled:opacity-60">
+        {starting ? m.runStarting : m.run}
+      </button>
+      <span className="min-w-0 text-text-dim/70">{failed ?? m.runHint}</span>
     </div>
   );
 }

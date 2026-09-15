@@ -48,7 +48,9 @@ export type ApiErrorCode =
   | "path_escape" | "permission_denied"
   | "request_conflict" | "queue_full" | "already_writing" | "sending_disabled" | "control_unavailable" | "target_changed"
   | "no_conversation" | "unsupported_cli" | "unusable_session_id" | "identity_syncing"
-  | "source_unavailable" | "terminal_changed" | "source_gap" | "source_changed" | "identity_unconfirmed" | "upload_busy";
+  | "source_unavailable" | "terminal_changed" | "source_gap" | "source_changed" | "identity_unconfirmed" | "upload_busy"
+  /* 从对话直接把 CLI 跑起来时的两种拒绝。 */
+  | "conversation_trashed" | "already_running";
 
 export function sendError(
   res: ServerResponse, status: number, code: ApiErrorCode, message: string,

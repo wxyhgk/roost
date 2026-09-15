@@ -226,6 +226,16 @@ export const misc = {
           noCliHint: "先在「终端」里启动一个（claude、codex 等），它接上后这里就能发消息。",
           unbound: "CLI 在跑，但还没报出它在哪个对话里",
           unboundHint: "到「终端」里发一句话——CLI 只在真的提交了一条 prompt 时才上报，空敲回车不算。daemon 重启过之后都要这么来一下。",
+          /**
+           * 「把这条对话跑起来」。这是「只能看不能说」的正解：输入框要的是一条 active 的
+           * run，而 run 只在 CLI 报到之后才有——所以不猜绑定，直接把 CLI 拉起来。
+           */
+          run: "把这条对话跑起来",
+          runHint: "新开一个终端，用同一条会话接着跑。终端和这里看到的是同一份。",
+          runStarting: "正在启动…",
+          runFailed: "没能启动",
+          runUnsupported: "这个 CLI 不支持按会话 id 恢复",
+          runAlreadyRunning: "它已经在另一个终端里跑着了",
         },
         conflict: "同一个请求已用别的内容提交过；请改用新的一条",
         /** 各状态对使用者的含义。措辞刻意保守：宁可说不确定，也不谎报已送达。 */

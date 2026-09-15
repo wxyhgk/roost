@@ -1,3 +1,4 @@
+import { DEFAULT_CLI_DEFINITIONS, resumeArgv } from "@roost/cli-adapters";
 import type { ActivityView } from "../session-status/public";
 
 /**
@@ -57,4 +58,38 @@ export function sendBlock(input: {
   // daemon 不在（unavailable）与前端还没连上（connecting/disconnected）都一样：无从判断。
   if (input.state === "connecting" || input.state === "disconnected" || input.state === "unavailable") return "statusOffline";
   return input.cliId === null ? "noCli" : "unbound";
+}
+
+/**
+ * 这条对话能不能「直接跑起来」——也就是能不能拼出让 CLI 领回同一条原生会话的命令。
+ *
+ * 判据用的是 `DEFAULT_CLI_DEFINITIONS` 里的恢复配方，和后端 `session-resume.ts` 的
+ * `resumePlanFor` 同一份来源，所以两边给的答案一致；`bookmarks/model.ts` 早就是这么
+ * 在前端拼恢复命令的，这里只是同一条路的第二个用处。
+ *
+ * **必须先问一声再画按钮**：gemini 这类在配方表里没有 resume 的 CLI 永远起不来，
+ * 给它画一个按钮就是画一个必然失败的东西。
+ */
+export function canRun(cliId: string | null | undefined, nativeSessionId: string | null | undefined): boolean {
+  if (!cliId || !nativeSessionId) return false;
+  return resumeArgv(DEFAULT_CLI_DEFINITIONS.find(cli => cli.id === cliId), nativeSessionId) !== null;
+}
+
+/**
+ * 该不该给「把这条对话跑起来」这个按钮。
+ *
+ * **`unbound` 这一格必须不给。** 它的含义是「那个终端里有 CLI 正附着在某条会话上，
+ * 只是还没报出是哪条」。再开一个进程 `--resume` 同一条会话，就是两个进程抢同一份
+ * transcript——claude 对此是强制单写者。而后端的 `already_running` 恰恰拦不住这一格：
+ * 它查的是有没有 active run，而这一格的定义就是**没有**。这道闸只能在这里把。
+ *
+ * `statusOffline` 是「什么都不知道」，不知道就不动手。
+ *
+ * 其余几格（历史、终端没了、终端里没 CLI、目录里进来的 null）都没有已知的附着进程，
+ * 真撞上别处已经跑着，后端会用 `already_running` 拒掉并告诉界面跳到哪。
+ */
+export function shouldOfferRun(blocked: SendBlock | null,
+  cliId: string | null | undefined, nativeSessionId: string | null | undefined): boolean {
+  if (blocked === "unbound" || blocked === "statusOffline") return false;
+  return canRun(cliId, nativeSessionId);
 }

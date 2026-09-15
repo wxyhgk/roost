@@ -36,7 +36,7 @@ import { listDir, walkFiles, readPreview, statRawFile, writeFileAtomic, createPa
 import { createFileWatcher } from "./watcher";
 import { createIsolatedFileWatcher } from './watcher-process';
 import { createAiSessionBridge, AiSessionBridgeError, type AiSessionBridge } from "@roost/ai-session-bridge";
-import { createSessionResume, type ResumePlan } from "./session-resume.ts";
+import { createSessionResume, resumePlanFor, type ResumePlan } from "./session-resume.ts";
 /* 前端拿到 GET .../resume 之后按钮就不该出现了；走到这里说明中间变了，文案给的是那个变化。 */
 const RESUME_UNAVAILABLE = {
   no_conversation: "this terminal has no AI conversation to resume",
@@ -334,7 +334,57 @@ export function createBackendServer({ store, runtime, workspaceRoot, access, aut
     if (req.method === "POST" && pathname === "/api/sessions") {
       const body = await readJson(req);
       validateProjectId(body);
-      const cwd = resolveCwd(typeof body.cwd === "string" ? body.cwd : undefined);
+      /*
+        `resumeConversation`：开一个新终端，并且让它的**第一个进程**就是把这条对话接着跑
+        起来的那条 CLI 命令（claude 是 `--resume <nativeSessionId>`）。
+
+        这是「对话里能说话」缺的那一环。输入框的门禁是「有没有一条 active 的 run」，而
+        run 只在 CLI 自己报到之后才有；CLI 报到又只发生在它启动或提交 prompt 的时候。
+        所以对着一条没在跑的对话，界面能做的不是猜一个绑定出来，而是**真的把它跑起来**。
+        身份不是猜的：cliId 和 nativeSessionId 直接来自 conversation_sources，`--resume`
+        让 CLI 采用的正是那一条，随后它自己发 SessionStart，绑定和 run 顺势成立。
+
+        走的是建终端这条路而不是往活终端里敲字：命令是这个进程的 argv，不碰任何已经跑着
+        的东西——和上面「恢复退出的终端」同一个道理。
+      */
+      const resumeConversationId = typeof body.resumeConversation === "string" ? body.resumeConversation : null;
+      let resumeCommand: readonly string[] | undefined;
+      let resumeCwd: string | undefined;
+      if (resumeConversationId !== null) {
+        // conversations.get 对不存在的 id 抛 ConversationError，而顶层 catch 会把它变成 500。
+        // 「对话没了」是 404，不是服务器出错。
+        let conversation;
+        try { conversation = store.conversations.get(resumeConversationId); }
+        catch (error) {
+          if (!(error instanceof ConversationError)) throw error;
+          sendError(res, error.status === 404 ? 404 : 400,
+            error.status === 404 ? "not_found" : "invalid_request", error.message);
+          return;
+        }
+        if (conversation.trashedAt !== null) {
+          sendError(res, 409, "conversation_trashed", "restore the conversation before running it");
+          return;
+        }
+        // 已经在跑就不要再起第二个：同一条原生会话被两个进程附着，谁写谁赢是不可预测的。
+        // 告诉调用方它在哪，让界面跳过去，而不是默默开一个重复的。
+        const active = store.conversationRuns.active(resumeConversationId);
+        if (active) {
+          // 带上它在哪，界面才能跳过去而不是只显示一句「已经在跑了」。
+          sendError(res, 409, "already_running", "this conversation is already running in a terminal",
+            { webSessionId: active.webSessionId });
+          return;
+        }
+        const plan = resumePlanFor(store, conversation.source.cliId, conversation.source.nativeSessionId);
+        if (!plan.available) {
+          sendError(res, 409, plan.reason, RESUME_UNAVAILABLE[plan.reason]);
+          return;
+        }
+        resumeCommand = plan.command;
+        // 在这条对话原来的目录里开：CLI 的 --resume 只带回会话，不带回工作目录，
+        // 而它记下来的那些相对路径全是相对那个目录说的。
+        resumeCwd = conversation.source.cwd ?? undefined;
+      }
+      const cwd = resolveCwd(typeof body.cwd === "string" ? body.cwd : resumeCwd);
       const record = upsertSession({
         id: typeof body.id === "string" ? body.id : undefined,
         title: typeof body.title === "string" ? body.title : undefined,
@@ -348,7 +398,7 @@ export function createBackendServer({ store, runtime, workspaceRoot, access, aut
         closed: "closed" in body ? body.closed === true : undefined,
       });
       sessionStatus.refresh();
-      if (!record.closed) await runtime.ensureSession(record.id, record.cwd);
+      if (!record.closed) await runtime.ensureSession(record.id, record.cwd, resumeCommand);
       const liveCwd = runtime.getSession(record.id)?.cwd;
       if (liveCwd) {
         setSessionCwd(record.id, liveCwd);

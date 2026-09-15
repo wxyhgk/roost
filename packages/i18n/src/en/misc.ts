@@ -215,6 +215,12 @@ export const misc = {
           noCliHint: "Start one under Terminal (claude, codex, …); sending works once it connects.",
           unbound: "A CLI is running, but it has not reported which conversation it is in",
           unboundHint: "Send a line in Terminal — the CLI only reports when a prompt is actually submitted; a bare Enter does not count. Needed again after the daemon restarts.",
+          run: "Run this conversation",
+          runHint: "Opens a new terminal and resumes the same session. The terminal and this view show the same thing.",
+          runStarting: "Starting…",
+          runFailed: "Could not start it",
+          runUnsupported: "This CLI cannot be resumed by session id",
+          runAlreadyRunning: "It is already running in another terminal",
         },
         conflict: "That request id was already used with different text; send a new one",
         /** 各状态对使用者的含义。措辞刻意保守：宁可说不确定，也不谎报已送达。 */

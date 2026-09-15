@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { sendBlock } from "../src/features/conversations/sendability";
+import { canRun, sendBlock, shouldOfferRun } from "../src/features/conversations/sendability";
 import { getLocale, getMessages, setLocale } from "@roost/i18n";
 
 const live = { selectedHistory: false, current: false, state: "quiet" as const, cliId: "claude" };
@@ -49,4 +49,32 @@ test("五种成因在两种语言里都各说各的", () => {
       assert.ok(m.blocked.noCliHint.length > 0 && m.blocked.unboundHint.length > 0, locale);
     }
   } finally { setLocale(previous); }
+});
+
+const UUID = "550e8400-e29b-41d4-a716-446655440000";
+
+test("能不能拼出恢复命令，判据和后端同一份", () => {
+  assert.equal(canRun("claude", UUID), true);
+  assert.equal(canRun("omp", "abc-123"), true);
+  // gemini 在 registry 里没有 resume 配方：给它画按钮就是画一个必然失败的东西。
+  assert.equal(canRun("gemini", UUID), false);
+  assert.equal(canRun("claude", null), false);
+  assert.equal(canRun(null, UUID), false);
+});
+
+test("CLI 已经附着时不给「跑起来」——两个进程抢同一份 transcript", () => {
+  // 这条是这个按钮最危险的一格：unbound 的意思是「有 CLI 附着着，只是没报出是哪条」。
+  // 后端的 already_running 拦不住它（它查的是 active run，而这一格定义上就没有），
+  // 所以闸只能在这里。把它放开，就会开出第二个 claude 去 --resume 同一条会话。
+  assert.equal(shouldOfferRun("unbound", "claude", UUID), false);
+  // 什么都不知道的时候也不动手。
+  assert.equal(shouldOfferRun("statusOffline", "claude", UUID), false);
+});
+
+test("没有已知附着进程的几格都给按钮", () => {
+  for (const blocked of ["history", "terminalGone", "noCli", null] as const) {
+    assert.equal(shouldOfferRun(blocked, "claude", UUID), true, String(blocked));
+    // 不管哪一格，拼不出命令就一律不画。
+    assert.equal(shouldOfferRun(blocked, "gemini", UUID), false, String(blocked));
+  }
 });

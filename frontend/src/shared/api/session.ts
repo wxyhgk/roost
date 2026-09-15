@@ -67,6 +67,11 @@ export function createSession(body?: {
   title?: string;
   projectId?: string | null;
   closed?: boolean;
+  /**
+   * 开一个新终端，并让它的第一个进程就是把这条对话接着跑起来的 CLI 命令。
+   * cwd 也跟着那条对话走（不另外传时），因为 `--resume` 只带回会话、不带回工作目录。
+   */
+  resumeConversation?: string;
 }) {
   return request<Session>("/api/sessions", {
     method: "POST",
