@@ -214,6 +214,19 @@ export const misc = {
         retry: "重试",
         tooLong: "内容超出 15 KiB 上限，请精简后再发",
         noRun: "这个对话没有在跑的终端，暂时无法投递",
+        /**
+         * 发不出去的几种成因，判据见 `frontend/src/features/conversations/sendability.ts`。
+         * 分开写是因为**做法不同**：一条要你去启动 CLI，一条只要你在 TUI 里敲一下，
+         * 还有一条根本不是故障。合成一句「没有在跑的终端」时它们全都无解。
+         */
+        blocked: {
+          statusOffline: "连接还没恢复，暂时判断不了这个终端的状态",
+          terminalGone: "这个终端已经不在了，没法再投递",
+          noCli: "这个终端里没有在跑的 AI CLI",
+          noCliHint: "先在「终端」里启动一个（claude、codex 等），它接上后这里就能发消息。",
+          unbound: "CLI 在跑，但还没报出它在哪个对话里",
+          unboundHint: "到「终端」里发一句话或按一次回车，它报一次事件就会重新接上。daemon 重启过之后都要这么来一下。",
+        },
         conflict: "同一个请求已用别的内容提交过；请改用新的一条",
         /** 各状态对使用者的含义。措辞刻意保守：宁可说不确定，也不谎报已送达。 */
         queued: "已排队，等待写入",

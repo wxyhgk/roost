@@ -208,6 +208,14 @@ export const misc = {
         retry: "Retry",
         tooLong: "Longer than the 15 KiB limit — please shorten it",
         noRun: "This conversation has no running terminal, so it cannot be delivered yet",
+        blocked: {
+          statusOffline: "Not connected right now, so this terminal's state is unknown",
+          terminalGone: "This terminal is gone, so nothing can be delivered to it",
+          noCli: "No AI CLI is running in this terminal",
+          noCliHint: "Start one under Terminal (claude, codex, …); sending works once it connects.",
+          unbound: "A CLI is running, but it has not reported which conversation it is in",
+          unboundHint: "Send a line or press Enter in Terminal — one event from the CLI reconnects it. Needed again after the daemon restarts.",
+        },
         conflict: "That request id was already used with different text; send a new one",
         /** 各状态对使用者的含义。措辞刻意保守：宁可说不确定，也不谎报已送达。 */
         queued: "Queued, waiting to be written",

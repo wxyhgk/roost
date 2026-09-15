@@ -15,6 +15,7 @@ import { emptyHistory, historyOnReload, isLongReply, mergeMessages, type History
 import { startConversationRecovery } from "./recovery";
 
 import { ConversationComposer, PendingMessage } from "./ConversationComposer";
+import type { SendBlock } from "./sendability";
 import { useOutgoing } from "./useOutgoing";
 import { ConversationMeta } from "./ConversationMeta";
 import { Empty } from "../../shared/ui/Empty";
@@ -28,12 +29,14 @@ import { BookmarkButton } from '../bookmarks/BookmarkButton';
  * 打开它不会启动任何 CLI，也不会继续生成——所以这里没有「恢复并继续」按钮。
  * run 非空时给一个「跳到终端」的入口，为空就照常读历史，两种情况都完整可用。
  */
-export function ConversationDetail({ conversation: initial, onBack, onJumpToTerminal, readOnly = false }: {
+export function ConversationDetail({ conversation: initial, onBack, onJumpToTerminal, readOnly = false, blocked = null }: {
   conversation: Conversation;
   /** 目录里进来才有「返回列表」；中间栏是这个终端的固定视角，没有可返回的列表。 */
   onBack?: () => void;
   onJumpToTerminal?: (webSessionId: string) => void;
   readOnly?: boolean;
+  /** 发不出去的成因。只有中间栏喂得出来——目录里进来时没有终端上下文。 */
+  blocked?: SendBlock | null;
 }) {
   // 改标题/分组会返回新的记录（含新 revision），本地跟着走，
   // 否则下一次修改会拿着过期的 revision 撞 409。
@@ -202,13 +205,7 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
       </div>
 
       {/* 没有在跑的终端时不给输入框：投递不出去，摆一个能打字的框只会让人白写一段。 */}
-      {jumpTarget && !readOnly ? (
-        <ConversationComposer outgoing={outgoing} />
-      ) : (
-        <div className="shrink-0 border-t border-border px-2.5 py-2 text-caption text-text-dim">
-          {readOnly ? t.bookmarks.readingHistory : t.misc.conversations.detail.send.noRun}
-        </div>
-      )}
+      {jumpTarget && !readOnly ? <ConversationComposer outgoing={outgoing} /> : <SendBlocked blocked={blocked} readOnly={readOnly} />}
     </div>
   );
 }
@@ -222,6 +219,33 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
  * 这样也避免了「终端已关闭」这类常驻横幅：对多数已归档的对话来说那是常态，
  * 天天挂在那里只是噪音，而真正想跳的时候你自然会点。
  */
+/**
+ * 发不出去时，说清楚「为什么」和「怎么办」。
+ *
+ * 原来这里是一句二选一：只读就说「正在查看已保存的历史」，否则说「这个对话没有在跑的终端」。
+ * 最常见的那种情形两句都不成立——终端在跑、CLI 也在跑、用户也没去翻历史，
+ * 界面却咬定没有终端。成因见 `sendability.ts`。
+ *
+ * **`blocked` 为 null 时退回原文案，不猜**：目录（`ConversationList`）里进来时根本没有
+ * 终端上下文，这里编一个理由出来只是把一句假话换成另一句。
+ */
+function SendBlocked({ blocked, readOnly }: { blocked: SendBlock | null; readOnly: boolean }) {
+  const m = t.misc.conversations.detail.send.blocked;
+  const [text, hint]: [string, string | null] =
+    blocked === "history" ? [t.bookmarks.readingHistory, null]
+    : blocked === "statusOffline" ? [m.statusOffline, null]
+    : blocked === "terminalGone" ? [m.terminalGone, null]
+    : blocked === "noCli" ? [m.noCli, m.noCliHint]
+    : blocked === "unbound" ? [m.unbound, m.unboundHint]
+    : [readOnly ? t.bookmarks.readingHistory : t.misc.conversations.detail.send.noRun, null];
+  return (
+    <div role="status" className="shrink-0 border-t border-border px-2.5 py-2 text-caption text-text-dim">
+      <p>{text}</p>
+      {hint && <p className="mt-0.5 text-text-dim/70">{hint}</p>}
+    </div>
+  );
+}
+
 function JumpToTerminal({ conversationId, onJump }: { conversationId: string; onJump?: (webSessionId: string) => void }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
