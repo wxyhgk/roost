@@ -237,3 +237,101 @@ test("an orphaned tool result stays the agent's action, not the user's", () => {
       "工具条目一律算 AI 的动作，不跟着承载它的消息角色走");
   }
 });
+
+/*
+  **上下文注入不是谁说的话。** Claude Code 把「这次对话模型实际看到了什么」写成独立的
+  `attachment` 记录（系统提示词快照、环境信息、被改过的文件、技能清单），解析器折成
+  `type: "context"` 的段送过来。它不该开回合，也不该被当成普通正文合并进上一段。
+*/
+const ctxPart = (kind: string, text: string, tier: "inline" | "collapsed" = "collapsed", subject?: string): MessagePart =>
+  ({ type: "context", text, context: { kind, tier, length: text.length, ...(subject ? { subject } : {}) } });
+
+test("a context injection becomes its own row and never opens a turn", () => {
+  const rows = groupMessages([
+    msg("user", "跑一下测试"),
+    msg("context", "当前工作目录 /w", [ctxPart("environment", "当前工作目录 /w")]),
+    msg("assistant", "好的", [{ type: "text", text: "好的" }]),
+  ]);
+  assert.deepEqual(kinds(rows), ["user:text", "context:context", "assistant:text"]);
+  const block = rows[1].blocks[0];
+  assert.equal(block.kind === "context" && block.contextKind, "environment");
+  assert.equal(block.kind === "context" && block.tier, "collapsed");
+
+  const items = buildItems(rows);
+  assert.deepEqual(items.map(i => i.kind === "text" ? `${i.role}${i.context ? ":" + i.context.kind : ""}` : i.kind),
+    ["user", "context:environment", "assistant"]);
+  assert.equal(items[1].turnStart, false, "注入不该画出一条回合边界");
+  assert.equal(items.filter(i => i.turnStart).length, 1, "只有用户那一条开回合");
+});
+
+/*
+  **注入不许打断工具组。** 实测 777 条注入里有 472 条落在一次工具循环**中间**——Bash 里
+  `cd` 一下就有一条 `environment`，工具改了文件就有一条 `edited_text_file`。在那里断开，
+  「六次调用」在界面上就变成「三次 + 一条注入 + 三次」，而那条边界不对应任何一件事。
+*/
+test("an injection in the middle of a tool loop lands after the group instead of splitting it", () => {
+  const call = (id: string) => msg("assistant", "", [{ type: "tool_call", name: "Bash", toolCallId: id, text: `Bash: ${id}` }]);
+  const result = (id: string) => msg("user", "", [{ type: "tool_result", toolCallId: id, text: "ok" }]);
+  const items = buildItems(groupMessages([
+    call("c1"), result("c1"),
+    msg("context", "/w/a.ts 变了", [ctxPart("edited_text_file", "/w/a.ts 变了", "inline", "/w/a.ts")]),
+    call("c2"), result("c2"), call("c3"), result("c3"),
+    msg("assistant", "都过了", [{ type: "text", text: "都过了" }]),
+  ]));
+  assert.deepEqual(items.map(i => i.kind === "text" ? (i.context ? "context" : "text") : i.kind),
+    ["tools", "context", "text"], "三次调用仍然是一组，注入排在这一组后面");
+  const group = items[0];
+  assert.equal(group.kind === "tools" && group.tools.length, 3);
+  const injected = items[1];
+  assert.equal(injected.kind === "text" && injected.context?.tier, "inline");
+  assert.equal(injected.kind === "text" && injected.context?.subject, "/w/a.ts");
+});
+
+/* 老数据没有 `context` 字段：那就是一段普通文本，不该因此丢内容或者报错。 */
+test("a context part without metadata falls back to plain text", () => {
+  const rows = groupMessages([msg("context", "旧记录", [{ type: "context", text: "旧记录" }])]);
+  assert.deepEqual(kinds(rows), ["context:text"]);
+  const items = buildItems(rows);
+  assert.equal(items[0].kind === "text" && items[0].text, "旧记录");
+  assert.equal(items[0].kind === "text" && items[0].context, undefined);
+});
+
+/*
+  **「第 2+ 次出现」只有条目这一层算得出来。** 解析器按字节增量读，回读单行时连会话上下文
+  都没有——同一条记录会在流式和回读两条路上得出不同的 `update`。数据自己带了答案的
+  （`isInitial`）以数据为准，没带的按已加载的这段里的出现顺序补。
+*/
+test("update is filled in from the sequence only when the payload did not answer it", () => {
+  const snapshot = (n: number): MessagePart => ({
+    type: "context", text: `prompt ${n}`,
+    context: { kind: "prompt_snapshot", tier: "collapsed", length: 8, source: { form: "system_prompt" } },
+  });
+  const catalog = (update?: boolean): MessagePart => ({
+    type: "context", text: "- a: x",
+    context: { kind: "skill_listing", tier: "collapsed", length: 6,
+      source: { form: "catalog", entries: [{ name: "a", description: "x" }], ...(update === undefined ? {} : { update }) } },
+  });
+  const items = buildItems(groupMessages([
+    msg("context", "", [snapshot(1)]),
+    msg("context", "", [snapshot(2)]),
+    // 数据说这是第一次，即使它在序列里排第二也不许被改写。
+    msg("context", "", [catalog()]),
+    msg("context", "", [catalog(false)]),
+  ]));
+  const update = (i: number) => {
+    const item = items[i];
+    const source = item.kind === "text" ? item.context?.source : undefined;
+    return source && (source.form === "system_prompt" || source.form === "catalog") ? source.update : undefined;
+  };
+  assert.deepEqual([update(0), update(1)], [false, true], "同一种注入第二次出现就是更新");
+  assert.deepEqual([update(2), update(3)], [false, false], "数据里有 isInitial 的以数据为准");
+});
+
+/* `source` 缺席是正常情况（表里没有的类型、凑不齐的载荷），那时正文仍然是完整的。 */
+test("a context injection without structured source still carries its full text", () => {
+  const items = buildItems(groupMessages([
+    msg("context", "", [ctxPart("auto_mode", "bashFirst: true")]),
+  ]));
+  assert.equal(items[0].kind === "text" && items[0].context?.source, undefined);
+  assert.equal(items[0].kind === "text" && items[0].text, "bashFirst: true");
+});

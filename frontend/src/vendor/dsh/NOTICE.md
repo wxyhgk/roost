@@ -208,6 +208,30 @@ flex/inline-flex 容器里，`svg { display: block }` 被 flex item 的 blockify
 滚到哪儿都在，比原来跟着头走更难错过。缺口那条保留告警配色——它是坏消息，
 降成 `.notice` 那种中性灰等于降一级。
 
+### 第五轮：右栏三态与上下文注入行
+
+**右栏**（上游 `packages/client/ui-sidebar-right/`）：
+- `rightbar/SidebarRight.module.css`（121 行）——**逐字，零 ROOST-CHANGE**。三态几何全在里面：
+  收起是 `translateX(100%)` + 延迟翻 `visibility`（**不是卸载**），全屏是 `position: fixed`。
+- `rightbar/presentation.ts`（呈现算式，取自上游 `SidebarRight.tsx` 366-374 行）、
+  `rightbar/RightbarPanel.tsx`、`rightbar/index.ts`（我们自己的桶）。
+
+**一件只有查过才知道的事**：上游的占位者其实**产生不出「悬浮」这一档**——
+`track = shown && !autoFullscreen`，所以 `shown && !track && !fullscreen` 在上游永不出现。
+但框那一侧支持它（`.rightbarCol { overflow: visible }` + `openRightbar(track, fullscreen)`
+两个独立参数）。**所以那一档是我们在上游留好的接口上补出来的，不是照搬**，别把它当成
+「上游就是这样」去对照。
+
+**上下文注入**（上游 `ui-chat/src/client/chat/`）：
+- `chat/ContextInjectionRow.module.css`、`chat/ContextBody.module.css`——**两份都逐字**。
+- `chat/ContextInjectionRow.tsx`、`chat/ContextBody.tsx`（592 行）、`chat/SystemPromptRow.tsx`
+  ——改自上游，插槽和 locale seat 换成平 props。
+
+配套的数据这一侧是我们自己写的（`packages/ai-transcript/src/context-injection.ts`）：
+Claude 转录里那些 `attachment` 行此前**整个被丢掉**，而本机 94 份转录里主链就有 3894 条。
+上游七档 form 我们只够得着四档 + 系统提示词，实测覆盖 644/778 = 83%，其余干净地退回
+`OpaqueBody`。
+
 ### 第四轮：输入卡与消息体（把我们自己写的那两块换掉）
 
 前几轮是「在我们的外壳上接他们的零件」，这一轮起是**不再保留我们自己那套 UI**。
@@ -304,6 +328,21 @@ transcript 里没有 step 开始时刻、没有首 token 时刻，工具调用�
   结构（搜索结果条目、匹配行），而我们的 `ToolBlock.result` 是各家 CLI 落盘的原始文本，
   对不对得上没验过。**接之前先拿真实记录跑一遍 model，对不上再按规矩不接、回来补记。**
   `todo-row` 只读 `argsRaw`（就是我们的 `ToolBlock.args`），数据是够的。
+- **`ui-dockkit` 整包**（engine 2141 行 + contract 298 + components 1376）。engine 层确实是
+  纯的、搬得动（只有相对 import，唯一外部依赖是一个零运行时的品牌类型），**不搬的理由是
+  用不上**：我们的右栏是四个视图、一次画一个、由 `RightRail` 选，没有标签页、没有分屏、
+  没有拖放停靠、没有浮动子窗。搬进来是一棵只有一个 pane、一个 tab 的树加一层适配壳。
+  上游 README 自己写着 "only if you actually need docking splits"。
+- **`ui-sidebar-right` 的每会话停靠面那一半**（`stores.ts` / `service.ts` / `tab-domain.ts` /
+  `tab-registry.ts` / `tab-info.ts` / `contract/*`，约 1800 行）。除了绑死在 cordis 和
+  `picomatch` 上，还有一层更根本的：它整套是**按会话分的**（`state.bySession[sessionId]`），
+  而我们那四个视图是全局的。改成全局等于把它的核心模型拆掉。连带 `ExpandButton`
+  （上游唯一入口，因为它零成本折叠；我们保留 `RightRail`，再加一颗就是两个入口做同一件事）、
+  `tabs/guide/*`、`labels.ts` 一并不要。
+- **上下文注入里喂不满的两档**：`relay` 要 `senderSessionId`，而最接近的 `queued_command`
+  只有后台任务 id——**拿 task-id 顶会指认出一个不存在的会话**；`recall` 要「保留/省略几条」
+  的计数，而 `compact_file_reference` 只有文件名，那个计数正是那张卡存在的理由。
+  `producer.role: 'recall'` 同理：Claude 的 attachment 全是 `inject`。
 - **输入卡上喂不满的控件**：左下角那颗 `+` 圆钮（查清楚了它在上游**不是附件**，是
   `aria-haspopup="listbox"` 绑斜杠/`@` 命令菜单的，两样我们都没有）、附件轨、
   模式芯片、模型选择、**停止钮**（`shared/api/conversations` 里没有中断某一轮的接口——

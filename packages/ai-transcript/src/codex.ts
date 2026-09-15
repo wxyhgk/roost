@@ -4,6 +4,7 @@ import { open, realpath } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import { TranscriptError, type TranscriptCheckpoint, type TranscriptItem } from "./index.ts";
 import { previewToolArgs, previewToolText } from "./truncate.ts";
+import { contextText } from "./context-injection.ts";
 const BATCH = 256 * 1024, LINE = 1024 * 1024;
 const object = (value: unknown): value is Record<string, any> => !!value && typeof value === "object" && !Array.isArray(value);
 function fingerprint(stat: {dev: number; ino: number; birthtimeMs: number}) { return `${stat.dev}:${stat.ino}:${stat.birthtimeMs}`; }
@@ -26,6 +27,36 @@ function recordId(row: Record<string, any>, offset: number): string {
 function parseArgs(raw: string): unknown {
   try { const parsed = JSON.parse(raw); return parsed && typeof parsed === "object" ? parsed : raw; } catch { return raw; }
 }
+/**
+ * codex 这边的「模型看到了什么」：`world_state`。
+ *
+ * 它是 Claude `attachment` 在 codex 里唯一对得上的东西——一份环境与指令的快照，
+ * `payload.state` 里装着 `agents_md` / `environments` / `permissions` / `skills` / `model`
+ * 这些键，正是 Claude 用 `environment` + `instructions` + `skill_listing` 几条分别记的那些。
+ * 此前它走到 `response_item` 那道门闸上被当成解析失败计进 `skipped`。
+ *
+ * **只认这一种，档位固定 `collapsed`。** 本机只有一份 codex rollout、3 条 `world_state`，
+ * 证据量不足以像 Claude 那边一样分档；而配置快照本来就属于「留着、折起来」的那一档。
+ * 它没有 `rendered` 这样的现成文本，所以走 `contextText` 的 JSON 兜底。
+ *
+ * **没有一并认的**：`turn_context`（已经在上面被静默忽略）、`thread_settings_applied`、
+ * `token_usage_record`、`item_completed`——它们仍然计进 `skipped`。那是另一批记录、
+ * 另一个决定。另外 codex 把 `<environment_context>` 这类注入写成普通的 user / developer
+ * 消息，和真人说的话在记录里长得一模一样，认不出来也就没法标记，见交付说明。
+ */
+function worldState(row: Record<string, any>, ref: TranscriptItem["data"]["detail"], full: boolean): { item?: TranscriptItem; partial: boolean } {
+  const whole = contextText(undefined, row.payload);
+  const text = whole.slice(0, full ? 256 * 1024 : 4000);
+  const id = recordId(row, ref.offset), timestamp = Date.parse(row.timestamp);
+  return { partial: false, item: {
+    eventId: `codex:${ref.nativeSessionId}:${id}`, type: "message", role: "context", content: text,
+    ...(Number.isFinite(timestamp) ? { createdAt: timestamp } : {}),
+    data: { source: "transcript", nativeMessageId: id, parentId: null,
+      parts: [{ type: "context", text, context: { kind: "world_state", tier: "collapsed", length: whole.length } }],
+      truncated: text.length < whole.length, detail: { ...ref, recordId: id } },
+  } };
+}
+
 function normalize(row: Record<string, any>, ref: TranscriptItem["data"]["detail"], full = false): { item?: TranscriptItem; partial: boolean } {
   if (row.type === "session_meta" || row.type === "turn_context") return { partial: false };
   // response_item is canonical. event_msg mirrors never become second copies,
@@ -33,6 +64,7 @@ function normalize(row: Record<string, any>, ref: TranscriptItem["data"]["detail
   if (row.type === "event_msg") return { partial: ![
     "user_message", "agent_message", "agent_reasoning", "token_count", "task_started", "task_complete", "turn_aborted"
   ].includes(row.payload?.type) };
+  if (row.type === "world_state" && object(row.payload)) return worldState(row, ref, full);
   if (row.type !== "response_item" || !object(row.payload)) return { partial: true };
   const p = row.payload, parts: TranscriptItem["data"]["parts"] = [];
   let role = "assistant", truncated = false, partial = false, total = 0;

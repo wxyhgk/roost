@@ -264,3 +264,132 @@ test('Claude usage refuses every malformed shape instead of guessing', async t =
   // 一条记录都不许因为用量而丢
   assert.equal(items.length, 19);
 });
+
+/*
+  **`attachment` 行记的是「这次对话模型实际看到了什么」**，而解析器此前整条丢掉。
+  本机 90 份 transcript 每一份都有，合计 7609 条全被计进 `skipped`。
+
+  这个用例钉住三件事，每一件都是数据逼出来的：
+  - `total_tokens_reminder` 不产出条目，**而且不算漏读**——它一种就占非 sidechain
+    attachment 行的 80%（3117/3894），最多的一份转录里有 1485 条。
+  - 正文首选记录级的 `rendered`（本机 94% 的行都有），没有就到载荷里找正文字段。
+  - 预览按 4000 截，`context.length` 报的是**截断前**的真实长度，详情回读拿全文。
+*/
+test('Claude attachment rows become bounded context parts, and the token counter is dropped on purpose', async t => {
+  const file = await fixture(t);
+  const attach = (uuid: string, attachment: any, rendered?: string) => encode({
+    type: 'attachment', uuid, sessionId: 'native', parentUuid: null,
+    timestamp: '2026-09-09T00:00:00Z', attachment,
+    ...(rendered === undefined ? {} : { rendered: [{ content: rendered }] }),
+  });
+  await writeFile(file,
+    encode(row('seed', 'user', 'q'))
+    + attach('tok', { type: 'total_tokens_reminder', text: '<total_tokens>14960813 tokens left</total_tokens>' },
+      '<total_tokens>14960813 tokens left</total_tokens>')
+    + attach('env', { type: 'environment', snapshot: { workingDirectory: '/w' } }, '当前工作目录 /w')
+    // 用户 @ 进来的文件：这一档默认展开，主语取 filename。
+    + attach('att', { type: 'file', filename: '/w/src/a.ts' }, 'export const a = 1')
+    // prompt_snapshot 没有 rendered，正文要从 systemPrompt（字符串数组）拼出来。
+    + attach('sys', { type: 'prompt_snapshot', systemPrompt: ['头'.repeat(5000), '尾'] })
+    // 没见过的类型默认折叠，不丢掉也不展开。
+    + attach('new', { type: 'some_future_kind', whatever: 1 })
+    // sidechain 里的仍然按旧规矩丢掉。
+    + encode({ type: 'attachment', uuid: 'side', sessionId: 'native', isSidechain: true,
+        timestamp: '2026-09-09T00:00:00Z', attachment: { type: 'environment' } }));
+
+  const batch = await readClaudeTranscript(file, 'native');
+  const ctx = batch.items.filter(item => item.role === 'context');
+  assert.deepEqual(ctx.map(item => item.data.parts[0].context!.kind),
+    ['environment', 'file', 'prompt_snapshot', 'some_future_kind'], 'token 计数提醒不该产出条目');
+  assert.deepEqual(ctx.map(item => item.data.parts[0].context!.tier),
+    ['collapsed', 'inline', 'collapsed', 'collapsed'], '不认识的类型默认折叠');
+  assert.equal(ctx[0].data.parts[0].text, '当前工作目录 /w', '正文首选记录级的 rendered');
+  assert.equal(ctx[1].data.parts[0].context!.subject, '/w/src/a.ts');
+  assert.equal(ctx[0].data.parts[0].context!.subject, undefined, '指认不到主语就缺席，不编一个');
+  // sidechain 之外，被丢掉的那条不算漏读：`skipped` 只该计真正读不下来的行。
+  assert.equal(batch.checkpoint.skipped, 1, '只有 sidechain 那条算漏读');
+
+  const snapshot = ctx[2].data.parts[0];
+  assert.equal(snapshot.text.length, 4000, '预览按工具结果那一档的额度截');
+  assert.equal(snapshot.context!.length, 5000 + 1 + 1, 'length 报的是截断前的真实长度');
+  assert.equal(ctx[2].data.truncated, true);
+  const detail = await readClaudeDetail(ctx[2].data.detail);
+  assert.equal(detail!.data.parts[0].text!.length, 5000 + 1 + 1, '详情回读拿得到全文');
+  assert.equal(detail!.data.truncated, false);
+});
+
+/* 载荷坏掉的 attachment 仍然要算漏读——「丢弃」和「读不下来」是两件事。 */
+test('Claude attachment rows without a usable payload count as skipped', async t => {
+  const file = await fixture(t);
+  await writeFile(file,
+    encode(row('seed', 'user', 'q'))
+    + encode({ type: 'attachment', uuid: 'a', sessionId: 'native', timestamp: '2026-09-09T00:00:00Z' })
+    + encode({ type: 'attachment', uuid: 'b', sessionId: 'native', timestamp: '2026-09-09T00:00:00Z', attachment: { type: '' } })
+    // 载荷完好但没有 uuid：定不了 eventId，只能算漏读。
+    + encode({ type: 'attachment', sessionId: 'native', timestamp: '2026-09-09T00:00:00Z', attachment: { type: 'environment' } }));
+  const batch = await readClaudeTranscript(file, 'native');
+  assert.equal(batch.items.length, 1);
+  assert.equal(batch.checkpoint.skipped, 3);
+});
+
+/*
+  **结构化视图的入参只在喂得满的时候给。** 半份数据比没有更糟：渲染那一层会画出一个空壳，
+  而读的人会以为「这次真的什么都没有」。所以 `source` 按 `kind` 写死一张表，表里没有的、
+  或者数据凑不齐的，一律缺席——正文仍然是完整的那一份，退回按原文画。
+*/
+test('Claude context parts carry structured source only for the kinds whose payload fills it', async t => {
+  const file = await fixture(t);
+  const attach = (uuid: string, attachment: any) => encode({
+    type: 'attachment', uuid, sessionId: 'native', parentUuid: null,
+    timestamp: '2026-09-09T00:00:00Z', attachment, rendered: [{ content: 'rendered' }],
+  });
+  await writeFile(file,
+    encode(row('seed', 'user', 'q'))
+    + attach('ins', { type: 'instructions', files: [{ path: '/w/CLAUDE.md', type: 'Project', content: '#' }, { path: '' }] })
+    + attach('skill', { type: 'skill_listing', isInitial: false, content: '- design: 画图\n- run: 跑起来\n' })
+    // 只有名字的清单：`description` 为空串是合法的，「这次加了这些工具」本身就是全部信息。
+    + attach('tools', { type: 'deferred_tools_delta', addedNames: ['WebFetch'], addedLines: ['WebFetch'] })
+    + attach('env', { type: 'environment', snapshot: { workingDirectory: '/w', isGitRepo: false, additionalWorkingDirectories: [] } })
+    + attach('date', { type: 'date', date: '2026-09-12' })
+    + attach('queued', { type: 'queued_command', prompt: '<task-notification>\n<task-id>x1</task-id>\n<summary>后台命令跑完了</summary>\n</task-notification>' })
+    // 表里没有的类型：不给 source，退回原文。
+    + attach('other', { type: 'auto_mode', bashFirst: true })
+    // 表里有、但载荷凑不齐的：也不给。
+    + attach('empty', { type: 'environment', snapshot: {} }));
+
+  const batch = await readClaudeTranscript(file, 'native');
+  const by = (kind: string, n = 0) => batch.items
+    .filter(item => item.data.parts[0]?.context?.kind === kind)[n]!.data.parts[0].context!.source;
+
+  assert.deepEqual(by('instructions'),
+    { form: 'instructions', changes: [{ action: 'set', path: '/w/CLAUDE.md' }], baseline: true },
+    '转录里没有 action：一律 set + baseline，不猜 replace');
+  assert.deepEqual(by('skill_listing'),
+    { form: 'catalog', entries: [{ name: 'design', description: '画图' }, { name: 'run', description: '跑起来' }], update: true },
+    'update 取自数据里的 isInitial');
+  assert.deepEqual(by('deferred_tools_delta'),
+    { form: 'catalog', entries: [{ name: 'WebFetch', description: '' }] }, '拆不开的行整行当名字，说明留空');
+  assert.deepEqual(by('environment'), { form: 'snapshot', sections: [
+    { name: 'workingDirectory', text: '/w' }, { name: 'isGitRepo', text: 'false' },
+    { name: 'additionalWorkingDirectories', text: '[]' }] }, '非字符串序列化，空数组不能变成空串');
+  assert.deepEqual(by('date'), { form: 'notice', summary: '2026-09-12' }, '摘要从数据里取，不在解析器里拼散文');
+  assert.deepEqual(by('queued_command'), { form: 'notice', summary: '后台命令跑完了' }, '供应商自己写好的一行话优先');
+  assert.equal(by('auto_mode'), undefined, '表里没有的类型不给 source');
+  assert.equal(by('environment', 1), undefined, '凑不齐就整个缺席，不给空壳');
+});
+
+/* 清单和快照都不走正文那份额度，所以它们自己得封顶——砍到了要自己报数。 */
+test('Claude context source is bounded and says so', async t => {
+  const file = await fixture(t);
+  await writeFile(file,
+    encode(row('seed', 'user', 'q'))
+    + encode({ type: 'attachment', uuid: 'big', sessionId: 'native', timestamp: '2026-09-09T00:00:00Z',
+      rendered: [{ content: 'r' }],
+      attachment: { type: 'skill_listing', content: Array.from({ length: 200 },
+        (_, i) => `- skill${i}: ${'说'.repeat(100)}`).join('\n') } }));
+  const source = (await readClaudeTranscript(file, 'native')).items
+    .find(item => item.data.parts[0]?.context)!.data.parts[0].context!.source as any;
+  assert.equal(source.truncated, true);
+  assert.ok(source.entries.length <= 64, '条数封顶');
+  assert.ok(JSON.stringify(source).length < 10000, `字符封顶，实际 ${JSON.stringify(source).length}`);
+});

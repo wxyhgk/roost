@@ -171,6 +171,37 @@ export const misc = {
       failed: "保存失败",
     },
     detail: {
+      /*
+        上下文注入行（vendor/dsh/chat/ContextInjectionRow + ContextBody + SystemPromptRow）。
+        「这次对话模型实际看到了什么」——系统提示词、环境快照、技能目录、被编辑过的文件。
+
+        **`relayFrom` / `recallCounts` / `recallTruncated` 这三条画不出来。** 那两档（转发、召回）
+        我们喂不满：`queued_command` 只有后台任务 id 不是会话 id，`compact_file_reference` 给不出
+        「保留/省略几条」的计数——而那个计数正是那张卡存在的理由。文案留着是因为
+        `ContextBodyLabels` 是个闭合接口，少一条就给不出一份全覆盖的 labels；和
+        `turnTime.speed/ttft` 是同一个先例。
+      */
+      context: {
+        injection: "上下文注入",
+        recall: "上下文召回",
+        systemPrompt: "系统提示词",
+        systemPromptUpdate: "系统提示词（已更新）",
+        unknownBlock: "未识别的内容块",
+        jsonTruncated: (total: number) => `已截断，共 ${total} 字符`,
+        /** 指令文件的四种状态。`added` / `updated` / `removed` 今天画不出来——Claude 只在开场铺一次底。 */
+        instructions: {
+          loaded: "开场载入",
+          added: "新增",
+          updated: "已更新",
+          removed: "已移除",
+        },
+        catalogReplaced: "替换先前的目录",
+        catalogMore: (count: number) => `另有 ${count} 条未列出`,
+        snapshotSupersedes: "取代先前的快照",
+        relayFrom: (session: string) => `转发自会话 ${session}`,
+        recallCounts: (retained: number, omitted: number) => `保留 ${retained} 条，省略 ${omitted} 条`,
+        recallTruncated: "这一路召回被截断过",
+      },
       back: "返回列表",
       /** 头里那条面包屑的无障碍名。上游同一个位叫 `session.hierarchy`。 */
       hierarchy: "对话位置",
@@ -405,6 +436,19 @@ export const misc = {
     libraryKind: "资料类型",
     hint: "搜索、浏览和编辑 · Esc 收起",
     collapse: "收起资料库",
+    /*
+      右栏三档呈现的那排按钮。每一档的文案写的是**按下去会变成什么**，不是当前是什么——
+      按钮上只有一个图标，说「现在是推挤」帮不上忙。
+    */
+    chrome: {
+      toPush: "让中栏让出位置",
+      toFloat: "浮在中栏上，不挤它",
+      toFullscreen: "铺满整个工作区",
+      exitFullscreen: "退出全屏",
+      /* 窄框下只有全屏一档，退出全屏就只能是收起——按钮换个说法，别让人以为还有别的落点。 */
+      exitFullscreenNarrow: "收起面板",
+      collapse: "收起右侧面板",
+    },
   },
 
   leftRail: {

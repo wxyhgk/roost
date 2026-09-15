@@ -8,6 +8,8 @@ import {
 import { ApiError } from "../../shared/api/errors";
 import { IconChevron, IconDots } from "../../shared/icons";
 import { ReasoningRow } from "../../vendor/dsh";
+import { ContextInjectionRow } from "../../vendor/dsh/chat/ContextInjectionRow";
+import { SystemPromptRow } from "../../vendor/dsh/chat/SystemPromptRow";
 import { CompactionItem } from "../../vendor/dsh/chat/CompactionItem";
 import { ChatView, ChatFlowItem } from "../../vendor/dsh/chat/ChatView";
 import { ConversationShell } from "../../vendor/dsh/skeleton/ConversationShell";
@@ -588,6 +590,35 @@ function Prose({ value, breakout = true }: { value: string; breakout?: boolean }
 */
 const RENDER_PROSE = (value: string) => <Prose value={value} />;
 
+/*
+  上下文注入那两个组件的全部文案。**提到模块顶层**：`ContextBody` 内部按 form 分派，
+  每次渲染新建一份 labels 会让它下面那几块白重算。
+
+  `relayFrom` / `recallCounts` / `recallTruncated` 三条**永远画不出来**——转发和召回那两档
+  我们喂不满（`queued_command` 只有后台任务 id 不是会话 id；`compact_file_reference` 给不出
+  「保留/省略几条」，而那个计数正是那张卡存在的理由）。留着是因为 `ContextBodyLabels`
+  是闭合接口，少一条就给不出全覆盖的 labels。
+*/
+const CONTEXT_LABELS = {
+  contextInjection: t.misc.conversations.detail.context.injection,
+  contextRecall: t.misc.conversations.detail.context.recall,
+  unknownBlock: t.misc.conversations.detail.context.unknownBlock,
+  jsonTruncated: t.misc.conversations.detail.context.jsonTruncated,
+  instructions: t.misc.conversations.detail.context.instructions,
+  catalogReplaced: t.misc.conversations.detail.context.catalogReplaced,
+  catalogMore: t.misc.conversations.detail.context.catalogMore,
+  snapshotSupersedes: t.misc.conversations.detail.context.snapshotSupersedes,
+  relayFrom: t.misc.conversations.detail.context.relayFrom,
+  recallCounts: t.misc.conversations.detail.context.recallCounts,
+  recallTruncated: t.misc.conversations.detail.context.recallTruncated,
+};
+const SYSTEM_PROMPT_LABELS = {
+  systemPrompt: t.misc.conversations.detail.context.systemPrompt,
+  systemPromptUpdate: t.misc.conversations.detail.context.systemPromptUpdate,
+  unknownBlock: t.misc.conversations.detail.context.unknownBlock,
+  jsonTruncated: t.misc.conversations.detail.context.jsonTruncated,
+};
+
 
 
 /**
@@ -733,6 +764,36 @@ function TranscriptItem({ item, showRole }: { item: Item; showRole: boolean }) {
         labels={{ think: t.misc.conversations.detail.thinking, running: t.misc.conversations.detail.thinkingRunning }} />
     </div>
   );
+  /*
+    上下文注入：「这次对话模型实际看到了什么」——系统提示词、环境快照、技能目录、
+    被编辑过的文件。解析器把它折成 `item.context`（形状见 conversationPayloads 的
+    `ContextInjection`）；**没有这个字段就是一条普通正文**，所以这一支放在角色分派之前。
+
+    `system_prompt` 单独走 `SystemPromptRow`：那一档的正文就是提示词本身（最大 142KB），
+    source 里只带一个 `update` 标记，不重复一份副本。
+  */
+  if (item.kind === "text" && item.context) {
+    const source = item.context.source;
+    if (source?.form === "system_prompt") return (
+      <div className="flex flex-col items-stretch">
+        <SystemPromptRow text={item.text} update={source.update === true} labels={SYSTEM_PROMPT_LABELS} />
+      </div>
+    );
+    return (
+      <div className="flex flex-col items-stretch">
+        <ContextInjectionRow
+          content={[{ type: "text", text: item.text }]}
+          source={source}
+          /* 行头的生产者名用供应商自己的类型名（`environment` / `skill_listing`…）——
+             那是这条注入唯一自带的、准确的身份。角色恒为 inject：Claude 的 attachment 没有召回。 */
+          producer={{ role: "inject", label: item.context.kind }}
+          /* system_prompt 在上面已经 return 掉了，所以这里只剩四档 + 无 source 的 opaque。 */
+          form={source?.form ?? null}
+          labels={CONTEXT_LABELS}
+        />
+      </div>
+    );
+  }
   const mine = item.role === "user";
   return (
     /*

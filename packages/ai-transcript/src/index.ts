@@ -4,6 +4,7 @@ import { open, opendir, realpath } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 
 import { previewToolArgs } from "./truncate.ts";
+import type { ContextInjection } from "./context-injection.ts";
 
 export type TranscriptCheckpoint = {
   adapter?: string; state?: Record<string, unknown>;
@@ -70,7 +71,12 @@ export type MessageUsage = {
 export type TranscriptItem = {
   eventId: string; type: "message"; role: string; content: string; createdAt?: number;
   data: { source: "transcript"; nativeMessageId: string; parentId: string | null;
-    parts: { type: string; text?: string; toolCallId?: string; name?: string; patch?: EditPatch }[];
+    parts: { type: string; text?: string; toolCallId?: string; name?: string; patch?: EditPatch;
+      /**
+       * 只有 `type: "context"` 的段才有：这一段是一次**注入进模型上下文的内容**，不是谁说的话。
+       * 可选，所以库里按旧形状写进去的记录一个字都不受影响。
+       */
+      context?: ContextInjection }[];
     /** 消息级：用量属于整条记录，不属于其中某一段。 */
     usage?: MessageUsage;
     truncated: boolean; detail: { provider?: string; path: string; fingerprint: string; offset: number; length: number; nativeSessionId: string; recordId: string; hash: string } };
@@ -254,6 +260,8 @@ export async function readTranscriptDetail(ref: TranscriptItem["data"]["detail"]
   if (provider === "codex") return (await import("./codex.ts")).readCodexDetail(ref);
   return readOmpDetail(ref);
 }
+
+export { type ContextInjection, type ContextSource, type ContextTier } from './context-injection.ts';
 
 export {getTranscriptAdapter, listTranscriptAdapters, type TranscriptAdapter} from './registry.ts';
 

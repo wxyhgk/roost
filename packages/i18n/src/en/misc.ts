@@ -164,6 +164,26 @@ export const misc = {
       failed: "Could not save",
     },
     detail: {
+      context: {
+        injection: "Context injected",
+        recall: "Context recalled",
+        systemPrompt: "System prompt",
+        systemPromptUpdate: "System prompt (updated)",
+        unknownBlock: "Unrecognized block",
+        jsonTruncated: (total: number) => `Truncated, ${total} characters total`,
+        instructions: {
+          loaded: "Loaded at start",
+          added: "Added",
+          updated: "Updated",
+          removed: "Removed",
+        },
+        catalogReplaced: "Replaces the previous catalog",
+        catalogMore: (count: number) => `${count} more not listed`,
+        snapshotSupersedes: "Supersedes the previous snapshot",
+        relayFrom: (session: string) => `Relayed from session ${session}`,
+        recallCounts: (retained: number, omitted: number) => `${retained} kept, ${omitted} omitted`,
+        recallTruncated: "This recall was truncated",
+      },
       back: "Back to list",
       hierarchy: "Conversation location",
       details: "Conversation details",
@@ -358,6 +378,14 @@ export const misc = {
     libraryKind: "Library type",
     hint: "Search, browse, and edit · Esc to collapse",
     collapse: "Collapse library",
+    chrome: {
+      toPush: "Make the centre give way",
+      toFloat: "Hang over the centre instead",
+      toFullscreen: "Fill the workspace",
+      exitFullscreen: "Leave fullscreen",
+      exitFullscreenNarrow: "Collapse panel",
+      collapse: "Collapse right panel",
+    },
   },
 
   leftRail: {

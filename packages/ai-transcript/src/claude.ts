@@ -5,6 +5,7 @@ import { isAbsolute, join } from "node:path";
 
 import { TranscriptError, type EditPatch, type MessageUsage, type TranscriptCheckpoint, type TranscriptItem } from "./index.ts";
 import { previewToolArgs } from "./truncate.ts";
+import { contextSource, contextSubject, contextText, contextTier } from "./context-injection.ts";
 const BATCH = 256 * 1024, LINE = 1024 * 1024, PREVIEW = 4000;
 
 /** hunk 数、总行数、单行长度都封顶：原始数据可以任意大，而这份要过预览和列表预算。 */
@@ -143,8 +144,45 @@ async function header(handle: Awaited<ReturnType<typeof open>>, nativeId: string
   throw new TranscriptError("header_unavailable");
 }
 
+/**
+ * `attachment` 行：这次对话注入进模型上下文的一段内容。见 `context-injection.ts` 的说明。
+ *
+ * **预览态按工具结果那一档的额度截（4000），不按正文的 64KB。** 这些正文可以很大——
+ * `prompt_snapshot` 本机最大 142KB——而列表和会话流要为每一条消息掏这份额度。一条注入在
+ * 列表里只需要「是什么、大概长什么样」，要读全文按 `detail` 回读，和工具结果是同一个套路。
+ * `context.length` 给的是截断前的真实字符数，所以「这里看到的不是全部」是说得出口的。
+ *
+ * 一行只产出一段 part：attachment 行本身就是一条独立记录，没有多段的形状。
+ */
+function contextRecord(row: Record<string, any>, ref: TranscriptItem["data"]["detail"], full: boolean): { item?: TranscriptItem; partial: boolean } {
+  const payload = row.attachment;
+  if (!object(payload) || typeof payload.type !== "string" || !payload.type) return { partial: true };
+  const kind = payload.type.slice(0, 64);
+  const tier = contextTier(kind);
+  // 明知故丢的类型（今天只有 token 计数提醒）不算解析失败，否则每份转录都永远 partial。
+  if (!tier) return { partial: false };
+  if (typeof row.uuid !== "string" || !row.uuid || row.uuid.length > 256) return { partial: true };
+  if (row.sessionId !== ref.nativeSessionId) throw new TranscriptError("session_mismatch");
+  const whole = contextText(row.rendered, payload);
+  const text = whole.slice(0, full ? 256 * 1024 : PREVIEW);
+  const subject = contextSubject(payload);
+  // 结构化视图和正文是两条独立的路：`source` 喂不满就缺席，正文照样是完整的那一份。
+  const source = contextSource(kind, payload);
+  const timestamp = Date.parse(row.timestamp);
+  return { partial: false, item: {
+    eventId: "claude:" + ref.nativeSessionId + ":" + row.uuid, type: "message", role: "context", content: text,
+    ...(Number.isFinite(timestamp) ? { createdAt: timestamp } : {}),
+    data: { source: "transcript", nativeMessageId: row.uuid, parentId: typeof row.parentUuid === "string" ? row.parentUuid : null,
+      parts: [{ type: "context", text, context: { kind, tier, ...(subject ? { subject } : {}),
+        length: whole.length, ...(source ? { source } : {}) } }],
+      // 注入不是一次模型请求，没有自己的用量——所以这里没有 `usage`。
+      truncated: text.length < whole.length, detail: { ...ref, recordId: row.uuid } },
+  } };
+}
+
 function normalize(row: Record<string, any>, ref: TranscriptItem["data"]["detail"], full = false): { item?: TranscriptItem; partial: boolean } {
   if (row.isSidechain === true) return { partial: true };
+  if (row.type === "attachment") return contextRecord(row, ref, full);
   if (["queue-operation", "file-history-snapshot", "summary", "progress", "last-prompt"].includes(row.type)) return { partial: false };
   if (!["user", "assistant"].includes(row.type)) return { partial: true };
   if (row.sessionId !== ref.nativeSessionId) throw new TranscriptError("session_mismatch");

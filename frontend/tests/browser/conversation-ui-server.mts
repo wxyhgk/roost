@@ -26,6 +26,28 @@ const say = (role: string, parts: unknown[], content = '') =>
     { cursor: seq, hasGap: false });
 
 say('user', [{ type: 'text', text: '把 xyz 解析器里那个空行的兜底删掉，顺便跑一下测试。' }]);
+/*
+  上下文注入：「这次对话模型实际看到了什么」。解析器把 Claude 的 attachment 行折成
+  `type: 'context'` 的段（见 packages/ai-transcript/src/context-injection.ts）。
+  这里四档结构化 source 各来一条，外加一条喂不满 source、退回 OpaqueBody 的。
+*/
+const inject = (kind: string, text: string, source?: unknown, tier: 'inline' | 'collapsed' = 'collapsed') =>
+  say('context', [{ type: 'context', text, context: { kind, tier, length: text.length, ...(source ? { source } : {}) } }]);
+
+inject('prompt_snapshot', '你是 Claude Code，Anthropic 的官方命令行工具。\n\n# 工作目录\n/Users/me/roost\n\n# 规矩\n- 改动要小而可验证\n- 注释写清「为什么」', { form: 'system_prompt' });
+inject('environment', '工作目录 /Users/me/roost\n分支 main\n是否 git 仓库 true', { form: 'snapshot', sections: [
+  { name: 'cwd', text: '/Users/me/roost' }, { name: 'branch', text: 'main' }, { name: 'isGitRepo', text: 'true' },
+] });
+inject('skill_listing', '- xyz-parse: 解析 xyz 分子文件\n- publish: 发布前端资产', { form: 'catalog', update: false, entries: [
+  { name: 'xyz-parse', description: '解析 xyz 分子文件' }, { name: 'publish', description: '发布前端资产' },
+] });
+inject('instructions', 'AGENTS.md 已载入', { form: 'instructions', baseline: true, changes: [
+  { action: 'set', path: 'AGENTS.md' }, { action: 'set', path: 'frontend/AGENTS.md' },
+] });
+inject('date', '今天是 2026-09-15', { form: 'notice', summary: '2026-09-15' });
+// 喂不满 source 的那一档：退回 OpaqueBody（正文 + 字段表），不出空壳。
+inject('edited_text_file', 'frontend/src/plugins/xyz/parse.ts 被工具改过', undefined, 'inline');
+
 say('assistant', [
   { type: 'thinking', text: '用户说「空行的兜底」，但 parse.ts 里有两处和空行有关：一处是文件末尾的空行，\n另一处是原子块中间的空行。前者是 3Dmol 那个 toUpperCase 崩溃的直接原因，后者挡的是\n手写文件里常见的分节空行。他要删的多半是前者，但措辞分不出来——先把两处都看一眼。' },
   { type: 'text', text: '我先看一眼那段代码，然后改掉它并跑测试。' },

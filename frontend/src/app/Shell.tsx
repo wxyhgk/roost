@@ -1,5 +1,5 @@
 import { subscribeFileLinkOpen } from '../features/terminal/public';
-import { Suspense, lazy, useCallback, useEffect, useState, type ReactNode } from "react";
+import { Suspense, lazy, useCallback, useEffect, useState } from "react";
 /*
   三栏外壳换成搬来的那套（vendor/dsh/layout）。原来用 react-resizable-panels：
   它把栏宽记成百分比、折叠到**宽度 0**，而上游的左栏折叠态是一条 **56px 的图标轨**——
@@ -10,7 +10,16 @@ import { Suspense, lazy, useCallback, useEffect, useState, type ReactNode } from
 */
 import { AppFrame } from "../vendor/dsh/layout/AppFrame";
 import { useLayoutState, browserLayoutPersistence } from "../vendor/dsh/layout/layout-state";
+import type { LayoutActions } from "../vendor/dsh/layout/layout-state";
 import { SIDEBAR_DEFAULT } from "../vendor/dsh/layout/columns";
+/*
+  右栏的三档呈现（推挤 / 悬浮 / 全屏）。搬来的那一套：面板盒子 + 纯几何。
+  换掉的是这个文件原来自己写的那个薄壳——它只会「占轨展开」一种，而且收起时
+  `return null`，于是每次开关都把整棵右面板连同滚动位置一起重建。
+*/
+import { RightbarPanel, resolveRightbarPresentation, rightbarPanelWidth, RIGHTBAR_AUTO_FULLSCREEN } from "../vendor/dsh/rightbar";
+import type { RightbarMode, RightbarPresentation } from "../vendor/dsh/rightbar";
+import { RightbarChrome } from "./RightbarChrome";
 import { LeftRail } from "./LeftRail";
 import { InboxButton } from "../features/inbox/InboxButton";
 import { RightPanel } from "./RightPanel";
@@ -121,6 +130,21 @@ function loadLeftView(): LeftView {
   catch { return "conversations"; }
 }
 
+/*
+  右栏用哪一档呈现。**存在这里而不是 LAYOUT_PERSISTENCE 里**——那条口子只存左右两栏的
+  宽度偏好，右栏那几个 `shown/track/fullscreen` 是占位者报上去的派生装饰，存了会在刷新后
+  变成「框以为开着、占位者以为关着」（vendor/dsh/layout/layout-state.ts 的 ROOST-CHANGE 四）。
+  档次不一样：它是**用户挑的**，和左栏宽度同一类，跟着我们那条「上游刷新即复位、我们不跟」
+  一起持久化。默认推挤——那是上游唯一的常规呈现。
+*/
+const RIGHT_MODE_KEY = "roost-right-mode-v1";
+function loadRightMode(): RightbarMode {
+  try {
+    const raw = localStorage.getItem(RIGHT_MODE_KEY);
+    return raw === "float" || raw === "fullscreen" ? raw : "push";
+  } catch { return "push"; }
+}
+
 export function Shell() {
   /*
     栏宽和折叠态。**持久化是我们相对上游唯一的行为偏离**——它 README 写着刷新即重置，
@@ -128,9 +152,22 @@ export function Shell() {
   */
   const { layout, actions, geometry } = useLayoutState(LAYOUT_PERSISTENCE);
   const leftCollapsed = geometry.sidebarCollapsed;
-  // 右栏「收起」在上游的模型里就是占位者没报 shown。我们只有「占轨展开」一种呈现。
-  const rightCollapsed = !layout.rightbarShown;
-  const expandRight = useCallback(() => { actions.openRightbar(true, false); }, [actions]);
+  /*
+    **右栏开没开，真相在这里，不在框里。**
+
+    `layout.rightbarShown/Track/Fullscreen` 是**占位者报上去的派生装饰**（见
+    layout-state.ts 里 LayoutInfo 的注释）——框拿它决定画不画那根拖拽把手，仅此而已。
+    原来这里反过来读框（`!layout.rightbarShown`），于是「开」只有一种含义、也没人能报
+    别的档次。现在这个布尔值是 Shell 自己的状态，占位者按它加上档次和框宽解出三个布尔
+    值再报回去，和上游 index.ts 139-141 行那条约定一致。
+  */
+  const [rightOpen, setRightOpen] = useState(false);
+  const [rightMode, setRightMode] = useState<RightbarMode>(loadRightMode);
+  const rightCollapsed = !rightOpen;
+  const expandRight = useCallback(() => { setRightOpen(true); }, []);
+  useEffect(() => {
+    try { localStorage.setItem(RIGHT_MODE_KEY, rightMode); } catch { /* 存不了就下次从推挤开始 */ }
+  }, [rightMode]);
   const [rightView, setRightView] = useState<RightView>("files");
   const [monitorTarget, setMonitorTarget] = useState<MonitorTarget>({ tab: 'overview', revision: 0 });
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -179,8 +216,7 @@ export function Shell() {
   }
 
   function toggleRight() {
-    if (rightCollapsed) expandRight();
-    else actions.closeRightbar();
+    setRightOpen(open => !open);
   }
 
   function showRight(view: RightView) {
@@ -190,7 +226,7 @@ export function Shell() {
 
   function selectRight(view: RightView) {
     // 点当前这个视图等于收起——和左栏那两颗图标钮是同一个手势。
-    if (rightView === view && !rightCollapsed) { actions.closeRightbar(); return; }
+    if (rightView === view && !rightCollapsed) { setRightOpen(false); return; }
     expandRight();
     setRightView(view);
   }
@@ -249,7 +285,19 @@ export function Shell() {
 
           修的是外面这一层而不是 `AppFrame.module.css`——那个文件要保持逐字。
         */}
-        <div className="h-full min-w-0 flex-1 overflow-hidden rounded-xl">
+        {/*
+          `contain: paint` 是**全屏那一档要的**，不是装饰。
+
+          `.panel[data-sidebar-right-panel='fullscreen']` 是 `position: fixed; inset: 0`
+          （SidebarRight.module.css 49-54 行，逐字）。fixed 的包含块是视口，除非祖先上有
+          transform / filter / contain 之类——`overflow: hidden` **不算**。不给它一个包含块，
+          全屏面板会连 TopBar、两条图标轨和状态栏一起盖掉，而**常驻的 RightRail 正是我们
+          相对上游保留的那条**（上游没有轨，它的唯一入口是对话头角上一颗按钮，盖掉无所谓）。
+          盖掉它就等于全屏之后没有回头路。
+
+          加在这一层而不是 `.frame` 上：那个文件要保持逐字。
+        */}
+        <div className="h-full min-w-0 flex-1 overflow-hidden rounded-xl" style={{ contain: "paint" }}>
         <AppFrame
           layout={layout}
           actions={actions}
@@ -283,22 +331,29 @@ export function Shell() {
           }
           rightbar={
             /*
-              右栏在上游是「占位者」：面板自己贴着框的右边缘画，把 shown/track 报回框，
-              框只决定中栏让不让出那条轨。我们只有「占轨展开」一种呈现，所以这里报的
-              track 恒为真——三态里的悬浮和全屏留给以后。
+              右栏在上游是「占位者」：面板自己贴着框的右边缘画，把 shown/track/fullscreen
+              报回框，框只决定中栏让不让出那条轨。三档呈现共用同一棵 DOM，切档不重挂载。
             */
-            <RightbarSeat shown={!rightCollapsed} width={geometry.normal.rightbar}>
-              <ErrorBoundary region={t.misc.shell.regionLibraryFiles} key={rightView}>
-                <RightPanel view={rightView} onChangeView={setRightView} visible={!rightCollapsed} monitorTarget={monitorTarget} />
-              </ErrorBoundary>
-            </RightbarSeat>
+            <RightbarSeat
+              open={rightOpen}
+              mode={rightMode}
+              onMode={setRightMode}
+              onCollapse={() => { setRightOpen(false); }}
+              actions={actions}
+              viewportWidth={layout.viewportWidth}
+              normalWidth={geometry.normal.rightbar}
+              preference={geometry.rightbarPreference}
+              view={rightView}
+              onChangeView={setRightView}
+              monitorTarget={monitorTarget}
+            />
           }
         />
         </div>
         <RightRail view={rightView} collapsed={rightCollapsed} onSelect={selectRight} />
       </div>
       <StatusBar monitorVisible={rightView === 'server' && !rightCollapsed} onOpenMonitor={tab => { setMonitorTarget(previous => ({ tab, revision: previous.revision + 1 })); showRight('server'); }} />
-      {settingsOpen && <ErrorBoundary region={t.misc.shell.regionSettings}><Suspense fallback={null}><SettingsDialog onClose={() => setSettingsOpen(false)} onResetLayout={() => { actions.setSidebar(SIDEBAR_DEFAULT); actions.setRightbar(0); actions.closeRightbar(); }} /></Suspense></ErrorBoundary>}
+      {settingsOpen && <ErrorBoundary region={t.misc.shell.regionSettings}><Suspense fallback={null}><SettingsDialog onClose={() => setSettingsOpen(false)} onResetLayout={() => { actions.setSidebar(SIDEBAR_DEFAULT); actions.setRightbar(0); setRightOpen(false); setRightMode("push"); }} /></Suspense></ErrorBoundary>}
       {paletteOpen && <ErrorBoundary region={t.misc.shell.regionPalette}><Suspense fallback={null}><CommandPalette open onClose={() => setPaletteOpen(false)} onShowView={showRight} /></Suspense></ErrorBoundary>}
       {/*
         弹窗之外的编辑器挂在这一层，而不是文件树里。
@@ -323,19 +378,72 @@ export function Shell() {
  * 右栏占位者。
  *
  * 上游那条栏是**轨道不是盒子**：`.rightbarCol` 自己 `overflow: visible`，面板贴着框的
- * 右边缘绝对定位，轨只决定中栏让不让出那块地。这么分工是为了「全屏 / 推挤 / 悬浮」
- * 三态能共用同一棵 DOM、切换时不重挂载——我们目前只做推挤那一态，但保持同样的分工，
- * 将来加另外两态不用动面板本身。
+ * 右边缘绝对定位，轨只决定中栏让不让出那块地。这么分工是为了三档呈现能共用同一棵 DOM、
+ * 切换时不重挂载。这一层把「用户开没开 + 挑了哪一档 + 框多宽」解成占位者该报的那三个
+ * 布尔值，再把结果同时交给面板盒子和框。
  *
- * 报不报 `shown` 由 Shell 直接调 `actions` 决定（我们没有上游那种「占位者自己决定要不要
- * 出现」的插件模型），所以这一层是纯呈现的。
+ * 几何和报告的时序都在 `vendor/dsh/rightbar/`，这里只剩接线。
  */
-function RightbarSeat({ shown, width, children }: { shown: boolean; width: number; children: ReactNode }) {
-  if (!shown) return null;
+function RightbarSeat({
+  open, mode, onMode, onCollapse, actions, viewportWidth, normalWidth, preference, view, onChangeView, monitorTarget,
+}: {
+  open: boolean;
+  mode: RightbarMode;
+  onMode: (mode: RightbarMode) => void;
+  onCollapse: () => void;
+  actions: LayoutActions;
+  viewportWidth: number;
+  normalWidth: number;
+  preference: number;
+  view: RightView;
+  onChangeView: (view: RightView) => void;
+  monitorTarget: MonitorTarget;
+}) {
+  /* 正常宽度的右栏在中栏 400px 旁边还留不留得住 300px。上游 `RightbarOwnerProps.canShow`
+     就是这个数（ui-layout/index.ts 119 行），它由框解出来，这里照抄它的算式。 */
+  const canShow = normalWidth > 0;
+  const presentation = resolveRightbarPresentation({ expanded: open, mode, viewportWidth, canShow });
+  const width = rightbarPanelWidth(normalWidth, preference, viewportWidth);
+
+  /*
+    **面板不卸载，但里面的东西第一次打开之前不挂。**
+
+    盒子要一直在，滑入滑出才是同一个手势（见 RightbarPanel 的文件头）；可 `RightPanel`
+    底下挂着三个懒加载的大块（FilesView / NotesView / ServerMonitorView，把首屏从 770
+    压到 516 KB 的那一笔就是它们），开局就挂等于把那三个 chunk 拉回首屏。所以盒子常在、
+    内容等第一次打开——**而且此后不再摘掉**，收起再打开不用重新拉一遍目录树。
+  */
+  const [everOpened, setEverOpened] = useState(false);
+  useEffect(() => { if (open) setEverOpened(true); }, [open]);
+
+  const report = useCallback((next: RightbarPresentation) => {
+    // 约定同上游 index.ts 139-141 行。
+    if (next.shown) actions.openRightbar(next.track, next.fullscreen);
+    else actions.closeRightbar();
+  }, [actions]);
+
   return (
-    <div className="absolute inset-y-0 right-0 overflow-hidden border-l border-border bg-bg-panel"
-      style={{ width: `${Math.round(width)}px` }}>
-      {children}
-    </div>
+    <RightbarPanel
+      presentation={presentation}
+      width={width}
+      onPresentation={report}
+      /*
+        悬浮档要一道投影。上游那份 CSS 有意不给（注释：「这是页面的一栏，不是抬起来的面」），
+        而上游**产生不出**盖在中栏上的非全屏面板，所以它不需要。我们这一档下面就是对话
+        正文，没有投影时那条 0.5px 的左边框根本分不出层次。挂在调用方而不是改那份逐字的
+        module.css。
+      */
+      className={presentation.mode === "float" ? "shadow-modal" : undefined}
+    >
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-bg-panel">
+        {everOpened && (
+          <ErrorBoundary region={t.misc.shell.regionLibraryFiles} key={view}>
+            <RightPanel view={view} onChangeView={onChangeView} visible={open} monitorTarget={monitorTarget}
+              chrome={<RightbarChrome mode={mode} autoFullscreen={viewportWidth < RIGHTBAR_AUTO_FULLSCREEN}
+                onMode={onMode} onCollapse={onCollapse} />} />
+          </ErrorBoundary>
+        )}
+      </div>
+    </RightbarPanel>
   );
 }

@@ -63,3 +63,28 @@ test('oversized rows recover; replaced source resets and invalidates old details
   const replacement=await readCodexTranscript(path,'native',batch.checkpoint);assert.equal(replacement.reset,true);
   await assert.rejects(readCodexDetail(items[0].data.detail),/file_replaced/);
 });
+
+/*
+  codex 这边和 Claude `attachment` 对得上的只有 `world_state`——一份环境与指令的快照。
+  它此前撞在 `response_item` 那道门闸上被当成解析失败计进 `skipped`。
+
+  只认这一种：本机只有一份 codex rollout、3 条 `world_state`，证据量不足以再分档，
+  而配置快照本来就属于「留着、折起来」那一档。`turn_context` / `token_usage_record` /
+  `thread_settings_applied` 仍然按原样处理，这里一并钉住，免得将来误以为都认了。
+*/
+test('codex world_state becomes a collapsed context part; its neighbours keep their old handling', async t => {
+  const path = await fixture(t,
+    line({ type: 'world_state', timestamp: '2026-09-09T00:00:00Z',
+      payload: { full: true, state: { environments: { current_date: '2026-09-13' }, model: 'gpt-6-astra' } } })
+    + line({ type: 'thread_settings_applied', timestamp: '2026-09-09T00:00:00Z', payload: { model: 'gpt-6-astra' } })
+    + response({ type: 'message', role: 'user', content: [{ type: 'input_text', text: 'hi' }] }));
+  const batch = await readCodexTranscript(path, 'native');
+  const ctx = batch.items.filter(item => item.role === 'context');
+  assert.equal(ctx.length, 1);
+  assert.equal(ctx[0].data.parts[0].context!.kind, 'world_state');
+  assert.equal(ctx[0].data.parts[0].context!.tier, 'collapsed');
+  // 没有 `rendered` 这样的现成文本，走结构化 JSON 兜底：看得懂比看不见强。
+  assert.match(ctx[0].data.parts[0].text!, /gpt-6-astra/);
+  assert.equal(ctx[0].data.parts[0].context!.length, ctx[0].data.parts[0].text!.length);
+  assert.equal(batch.checkpoint.skipped, 1, 'thread_settings_applied 仍然按漏读计——那是另一个决定');
+});

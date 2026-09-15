@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, type ReactNode } from "react";
 import { useLibraryPresentation } from "../shared/ui/useLibraryPresentation";
 import { createPortal } from "react-dom";
 import { useWorkspace } from "../shared/store";
@@ -25,7 +25,7 @@ import type { MonitorTarget } from '../features/server-monitor/navigation';
 const ServerMonitorView = lazy(() => import("../features/server-monitor/ServerMonitorView"));
 const FilesView = lazy(() => import("../features/files/FilesView").then(m => ({ default: m.FilesView })));
 const NotesView = lazy(() => import("../features/notes/NotesView").then(m => ({ default: m.NotesView })));
-export function RightPanel({ view, onChangeView, visible = true, monitorTarget }: { view: RightView; onChangeView: (view: RightView) => void; visible?: boolean; monitorTarget?: MonitorTarget }) {
+export function RightPanel({ view, onChangeView, visible = true, monitorTarget, chrome }: { view: RightView; onChangeView: (view: RightView) => void; visible?: boolean; monitorTarget?: MonitorTarget; /** 右栏三档呈现的那排控制钮（`RightbarChrome`）。上游把它们放在停靠面的标签条末端，我们没有那条标签条，所以借这个头的动作位。 */ chrome?: ReactNode }) {
   // 每次渲染重取：切换语言后标题要跟着变，不能缓存在模块顶层。
   // 同上：占位文案也要每次渲染重取，模块级常量会把语言定死在首次加载那一刻。
   const panelFallback = <p className="p-3 text-xs text-text-dim">{t.misc.rightPanel.loading}</p>;
@@ -43,7 +43,10 @@ export function RightPanel({ view, onChangeView, visible = true, monitorTarget }
 
   return <section className={`flex h-full flex-col bg-bg-panel ${view === "server" ? "server-monitor" : ""}`}>
     <PanelHeader title={titles[view]} sub={view === "files" ? session?.cwd : undefined}
-      actions={isLibrary && <button ref={expandButton} className="rounded px-2 py-1 text-xs font-normal text-text-dim hover:bg-bg-hover hover:text-text" onClick={() => setExpanded(true)} aria-haspopup="dialog">{t.misc.rightPanel.expandLibrary}</button>} />
+      actions={(isLibrary || chrome) && <>
+        {isLibrary && <button ref={expandButton} className="rounded px-2 py-1 text-xs font-normal text-text-dim hover:bg-bg-hover hover:text-text" onClick={() => setExpanded(true)} aria-haspopup="dialog">{t.misc.rightPanel.expandLibrary}</button>}
+        {chrome}
+      </>} />
     {view === "files" ? <div key="files" className="flex min-h-0 flex-1 flex-col"><Suspense fallback={panelFallback}><FilesView /></Suspense></div>
       : view === "server" ? <Suspense fallback={<p className="p-3 text-xs text-text-dim">{t.serverMonitor.loading}</p>}><ServerMonitorView active={visible} target={monitorTarget} /></Suspense>
       : <div key="library" ref={sideSlot} className="flex min-h-0 flex-1 flex-col" />}
