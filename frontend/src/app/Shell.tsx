@@ -144,8 +144,18 @@ function loadWorkbench(): Workbench {
   try {
     const raw = localStorage.getItem(WORKBENCH_KEY);
     if (raw === "conversation" || raw === "terminal") return raw;
-    return localStorage.getItem(LEGACY_LEFT_VIEW_KEY) === "workspaces" ? "terminal" : "conversation";
-  } catch { return "conversation"; }
+    /*
+      **没存过时停在终端。** 终端是这个产品的主体——对话是它的可读投影，而不是反过来：
+      写入始终走 PTY，CLI 才是那份 transcript 的单写者。默认落在投影上，等于一打开就
+      看不见主体。对话在左轨第一颗，点一下就过去。
+
+      旧键的迁移**保持不变**：停在工作区树上的人继续落到终端（那本来就是同一件事）；
+      停在对话目录上的人也继续落到对话——他们那一次是显式选过的，不该被新默认覆盖。
+    */
+    const legacy = localStorage.getItem(LEGACY_LEFT_VIEW_KEY);
+    if (legacy === "conversations") return "conversation";
+    return "terminal";
+  } catch { return "terminal"; }
 }
 
 /**
