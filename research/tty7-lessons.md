@@ -46,7 +46,28 @@ roost 的主力使用场景下恰好开到最大。这是目前对「一段时�
 `issues/2026-09-10-restore-loses-rows-below-cursor.md` 反复强调的「本地终端和 PTY 的尺寸
 必须一起改」，说的是同一件事，但那条不变式只保证了**同时发出**，没保证**同一个流位置**。
 
-改动形状：协议里加一个按流序插入的 size 帧，客户端收到它才 reflow。**这是协议改动，没做。**
+### 完整的解法是三个零件，缺一不可
+
+四路并行里有三路独立推荐了这一套（第四路是 agent 集成，另一个题目）：
+
+1. **重放环按录制时的几何分段**，每段先发 `Size` 再发字节（`daemon/pane.rs:2685-2690`）。
+   他们的 CHANGELOG 记了不这么做的后果：整个环按最终宽度重放，会话中途任何一次 resize
+   都会让旧输出重新折行，TUI 的 cursor-up 重绘落在半帧上。
+2. **活着的时候，daemon 在应用 resize 的那个流位置回一个 `Size` 帧**，客户端把 reflow
+   推迟到那个标记（上面那段注释）。
+3. **模式 fold 只补环自己补不上的那部分**（`pane.rs:2749`）。这条最容易漏：重复发一次
+   `?1049h` **不是无害的**——模式已开时 emulator 当它 no-op，于是环自带的那份不再清
+   alternate screen，环里更早的 shell scrollback 会被画进 alternate buffer，然后随程序
+   退出一起丢掉。
+
+**顺带一个副作用**：零件 1 让「网格对不上」不再是错误状态，于是 roost 那条
+「重连 → 服务端网格 ≠ 客户端网格 → 整个缓冲判废 → 全量重建 → 只剩 2000 行」的因果链
+在第二环就断了。attach 时服务端**明确忽略客户端报的网格**（`daemon/server.rs:814-817`，
+`size` 参数直接写成 `_`）。
+
+**这是协议改动，没做。** 而 roost 2026-09-16 那笔「恢复画面时抖一下尺寸逼 TUI 重画」
+（`ea71792`）是在用副作用绕过这个问题——当时提交信息里就写明了「只是让用户重新有个能用
+的东西，不是修因」。这里才是因。
 
 ## 二、替 agent 按回车：他们睡 200ms，我们等回显
 
@@ -69,8 +90,31 @@ const KEY_GAP: Duration = Duration::from_millis(200);
 
 ## 三、两边各自领先的地方
 
-**roost 领先**：tty7 **没有本地回显/预测**（全仓搜不到 predict/speculative，只有一个显示
-"到对端距离"的延迟读数）。远程窗格里打字就是完整往返。
+**roost 领先**：~~tty7 没有本地回显~~ —— **这句我先前说错了一半，四路并行时被纠正**。
+
+tty7 没有逐键预测＋回显对账，但它有更激进的东西：**在 shell 提示符下客户端直接接管整行**
+（`src/terminal/cmd_editor.rs`，915 行纯 `Vec<char>` 行编辑器，零 I/O），按键根本不过网，
+提交时才发一次。回归测试把契约钉死：`view.rs:15994` 的断言信息是
+*"the editor owns these keys, so none of them reach the PTY"*。
+
+**但它的生效条件很窄**（`view.rs:4246-4274` 逐条列了失效原因）：关了设置 / shell 已退出 /
+搜索框占键盘 / **在 alt screen** / shell 处于 vi 模式 / **没有 OSC 133 提示符标记**。
+也就是说 **vim、htop、以及所有 agent TUI 里这条路完全不存在**——那些场景下 tty7 每个按键
+都是完整 RTT，一点缓解都没有。
+
+**所以在 roost 的主力场景（agent TUI + 200ms 链路）上，roost 的覆盖层反而是更强的那个**：
+它不进 parser、不进网络、失败就撤销，最坏是白画一帧；而 tty7 为了让本地编辑器接管，
+**必须真的往线上写 `\x15`（Ctrl-U）** 去擦 shell 缓着的那行，为此背了 tainted / owed-wipe /
+handoff / gap-hold 四套状态机，`view.rs:11651`、`:11696`、`:12367` 那些「恢复 shell 时不能
+凭空合成 Ctrl-U」的回归测试，每一条背后都是真把用户命令行搞坏过一次。
+
+另外两条 roost 更好的：**延迟读数测在承载按键的那条链路上**（roost 的 ping 走的就是运 PTY
+字节的那个 websocket；tty7 把 latency row 测在 Control channel，而按键走 Pane channel，
+是两条独立的 SSH channel、各有各的流控窗口），以及 roost 显式建模了「这个读数多老」
+（`StatusBar.tsx` 的 45 秒过期）。
+
+**两家共同的缺口**：延迟读数都没有平滑。tty7 是单个 atomic 直接覆盖（`control.rs:1145`），
+roost 同样。在 170→403ms 抖动的链路上，单样本读数会乱跳。
 
 **tty7 领先**：
 - **特性协商**（`FEATURE_*` 字符串 + `PROTOCOL_VERSION`）而不是钉版本号。roost 2026-09-16
