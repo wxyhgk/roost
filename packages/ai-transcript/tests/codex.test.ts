@@ -63,3 +63,63 @@ test('oversized rows recover; replaced source resets and invalidates old details
   const replacement=await readCodexTranscript(path,'native',batch.checkpoint);assert.equal(replacement.reset,true);
   await assert.rejects(readCodexDetail(items[0].data.detail),/file_replaced/);
 });
+
+/*
+  codex 把 `<environment_context>` 这类机器注入写成普通 user 消息，和真人说的话在记录里
+  长得一模一样。本机实测一份转录 12 条 user 里有 3 条是注入——照原样画出来，界面就会
+  显示成「你说过这些」，而你从没说过。
+
+  判据不是字符串匹配，是 codex 自己打的标：content_item_kinds。
+*/
+const meta = (kinds: string[]) => ({ turn_id: 't', create_time: 1, content_item_kinds: kinds });
+
+test('机器注入按 codex 自己打的标识别，不进 content', async t => {
+  const path = await fixture(t,
+    response({type:'message',role:'user',content:[{type:'input_text',text:'<environment_context>\n  <cwd>/home</cwd>\n</environment_context>'}],
+      internal_chat_message_metadata_passthrough:meta(['environments.environment_context'])})+
+    response({type:'message',role:'user',content:[{type:'input_text',text:'你好，你看看我们的服务器'}],
+      internal_chat_message_metadata_passthrough:meta(['user.text'])}));
+  const batch = await readCodexTranscript(path,'native');
+  assert.equal(batch.items.length,2);
+
+  const [injected, human] = batch.items;
+  assert.equal(injected.data.parts[0].type,'context','注入走 context 通道，不是用户文本');
+  assert.equal(injected.data.parts[0].contextLabel,'environments.environment_context');
+  // content 是预览取的、搜索扫的。混进去会让目录预览显示成一段 <environment_context>，
+  // 也会让搜索在用户从没写过的词上命中他的消息。
+  assert.equal(injected.content,'');
+  // 一个字都没丢：它在 parts 里。
+  assert.ok(injected.data.parts[0].text.includes('<cwd>/home</cwd>'));
+
+  assert.equal(human.data.parts[0].type,'text','真人说的话不能被标成注入');
+  assert.equal(human.content,'你好，你看看我们的服务器');
+});
+
+test('没有这个标时不猜：照原样当用户文本', async t => {
+  // 字段名自带 internal_..._passthrough，是供应商内部结构，可能缺失或改名。
+  // 宁可漏标，不可错标——把真人说的话标成机器注入，比反过来更糟。
+  const path = await fixture(t,
+    response({type:'message',role:'user',content:[{type:'input_text',text:'<environment_context>假装是注入</environment_context>'}]}));
+  const batch = await readCodexTranscript(path,'native');
+  assert.equal(batch.items[0].data.parts[0].type,'text');
+  assert.equal(batch.items[0].content,'<environment_context>假装是注入</environment_context>');
+});
+
+test('混着真人文本时不拆：整条仍按用户文本处理', async t => {
+  // content_item_kinds 与 content 是否逐项对齐没有验证过，混合情况下按项拆分就是猜。
+  const path = await fixture(t,
+    response({type:'message',role:'user',content:[{type:'input_text',text:'真话'},{type:'input_text',text:'<environment_context/>'}],
+      internal_chat_message_metadata_passthrough:meta(['user.text','environments.environment_context'])}));
+  const batch = await readCodexTranscript(path,'native');
+  assert.ok(batch.items[0].data.parts.every((part: any) => part.type === 'text'));
+  assert.ok(batch.items[0].content.includes('真话'));
+});
+
+test('assistant 的消息不受这条判据影响', async t => {
+  const path = await fixture(t,
+    response({type:'message',role:'assistant',content:[{type:'output_text',text:'回答'}],
+      internal_chat_message_metadata_passthrough:meta(['environments.environment_context'])}));
+  const batch = await readCodexTranscript(path,'native');
+  assert.equal(batch.items[0].data.parts[0].type,'text');
+  assert.equal(batch.items[0].content,'回答');
+});

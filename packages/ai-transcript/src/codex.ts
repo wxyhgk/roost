@@ -46,8 +46,34 @@ function normalize(row: Record<string, any>, ref: TranscriptItem["data"]["detail
     if (!["user", "assistant", "system", "developer"].includes(p.role) || !Array.isArray(p.content)) return {partial: true};
     role = p.role === "developer" ? "system" : p.role;
     if (p.content.length > 512) { partial = true; truncated = true; }
+    /*
+      codex 把 `<environment_context>` 这类机器注入写成**普通 user 消息**，和真人说的话
+      在记录里长得一模一样。本机实测一份转录 12 条 user 里有 3 条是注入——照原样画出来，
+      界面就会显示成「你说过这些」，而你从没说过。
+
+      判据不是字符串匹配，是 **codex 自己打的标**：
+      `payload.internal_chat_message_metadata_passthrough.content_item_kinds`，
+      真人那条是 `["user.text"]`，注入那条是 `["environments.environment_context"]`。
+      实测那份转录 12/12 都有这个字段。
+
+      **字段缺失时不猜**：那一版没打标，就照原样当用户文本处理。宁可漏标，不可错标——
+      把真人说的话标成机器注入，比反过来更糟。
+
+      **只在整条消息都是机器项时才算注入**：`content_item_kinds` 与 `content` 是否逐项
+      对齐没有验证过，混合的情况下按项拆分就是猜。样本里两个数组长度都是 1。
+
+      字段名自带 `internal_..._passthrough`，是供应商内部结构，可能会变——所以它只是
+      一个加分项，拿不到就退回原行为，不会让解析失败。
+    */
+    const meta = object(p.internal_chat_message_metadata_passthrough) ? p.internal_chat_message_metadata_passthrough : undefined;
+    const kinds = Array.isArray(meta?.content_item_kinds) ? meta.content_item_kinds : undefined;
+    const injected = role === "user" && !!kinds?.length
+      && kinds.every((kind: unknown) => typeof kind === "string" && !kind.startsWith("user."));
     for (const block of p.content.slice(0, 512)) {
-      if (object(block) && ["input_text", "output_text", "text"].includes(block.type) && typeof block.text === "string") add("text", block.text);
+      if (object(block) && ["input_text", "output_text", "text"].includes(block.type) && typeof block.text === "string") {
+        if (injected) add("context", block.text, { contextLabel: kinds!.join(", ") });
+        else add("text", block.text);
+      }
       else { partial = true; add("unsupported", "[未支持的记录内容]"); }
     }
   } else if (["function_call", "custom_tool_call"].includes(p.type)) {
@@ -77,7 +103,10 @@ function normalize(row: Record<string, any>, ref: TranscriptItem["data"]["detail
   const id = recordId(row, ref.offset), timestamp = Date.parse(row.timestamp);
   return {partial, item: {
     eventId: `codex:${ref.nativeSessionId}:${id}`, type: "message", role,
-    content: parts.map(part => part.text ?? "").join("\n"),
+    // 注入不进 content：那个字段是预览取的、搜索扫的。混进去会让目录里这条对话的预览
+    // 显示成一段 <environment_context>，也会让搜索在用户从没写过的词上命中他的消息。
+    // 一个字都没丢——它在 parts 里。
+    content: parts.filter(part => part.type !== "context").map(part => part.text ?? "").join("\n"),
     ...(Number.isFinite(timestamp) ? {createdAt: timestamp} : {}),
     data: {source: "transcript", nativeMessageId: id, parentId: null, parts, truncated, detail: {...ref, recordId: id}}
   }};
