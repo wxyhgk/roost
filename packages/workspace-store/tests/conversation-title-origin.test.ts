@@ -78,3 +78,49 @@ test('存量里冒充 native 的默认标题会被改回 fallback', t => {
   // 只改来源标记：标题文字是用户看得见的东西，重写它是另一件事。
   assert.equal(row.title, 'Terminal');
 });
+
+/*
+  CLI 自己给的名字接上来之后，`titleOrigin: "native"` 才名副其实。
+
+  claude 把会话标题写在转录里（{"type":"ai-title",...}），适配器带在 checkpoint 的 state 上。
+  本机实测 29 份转录里 9 份有，例如「Orca 项目评估」——而目录里那条显示的是「Terminal」。
+*/
+function withTitle(t: TestContext, aiTitle: string | undefined, seed?: (store: any, id: string) => void) {
+  const dir = mkdtempSync(join(tmpdir(), 'conversation-native-title-'));
+  const store = createWorkspaceStore({ dataDir: dir });
+  const bridge = createAiSessionBridge({ storage: store.aiSessions });
+  t.after(() => { store.close(); rmSync(dir, { recursive: true, force: true }); });
+  store.upsertSession({ id: 's', cwd: dir, title: 'Terminal' });
+  bridge.bind({ webSessionId: 's', terminalInstanceId: 's', cliId: 'claude', nativeSessionId: 'n' });
+  const id = store.conversations.list({ state: 'all' }).items[0]!.id;
+  seed?.(store, id);
+  // 适配器把标题放在 checkpoint 的 state 上；这里直接喂一个批次，走的是真实的 ingest 路径。
+  bridge.ingestTranscript('s', bridge.get('s')!.generation, {
+    checkpoint: { path: '/x', fingerprint: 'f', offset: 1, pending: '', discarding: false, tail: '', fileSize: 1,
+      skipped: 0, active: true, status: 'caught_up', ...(aiTitle === undefined ? {} : { state: { aiTitle } }) } as any,
+    items: [], details: [], reset: false, bytesRead: 1,
+  } as any);
+  return store.conversations.list({ state: 'all' }).items[0]!;
+}
+
+test('CLI 给的标题接上来，来源标成 native', t => {
+  const row = withTitle(t, 'Orca 项目评估');
+  assert.equal(row.title, 'Orca 项目评估');
+  assert.equal(row.titleOrigin, 'native');
+});
+
+test('没有 ai-title 时不动，保持兜底', t => {
+  const row = withTitle(t, undefined);
+  assert.equal(row.titleOrigin, 'fallback');
+  assert.notEqual(row.title, 'Orca 项目评估');
+});
+
+test('绝不覆盖用户改过的标题', t => {
+  // 用户重命名过就是最终答案，CLI 的自动标题不能把它顶掉。
+  const row = withTitle(t, 'Orca 项目评估', (store, id) => {
+    const current = store.conversations.get(id);
+    store.conversations.patch(id, { revision: current.revision, title: '我自己起的名字' });
+  });
+  assert.equal(row.title, '我自己起的名字');
+  assert.equal(row.titleOrigin, 'user');
+});

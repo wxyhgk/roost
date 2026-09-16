@@ -214,6 +214,21 @@ export async function readClaudeTranscript(path: string, nativeId: string, previ
         if (!object(row)) state.skipped++;
         else {
           if (typeof row.sessionId === "string" && row.sessionId !== nativeId) throw new TranscriptError("session_mismatch");
+          /*
+            claude 自己会给会话起名字，写成 `{"type":"ai-title","aiTitle":"…"}` 混在同一份
+            转录里。它不是一条消息，所以 `normalize` 认不出它（`result.partial`），但它是
+            这条对话**真正的名字**——本机实测 4 条 claude 对话里 2 条有，其中一条我们目录
+            里显示「Terminal」，claude 叫它「Orca 项目评估」。
+
+            **必须放进 checkpoint 的 state 带着走**：读是增量的，这条记录扫过去就不会再
+            出现，只在当场用掉的话下一轮就丢了。reset 时 state 跟着清空是对的——那时会从
+            偏移 0 重读，标题会重新出现。
+
+            同一份转录里这条记录会重复出现（改名或重新生成），后写的覆盖先写的。
+          */
+          if (row.type === "ai-title" && typeof row.aiTitle === "string" && row.aiTitle.trim()) {
+            state.state = { ...(object(state.state) ? state.state : {}), aiTitle: row.aiTitle.trim().slice(0, 200) };
+          }
           const ref = { provider: "claude" as const, path: canonical, fingerprint: identity, offset: base + start,
             length: end - start, nativeSessionId: nativeId, recordId: "", hash: createHash("sha256").update(line).digest("hex") };
           const result = normalize(row, ref);

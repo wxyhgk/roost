@@ -42,6 +42,27 @@ export function isDefaultSessionTitle(title: string | null | undefined): boolean
   const trimmed = title?.trim() ?? "";
   return !trimmed || trimmed === "Terminal" || /^Session \d+$/.test(trimmed);
 }
+/**
+ * 把 CLI 自己给这条对话起的名字接上来。
+ *
+ * claude 会给会话生成标题，写在转录里（`{"type":"ai-title","aiTitle":"…"}`），适配器把它
+ * 带在 checkpoint 的 state 上。这才是 `titleOrigin: "native"`（「CLI 自己给的名字」）本来
+ * 要表达的东西——在此之前那个值一直被拿去标终端标题，名不副实。
+ *
+ * 两条边界：
+ *
+ * - **绝不覆盖用户改过的标题**（`title_origin='user'`）。用户重命名过就是最终答案。
+ * - 已经是 `native` 时仍然跟着更新：claude 会重新生成标题，跟着它走才叫同步。但标题没变
+ *   时不写，免得每次 ingest 都白白推高 revision、把别人手上的版本号撞成过期。
+ */
+function applyNativeTitle(db: DatabaseSync, conversationId: string, webSessionId: string) {
+  const row = db.prepare("SELECT json_extract(record_json,'$.transcript.state.aiTitle') AS title FROM ai_session_records WHERE session_id=?")
+    .get(webSessionId) as { title?: unknown } | undefined;
+  const title = typeof row?.title === "string" ? row.title.trim().slice(0, 200) : "";
+  if (!title) return;
+  db.prepare(`UPDATE conversation_catalog SET title=?,title_origin='native',revision=revision+1,updated_at=?
+    WHERE id=? AND title_origin<>'user' AND title<>?`).run(title, Date.now(), conversationId, title);
+}
 export function observeConversation(db: DatabaseSync, cid: string, binding?: Binding) {
   const native = db.prepare("SELECT cli_id,native_id FROM ai_conversations WHERE id=?").get(cid) as {cli_id:string;native_id:string};
   const old = db.prepare("SELECT conversation_id FROM conversation_sources WHERE legacy_conversation_id=?").get(cid) as {conversation_id:string}|undefined;
@@ -51,6 +72,8 @@ export function observeConversation(db: DatabaseSync, cid: string, binding?: Bin
   if (old) {
     db.prepare("UPDATE conversation_sources SET cwd=COALESCE(?,cwd),transcript_path=COALESCE(?,transcript_path),observed_at=MAX(observed_at,?) WHERE legacy_conversation_id=?")
       .run(session?.cwd ?? null,binding?.transcriptPath ?? null,timestamp,cid);
+    // 建的时候转录还没读过，标题只能在后续每次 ingest 时补上——这里正是那个时机。
+    if (binding) applyNativeTitle(db, old.conversation_id, binding.webSessionId);
     return old.conversation_id;
   }
   const id = randomUUID();
