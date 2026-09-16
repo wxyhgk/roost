@@ -392,7 +392,9 @@ export function createTerminalSessionController(options: {
     return {
       dispose, restart, persist, send,
       dismissInputNotice: () => update({ inputNotice: false }),
-      repaint() { if(!valid()) return; trace.record('manual-repaint'); term?.repaint?.(true); engaged = true; fit(); },
+      // 只有这条「用户明确要求恢复画面」的路才解冻：卡住的 visibility 得清掉，
+      // 而切回前台那条不该动它（那时冻结可能是合法的，见 engine 的 repaint）。
+      repaint() { if(!valid()) return; trace.record('manual-repaint'); term?.setFrozen?.(false); term?.repaint?.(); engaged = true; fit(); },
       diagnostics: () => ({ phase, status: state.status, historyTruncated: state.historyTruncated, active, visible: deps.isVisible(), inputReady, lastFrameAt,
         renderer: term?.inspect?.() ?? null, replay: resume?.inspect() ?? null, events: trace.read() }),
       snapshot: () => state,
@@ -401,9 +403,8 @@ export function createTerminalSessionController(options: {
         // 交出前台身份就必须交出键盘：光靠上面盖一层不透明的东西挡不住按键，
         // textarea 还留着 DOM 焦点，敲什么都会照样进 PTY。
         if (!value) { term?.clearLocalEcho?.(); term?.blur?.(); images.cancel(); persist(); return; }
-        // 回到前台的顺序：先争取把 WebGL 拿回来，再按当前尺寸重算并整屏重绘。
-        // 少了最后这次重绘，被盖住期间的那一帧会留在画布上，看起来像撕裂。
-        term?.restoreRenderer?.();
+        // 回到前台先按当前尺寸重算，再整屏重绘。少了最后这次重绘，被盖住期间的那一帧
+        // 会留在画面上，看起来像撕裂。
         fit();
         term?.repaint?.();
         term?.focus();

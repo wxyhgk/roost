@@ -31,15 +31,8 @@ export type TermTheme = {
 
 
 export type TermHandle = {
-  repaint?: (fallback?: boolean) => void;
-  /**
-   * 重新申请 WebGL 上下文，成功返回 true。
-   *
-   * 上下文被浏览器回收之后渲染器会掉到 DOM，慢且容易看到撕裂。切回前台时试一次，
-   * 那时别的终端可能已经把上下文让出来了。
-   */
-  restoreRenderer?: () => boolean;
-  inspect?: () => { renderer: string; contextLosses: number; width: number; height: number; cols: number; rows: number; frozen: boolean; bufferLines: number;
+  repaint?: () => void;
+  inspect?: () => { width: number; height: number; cols: number; rows: number; frozen: boolean; bufferLines: number;
     viewportY: number; baseY: number; cellHeight: number | null; fitsRows: number | null };
   supportsSnapshot: boolean;
   get cols(): number;
@@ -66,8 +59,9 @@ export type TermHandle = {
   getSelection(): string;
   onSelectionChange(cb: () => void): { dispose(): void };
   /**
-   * 触屏选区的三个原语。终端用 WebGL 渲染，文字在 canvas 上，浏览器没有可选中的
-   * DOM 文本——手指长按不会产生原生选区，所以必须由我们在 xterm 的网格模型上建。
+   * 触屏选区的三个原语。xterm 在 `.xterm` 上设了 `user-select: none` 并自己管选区模型
+   * ——**和用哪个渲染器无关**，手指长按不会产生原生选区，所以必须由我们在 xterm 的
+   * 网格模型上建。
    * onSelectionChange 只报告变化，它创造不出选区。
    */
   pointToCell(clientX: number, clientY: number): Cell | null;

@@ -1,4 +1,3 @@
-import { plural } from "./plural";
 // terminal 域的界面文案。形状约定见 workspace.ts 顶部。
 export const terminal = {
   diagnostics: {
@@ -19,9 +18,6 @@ export const terminal = {
     historyLabel: "History replay",
     historyTruncated: "Earlier history is beyond the retention range",
     historyOk: "No truncation reported",
-    rendererLabel: "Renderer",
-    rendererMissing: "Not created",
-    contextLosses: (n: number) => ` · Lost ${n} ${plural(n, "time", "times")}`,
     gridSize: (cols: number, rows: number) => `${cols} cols / ${rows} rows`,
     gridLabel: "Terminal grid",
     viewportLabel: "Viewport",
@@ -35,12 +31,12 @@ export const terminal = {
     restore: "Restore screen",
     reload: "Reload view",
     copy: "Copy diagnostics",
-    repainted: "Switched to DOM rendering and repainted",
+    repainted: "Unfrozen and fully repainted",
     reconnecting: "Reattaching to the original terminal",
     reconnected: "Reattached to the original terminal",
     copied: "Diagnostics copied",
     copyFailed: "Copy failed, try again",
-    noteRetain: "Restoring the screen keeps the current buffer. Reloading rebuilds the display and reattaches to the original shell without restarting the process; earlier history is limited by the server retention range.",
+    noteRetain: "Restoring the screen keeps the current buffer: it unfreezes and fully repaints. Reloading rebuilds the view and reattaches to the same shell without restarting it; older history is limited by server retention.",
     notePrivacy: "Diagnostics contain only state, dimensions, and timing, not commands or output contents.",
   },
 

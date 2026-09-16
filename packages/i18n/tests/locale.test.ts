@@ -69,7 +69,6 @@ test("英文可数名词在 n === 1 时用单数", () => {
     const cases: [string, string, string][] = [
       ["sidebar.count", t.sidebar.count(1), t.sidebar.count(2)],
       ["files.preview.lines", t.files.preview.lines(1), t.files.preview.lines(2)],
-      ["terminal.diagnostics.contextLosses", t.terminal.diagnostics.contextLosses(1), t.terminal.diagnostics.contextLosses(2)],
     ];
     for (const [path, one, many] of cases) {
       assert.ok(!/\b1 \w+s\b/.test(one), `${path} 在 n=1 时仍是复数：${one}`);

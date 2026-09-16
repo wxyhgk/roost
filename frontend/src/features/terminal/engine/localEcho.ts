@@ -57,7 +57,28 @@ export function createLocalEcho(now = () => performance.now()) {
   const clear = () => { base = null; pending = []; trusted = false; left = 0; };
   const expired = () => pending.length > 0 && now() - pending[0].at >= ECHO_TIMEOUT;
   function observe(line: EchoLine | null) {
-    if (!line || expired() || (base && !sameGrid(base, line))) { clear(); return; }
+    if (!line || expired()) { clear(); return; }
+    if (base && !sameGrid(base, line)) {
+      /*
+        软换行不该丢信任。
+
+        输入长到折行时光标推到下一行，`sameGrid` 就假了，原来整个 `clear()` ——连
+        `trusted` 一起清掉。于是折行那一下要付**两个**完整往返：一次是折行本身，一次是
+        重新用回显去证明这个提示符会回显。[实测] 跨太平洋链路上就是打字中间突然卡
+        ~400ms，而折行落在哪取决于你打了多长，所以每次卡的位置都不一样。
+
+        `trusted` 回答的是「这个提示符会不会回显」，软换行没有推翻它。**能在仍被信任的
+        状态下走到下一行的只有软换行**：回车是控制字符，`input()` 见到就 `clear()`，
+        所以「回车之后冒出一个不回显的密码提示」这条危险路径根本进不来。
+
+        列数变了（resize）或视口变了（滚动）仍然整个清掉——那两种不是换行。
+      */
+      const softWrap = trusted && line.cols === base.cols && line.viewport === base.viewport && line.y === base.y + 1;
+      if (!softWrap) { clear(); return; }
+      // 折行那一下的预测建在上一行，位置对不上了，只能丢；正文已经在回显里。
+      base = copy(line); left = line.x; pending = [];
+      return;
+    }
     if (!base) return;
     // A TUI may redraw the whole line, coalescing several key echoes at once.
     let matched = -1;

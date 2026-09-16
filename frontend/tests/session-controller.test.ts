@@ -219,9 +219,15 @@ test('an uncertain reopen reconnects once and a live handshake restores input wi
   } finally { f.controller.dispose(); }
 });
 test('local repaint preserves the mounted terminal and never reopens the shell or reconnects',async()=>{
- const f=fixture('local-repaint');await tick();let painted=0;
- f.term.repaint=fallback=>{assert.equal(fallback,true);painted++};
+ // 「恢复画面」= 解冻 + 整屏重绘，就地做完，不重开 shell 也不重连。
+ // 原来这里还断言 `repaint(true)`——那个 true 是「顺便把渲染器降级到 DOM 并且不再回来」，
+ // 随 WebGL 一起删掉了：按钮上写的是「恢复画面」，用户表达的从来不是「我要换渲染器」。
+ const f=fixture('local-repaint');await tick();let painted=0,thawed=0;
+ f.term.repaint=(...args:unknown[])=>{assert.equal(args.length,0,'不该再带降级参数');painted++};
+ f.term.setFrozen=(frozen:boolean)=>{if(!frozen)thawed++};
  f.controller.repaint();assert.equal(painted,1);
+ // 解冻是这条路独有的：卡住的 visibility 得清掉，而切回前台那条不该动它。
+ assert.equal(thawed,1,'恢复画面必须解冻');
  assert.equal(f.metrics().mounted,1);assert.equal(f.metrics().reopens,0);assert.equal(f.metrics().restarts,0);
  assert.ok(f.controller.diagnostics().events.some(e=>e.event==='manual-repaint'));
  f.controller.dispose();f.controller.repaint();assert.equal(painted,1);

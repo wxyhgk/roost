@@ -3,7 +3,6 @@ import { SearchAddon } from "@xterm/addon-search";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
-import { WebglAddon } from "@xterm/addon-webgl";
 import { fitSize } from "./fit";
 import { TERMINAL_FONT_FAMILY, TERMINAL_FONT_SIZE } from "./font";
 import { Terminal } from "@xterm/xterm";
@@ -163,39 +162,6 @@ export function mountXterm(host: HTMLElement, theme: TermTheme, onFileLink?: (li
     },
   });
   term.open(host);
-  let webgl: WebglAddon | null = null;
-  let contextLosses = 0;
-  /*
-    浏览器同时能给的 WebGL 上下文是有限的（Chrome 大约 16 个），而这个应用一屏可能
-    挂着十来个终端，再加上文件预览、分子编辑器这些也在抢。超了之后浏览器会**回收
-    最老的上下文**，被回收的那个终端就掉回 DOM 渲染器——慢，而且丢失的那一帧看起来
-    是撕裂的。
-
-    原来掉下去就再也回不来了，整场会话都慢。现在允许重新申请：终端重新回到前台时
-    试一次，此时别的终端可能已经把上下文让出来了。**只在切到前台时试**，不做轮询，
-    否则一堆后台终端会互相抢来抢去。
-  */
-  let webglWanted = true;
-  function useDomRenderer() {
-    const previous = webgl; webgl = null;
-    previous?.dispose();
-    term.refresh(0, term.rows - 1);
-  }
-  function tryWebgl(): boolean {
-    if (webgl || !webglWanted) return false;
-    try {
-      const addon = new WebglAddon();
-      addon.onContextLoss(() => { contextLosses++; useDomRenderer(); });
-      term.loadAddon(addon);
-      webgl = addon;
-      return true;
-    } catch {
-      // A failed addon activation can leave a partially installed renderer.
-      useDomRenderer();
-      return false;
-    }
-  }
-  tryWebgl();
   fitExact(term);
 
   const outputs = new Set<(data: string) => void>();
@@ -300,18 +266,19 @@ export function mountXterm(host: HTMLElement, theme: TermTheme, onFileLink?: (li
 
         少了这三个数，三种成因在面板上长得一模一样。
       */
-      return { renderer: webgl ? 'WebGL' : 'DOM', contextLosses, width: host.clientWidth, height: host.clientHeight,
+      return { width: host.clientWidth, height: host.clientHeight,
         cols: term.cols, rows: term.rows, frozen: term.element?.style.visibility === 'hidden', bufferLines: buffer.length,
         viewportY: buffer.viewportY, baseY: buffer.baseY,
         cellHeight: cell?.height ?? null,
         fitsRows: cell?.height ? Math.floor((term.element?.parentElement?.clientHeight ?? 0) / cell.height) : null };
     },
-    /** 重新申请 WebGL。掉回 DOM 渲染器之后，切到前台时试一次。 */
-    restoreRenderer() { return tryWebgl(); },
-    repaint(fallback = false) {
-      // 手动「恢复画面」是用户明确要求用 DOM 渲染，之后不要再自作主张抢回 WebGL。
-      if (fallback) { webglWanted = false; useDomRenderer(); }
-      if (fallback && term.element) term.element.style.visibility = '';
+    /*
+      整屏重绘。**不碰 visibility**：冻结归 resume 层管（它有 1200ms 的自动过期），而
+      这个方法在终端切回前台时也会被调用——那一刻若正有大批量重放在冻结中，顺手解冻就
+      会露出画到一半的屏幕，正是冻结要防的事。解冻是「用户明确按了恢复画面」那条路的
+      事，由调用方显式 setFrozen(false)。
+    */
+    repaint() {
       term.refresh(0, term.rows - 1);
     },
     fit() {
@@ -440,7 +407,6 @@ export function mountXterm(host: HTMLElement, theme: TermTheme, onFileLink?: (li
       detachIme();
       detachKeys();
       detachWheel();
-      webgl?.dispose();
       dataSub.dispose();
       host.removeEventListener('mousedown', onFileDown, true);
       host.removeEventListener('mousemove', onFileMove, true);

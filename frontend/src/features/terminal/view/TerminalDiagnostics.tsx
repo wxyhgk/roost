@@ -15,7 +15,6 @@ function diagnosticsText(data: ReturnType<Props['diagnostics']>) {
   const c = data.current, r = c?.renderer, p = c?.replay;
   const line = c ? [
     `phase=${c.phase}/${c.status}`,
-    r ? `renderer=${r.renderer} losses=${r.contextLosses}` : 'renderer=none',
     r ? `grid=${r.cols}x${r.rows} fits=${r.fitsRows} cell=${r.cellHeight} box=${r.width}x${r.height}` : '',
     r ? `viewport=${r.viewportY}/${r.baseY} frozen=${r.frozen} lines=${r.bufferLines}` : '',
     p ? `replay=${p.applied}/${p.received} queued=${p.queued} behind=${p.behind}` : '',
@@ -41,7 +40,6 @@ export function TerminalDiagnostics(props: Props) {
       <dl className="grid grid-cols-2 gap-x-2 gap-y-2">
         <dt className="text-text-dim">{t.terminal.diagnostics.phaseLabel}</dt><dd>{PHASE[current?.phase??'']??t.terminal.diagnostics.phaseFallback}</dd>
         <dt className="text-text-dim">{t.terminal.diagnostics.historyLabel}</dt><dd>{current ? current.historyTruncated ? t.terminal.diagnostics.historyTruncated : t.terminal.diagnostics.historyOk : '—'}</dd>
-        <dt className="text-text-dim">{t.terminal.diagnostics.rendererLabel}</dt><dd>{render?.renderer??t.terminal.diagnostics.rendererMissing}{render?.contextLosses?t.terminal.diagnostics.contextLosses(render.contextLosses):''}</dd>
         <dt className="text-text-dim">{t.terminal.diagnostics.gridLabel}</dt><dd>{render?t.terminal.diagnostics.gridSize(render.cols, render.rows):'—'}</dd>
         <dt className="text-text-dim">{t.terminal.diagnostics.viewportLabel}</dt><dd>{render?t.terminal.diagnostics.viewportAt(render.viewportY, render.baseY):'—'}</dd>
         <dt className="text-text-dim">{t.terminal.diagnostics.fitsLabel}</dt><dd>{render?t.terminal.diagnostics.fitsRows(render.fitsRows, render.rows):'—'}</dd>
