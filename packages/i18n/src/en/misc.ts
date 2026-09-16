@@ -348,11 +348,6 @@ export const misc = {
     notifyBody: (cwd: string) => `${cwd} · Ready to review`,
   },
 
-  /** 左栏那个角标：有几个会话在等你（AI 卡在权限上、或者跑完了你还没看）。 */
-  inbox: {
-    title: (count: number) => `${count} session${count === 1 ? "" : "s"} waiting for you`,
-  },
-
   media: {
     imageFailed: "Failed to load image",
     binary: "Binary file",

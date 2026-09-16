@@ -24,7 +24,4 @@ export { useSessionActivity } from './useSessionActivity';
 /** `useSessionActivity` 的返回类型。判「现在能不能发」要按它的 state 分支，见 conversations/sendability.ts。 */
 export type { ActivityView } from './store';
 export { useGroupActivity } from './useGroupActivity';
-// 收件箱：判定是纯函数（inbox.ts，测得到），hook 只管订阅和快照缓存。
-export { useInbox, useInboxCount } from './useInbox';
-export type { InboxItem, InboxReason } from './inbox';
 export { useQuietFor } from './useQuietFor';
