@@ -33,7 +33,8 @@ export type TermTheme = {
 export type TermHandle = {
   repaint?: () => void;
   inspect?: () => { width: number; height: number; cols: number; rows: number; frozen: boolean; bufferLines: number;
-    viewportY: number; baseY: number; cellHeight: number | null; fitsRows: number | null };
+    viewportY: number; baseY: number; cellHeight: number | null; cellWidth: number | null;
+    fitsRows: number | null; fitsCols: number | null; paintedWidth: number | null };
   supportsSnapshot: boolean;
   get cols(): number;
   get rows(): number;

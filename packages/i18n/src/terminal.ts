@@ -25,6 +25,8 @@ export const terminal = {
     viewportAt: (y: number, base: number) => y >= base ? `已到底 (${y})` : `停在上方 ${base - y} 行 (${y}/${base})`,
     fitsLabel: "容器可容纳 / 实际",
     fitsRows: (fits: number | null, rows: number) => fits === null ? `— / ${rows} 行` : `${fits} / ${rows} 行${fits < rows ? "（被裁掉）" : ""}`,
+    widthLabel: "画面宽度 / 容器",
+    widthFits: (painted: number | null, box: number) => painted === null ? `— / ${box}px` : `${painted} / ${box}px${painted > box ? "（右边被裁）" : ""}`,
     cursorLabel: "输出游标（已解析 / 已收）",
     queueLabel: "解析队列 / 画面冻结",
     yes: "是",

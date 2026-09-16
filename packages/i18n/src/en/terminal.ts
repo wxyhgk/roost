@@ -24,6 +24,8 @@ export const terminal = {
     viewportAt: (y: number, base: number) => y >= base ? `at bottom (${y})` : `${base - y} rows above bottom (${y}/${base})`,
     fitsLabel: "Container fits / actual",
     fitsRows: (fits: number | null, rows: number) => fits === null ? `— / ${rows} rows` : `${fits} / ${rows} rows${fits < rows ? " (clipped)" : ""}`,
+    widthLabel: "Painted width / container",
+    widthFits: (painted: number | null, box: number) => painted === null ? `— / ${box}px` : `${painted} / ${box}px${painted > box ? " (clipped on the right)" : ""}`,
     cursorLabel: "Output cursor (parsed / received)",
     queueLabel: "Parse queue / screen freeze",
     yes: "Yes",

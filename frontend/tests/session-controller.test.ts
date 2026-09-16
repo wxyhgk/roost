@@ -44,7 +44,8 @@ function fixture(id: string, wait = Promise.resolve(), reopening = Promise.resol
     scrollToBottom() { bottoms++; }, focus() { focuses++; }, dispose() { disposed++; },
     // 只喂 bufferLines：控制器拿它比对「全量重建之后历史是不是变短了」。
     inspect: () => ({ width: 800, height: 600, cols: grid.cols, rows: grid.rows, frozen: false,
-      bufferLines, viewportY: 0, baseY: 0, cellHeight: 17, fitsRows: grid.rows }),
+      bufferLines, viewportY: 0, baseY: 0, cellHeight: 17, cellWidth: 8,
+      fitsRows: grid.rows, fitsCols: grid.cols, paintedWidth: grid.cols * 8 }),
   } as unknown as TermHandle;
   const deps: SessionDependencies = {
     url: 'test', waitForMeasurable: async (_host, abort) => { signal = abort; await wait; }, mount: () => { mounted++; return term; },

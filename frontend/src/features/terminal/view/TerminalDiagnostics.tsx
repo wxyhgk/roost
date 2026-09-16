@@ -15,7 +15,7 @@ function diagnosticsText(data: ReturnType<Props['diagnostics']>) {
   const c = data.current, r = c?.renderer, p = c?.replay;
   const line = c ? [
     `phase=${c.phase}/${c.status}`,
-    r ? `grid=${r.cols}x${r.rows} fits=${r.fitsRows} cell=${r.cellHeight} box=${r.width}x${r.height}` : '',
+    r ? `grid=${r.cols}x${r.rows} fits=${r.fitsCols}x${r.fitsRows} cell=${r.cellWidth}x${r.cellHeight} painted=${r.paintedWidth} box=${r.width}x${r.height}` : '',
     r ? `viewport=${r.viewportY}/${r.baseY} frozen=${r.frozen} lines=${r.bufferLines}` : '',
     p ? `replay=${p.applied}/${p.received} queued=${p.queued} behind=${p.behind}` : '',
     `active=${c.active} visible=${c.visible} input=${c.inputReady}`,
@@ -43,6 +43,7 @@ export function TerminalDiagnostics(props: Props) {
         <dt className="text-text-dim">{t.terminal.diagnostics.gridLabel}</dt><dd>{render?t.terminal.diagnostics.gridSize(render.cols, render.rows):'—'}</dd>
         <dt className="text-text-dim">{t.terminal.diagnostics.viewportLabel}</dt><dd>{render?t.terminal.diagnostics.viewportAt(render.viewportY, render.baseY):'—'}</dd>
         <dt className="text-text-dim">{t.terminal.diagnostics.fitsLabel}</dt><dd>{render?t.terminal.diagnostics.fitsRows(render.fitsRows, render.rows):'—'}</dd>
+        <dt className="text-text-dim">{t.terminal.diagnostics.widthLabel}</dt><dd>{render?t.terminal.diagnostics.widthFits(render.paintedWidth, render.width):'—'}</dd>
         <dt className="text-text-dim">{t.terminal.diagnostics.cursorLabel}</dt><dd>{replay?`${replay.applied} / ${replay.received}`:'—'}</dd>
         <dt className="text-text-dim">{t.terminal.diagnostics.queueLabel}</dt><dd>{replay?.queued??0} / {render?.frozen?t.terminal.diagnostics.yes:t.terminal.diagnostics.no}</dd>
       </dl>

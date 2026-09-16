@@ -278,7 +278,18 @@ export function mountXterm(host: HTMLElement, theme: TermTheme, onFileLink?: (li
         cols: term.cols, rows: term.rows, frozen: term.element?.style.visibility === 'hidden', bufferLines: buffer.length,
         viewportY: buffer.viewportY, baseY: buffer.baseY,
         cellHeight: cell?.height ?? null,
-        fitsRows: cell?.height ? Math.floor((term.element?.parentElement?.clientHeight ?? 0) / cell.height) : null };
+        cellWidth: cell?.width ?? null,
+        fitsRows: cell?.height ? Math.floor((term.element?.parentElement?.clientHeight ?? 0) / cell.height) : null,
+        /*
+          横向也要有对应的数，否则「终端比容器宽、右边被裁掉」在面板上完全看不见。
+
+          原来只有 fitsRows。竖着放不下时面板说得出来，横着放不下时它一声不吭——而中文是
+          双宽字符，右边缘被切掉半个字正是这一类的症状，却和「字体回退导致字形比格子宽」
+          长得一模一样。少了这个数，两种成因分不开。
+        */
+        fitsCols: cell?.width ? Math.floor((term.element?.parentElement?.clientWidth ?? 0) / cell.width) : null,
+        /** 这一屏实际要占多宽（cols × 格子宽），和上面的 width 比就知道有没有溢出。 */
+        paintedWidth: cell?.width ? Math.round(term.cols * cell.width) : null };
     },
     /*
       整屏重绘。**不碰 visibility**：冻结归 resume 层管（它有 1200ms 的自动过期），而
