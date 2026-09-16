@@ -163,6 +163,9 @@ function Row({ conversation, onOpen }: { conversation: Conversation; onOpen: (c:
   const folder = conversation.source.cwd?.replaceAll('\\', '/').split("/").filter(Boolean).at(-1) ?? null;
   // 只放一个图标是分不出来的：真实数据里 11/17 是同一个 CLI，图标全长一样。
   const identity = useCliIdentity(null, conversation.source.cliId);
+  // titleOrigin 现在是可信的：默认终端标题在入库时会被标成 fallback（见 conversation-schema.ts）。
+  const fallbackTitle = conversation.titleOrigin === "fallback";
+  const preview = conversation.firstUserMessagePreview?.trim() || null;
   return (
     <li>
       <button
@@ -176,10 +179,24 @@ function Row({ conversation, onOpen }: { conversation: Conversation; onOpen: (c:
         </span>
         <span className="shrink-0 self-center"><SessionLogo cliId={conversation.source.cliId} /></span>
         <span className="shrink-0 text-caption text-text-dim/80">{identity.label}</span>
-        <span className="truncate text-body text-text">{conversation.title}</span>
+        {/*
+          标题是兜底值时，改显示第一条用户消息。
+
+          目录里 7 条有 7 条叫「Terminal」——建终端时写死的标题被当成了对话标题。
+          那种情况下画标题等于画 7 行一模一样的东西，而 `firstUserMessagePreview`
+          后端本来就算好、也传过来了，只是从来没人画。兜底值没有 preview 时（比如
+          一条消息都没有的对话）仍然退回标题，**不留空行**。
+        */}
+        <span className="truncate text-body text-text" title={fallbackTitle && preview ? conversation.title : undefined}>{fallbackTitle && preview ? preview : conversation.title}</span>
         {folder && <span className="shrink-0 truncate text-caption text-text-dim/70">{folder}</span>}
         <span className="ml-auto flex shrink-0 items-center gap-1.5">
-          {conversation.titleOrigin === "fallback" && (
+          {/*
+            只有真的在显示兜底标题时才打这个记号。换成第一条用户消息之后它就不成立了——
+            那时画面上根本没有标题，而且**每一行都会命中**（目录里的标题几乎全是兜底值），
+            一个 100% 命中的标记不携带任何信息，只是噪音。替换本身就是信号，原标题在
+            悬停提示里。
+          */}
+          {fallbackTitle && !preview && (
             <span className="text-caption text-text-dim/60" title={t.misc.conversations.fallbackTitle}>~</span>
           )}
           {/* 缺口出现在近三成的行上，用整段橙字会盖过内容本身。

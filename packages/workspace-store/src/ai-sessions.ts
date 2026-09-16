@@ -34,6 +34,21 @@ export function createAiSessionStorage(db: DatabaseSync): BridgeStorage {
       db.exec("UPDATE ai_session_records SET record_json=json_set(record_json,'$.storageFormat',3)");
       db.prepare("INSERT INTO ai_history_meta VALUES('schema.conversations.v1','1')").run();
     }
+    /*
+      存量修正：把默认终端标题冒充的 `native` 改回 `fallback`。
+
+      入库规则原来是「sessions.title 非空就当真标题、盖章 native」，而建终端一律写死
+      "Terminal"，于是整个目录清一色叫 Terminal 还自称来源确凿，界面因此连「自动命名」
+      的提示都不打。规则已在 `conversation-schema.ts` 改掉，但那只作用于新观察到的对话。
+
+      **只改来源标记，不动标题文字**：文字是用户看得见的东西，重写它属于另一件事；
+      标记改对之后，界面就能自己决定退回显示「这条对话讲了什么」。
+    */
+    if (!db.prepare("SELECT 1 FROM ai_history_meta WHERE key='schema.conversation-title-origin.v1'").get()) {
+      db.exec(`UPDATE conversation_catalog SET title_origin='fallback'
+        WHERE title_origin='native' AND (TRIM(title)='' OR TRIM(title)='Terminal' OR TRIM(title) GLOB 'Session [0-9]*')`);
+      db.prepare("INSERT INTO ai_history_meta VALUES('schema.conversation-title-origin.v1','1')").run();
+    }
     protectConversationWrites(db);
     // Reject old gateway writers instead of silently accepting writes that omit durable history.
     db.exec(`CREATE TRIGGER IF NOT EXISTS ai_history_writer_insert BEFORE INSERT ON ai_session_records

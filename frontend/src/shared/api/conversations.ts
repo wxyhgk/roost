@@ -35,6 +35,14 @@ export type Conversation = {
   revision: number;
   forkedFromId: string | null;
   source: ConversationSource;
+  /**
+   * 这条对话的第一条用户消息（后端截到 120 字）。
+   *
+   * **只有列表接口给**，`fetchConversation` 单取一条时没有——所以是可选的，不能当成
+   * 一定存在。目录里几乎所有标题都是兜底值（终端一律叫「Terminal」），这一句才是
+   * 「这条对话讲了什么」的唯一线索。
+   */
+  firstUserMessagePreview?: string | null;
 };
 
 export type ConversationState = "active" | "archived" | "trashed" | "all";

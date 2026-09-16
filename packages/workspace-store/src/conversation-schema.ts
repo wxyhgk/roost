@@ -27,6 +27,21 @@ export function conversationSchema(db: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS conversation_catalog_list ON conversation_catalog(created_at DESC,id DESC);
     CREATE INDEX IF NOT EXISTS conversation_catalog_project ON conversation_catalog(project_id);`);
 }
+/**
+ * 终端标题是不是「默认的」——也就是没人真正给它起过名。
+ *
+ * 建终端时 `frontend/src/shared/store/index.ts` 一律写死 `title = "Terminal"`，历史上还有
+ * `Session 3` 这种编号。终端界面早就知道这件事：`frontend/src/shared/sessionTitle.ts` 把
+ * 这两种形状当成「不是真名字」，显示时退回工作目录的最后一段。
+ *
+ * 对话入库这边原来没有这条规则，于是 `sessions.title` 只要非空就被当成真标题、还盖章
+ * `native`（本意是「CLI 自己给的名字」）。实测结果是**整个目录 7 条全叫「Terminal」**，
+ * 而且因为标成了 native，界面连「自动命名」那个提示都不会打——把一个兜底值说成了来源确凿。
+ */
+export function isDefaultSessionTitle(title: string | null | undefined): boolean {
+  const trimmed = title?.trim() ?? "";
+  return !trimmed || trimmed === "Terminal" || /^Session \d+$/.test(trimmed);
+}
 export function observeConversation(db: DatabaseSync, cid: string, binding?: Binding) {
   const native = db.prepare("SELECT cli_id,native_id FROM ai_conversations WHERE id=?").get(cid) as {cli_id:string;native_id:string};
   const old = db.prepare("SELECT conversation_id FROM conversation_sources WHERE legacy_conversation_id=?").get(cid) as {conversation_id:string}|undefined;
@@ -40,7 +55,11 @@ export function observeConversation(db: DatabaseSync, cid: string, binding?: Bin
   }
   const id = randomUUID();
   db.prepare("INSERT INTO conversation_catalog(id,title,title_origin,project_id,created_at,updated_at) VALUES(?,?,?,?,?,?)")
-    .run(id,session?.title?.trim().slice(0,200) || `${native.cli_id} ${native.native_id.slice(0,16)}`,session?.title?.trim()?"native":"fallback",session?.project_id ?? null,timestamp,timestamp);
+    .run(id,
+      // 默认标题不是标题：拿它当名字会让整个目录长得一模一样，认不出哪条是哪条。
+      isDefaultSessionTitle(session?.title) ? `${native.cli_id} ${native.native_id.slice(0,16)}` : session!.title.trim().slice(0,200),
+      isDefaultSessionTitle(session?.title) ? "fallback" : "native",
+      session?.project_id ?? null,timestamp,timestamp);
   db.prepare(`INSERT INTO conversation_sources(id,conversation_id,legacy_conversation_id,origin_scope,cli_id,native_session_id,cwd,transcript_path,observed_at)
     VALUES(?,?,?,?,?,?,?,?,?)`)
     .run(randomUUID(),id,cid,"legacy-local",native.cli_id,native.native_id,session?.cwd ?? null,binding?.transcriptPath ?? null,timestamp);
