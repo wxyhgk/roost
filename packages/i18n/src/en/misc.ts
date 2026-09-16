@@ -84,6 +84,13 @@ export const misc = {
     logoutConfirm: "Signing out drops every live connection (terminal view, file watching, conversation sync). The terminal processes themselves are unaffected. Sign out?",
   },
   conversations: {
+      newConversation: {
+        label: "New conversation",
+        hint: "Opens a terminal and starts the CLI. You can talk here once it reports in.",
+        starting: "Starting…",
+        failed: "Could not start that CLI",
+        noCli: "No CLI is available yet. Configure one in settings.",
+      },
     /** 跟随当前终端：只用 daemon 核验过的身份，绝不从历史列表猜。 */
     follow: {
       label: "Follow terminal",

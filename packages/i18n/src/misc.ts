@@ -84,6 +84,14 @@ export const misc = {
     logoutConfirm: "退出会断开所有实时连接（终端画面、文件监听、对话同步）。终端进程本身不受影响。确定退出？",
   },
   conversations: {
+      /** 从 GUI 直接开一条新对话：起一个 CLI，身份等它自己报。 */
+      newConversation: {
+        label: "新建对话",
+        hint: "开一个新终端把 CLI 起起来。它报到之后这里就能说话了。",
+        starting: "正在启动…",
+        failed: "没能启动这个 CLI",
+        noCli: "还没有可用的 CLI。到设置里配一个。",
+      },
     /** 跟随当前终端：只用 daemon 核验过的身份，绝不从历史列表猜。 */
     follow: {
       label: "跟随终端",

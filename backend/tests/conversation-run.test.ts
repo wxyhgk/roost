@@ -106,3 +106,41 @@ test('不带 resumeConversation 时，建终端的行为一个字没变', async 
   assert.equal(spawnArgs.length, before + 1);
   assert.ok(!spawnArgs.at(-1)!.includes('--resume'), '普通新终端不该带恢复参数');
 });
+
+/*
+  「从 GUI 新建一条对话」：起一个 CLI，身份等它自己报。
+
+  这条路**不铸 session id**，所以不依赖 `claude --session-id` 收不收全新 UUID——
+  CLI 起来后发 SessionStart，绑定和对话随之出现，identity 自始至终由 CLI 产生。
+*/
+test('新建对话：新终端的第一个进程就是那个 CLI', async t => {
+  const f = await fixture(t);
+  const before = spawnArgs.length;
+  const response = await f.request('/api/sessions', 'POST', { startCli: 'claude' });
+  assert.equal(response.status, 201);
+  assert.equal(spawnArgs.length, before + 1);
+  const args = spawnArgs.at(-1)!;
+  assert.equal(args.at(-1), 'claude');
+  // 新建不是恢复：不该带任何会话 id。带了就是接到别人那条对话上去了。
+  assert.ok(!args.includes('--resume'), `新建对话不该带恢复参数：${JSON.stringify(args)}`);
+});
+
+test('认不出的 CLI 拒绝，不退回普通 shell', async t => {
+  const f = await fixture(t);
+  const before = spawned.length, sessionsBefore = f.store.loadWorkspace().sessions.length;
+  const response = await f.request('/api/sessions', 'POST', { startCli: 'not-a-cli' });
+  assert.equal(response.status, 400);
+  // 退回「那就起个普通 shell」会让界面显示新建成功，而用户等的那条对话永远不出现。
+  assert.equal(spawned.length, before);
+  assert.equal(f.store.loadWorkspace().sessions.length, sessionsBefore);
+});
+
+test('startCli 和 resumeConversation 不能同时给', async t => {
+  const f = await fixture(t);
+  const conversation = f.saved('claude', '550e8400-e29b-41d4-a716-446655440002');
+  const before = spawned.length;
+  const response = await f.request('/api/sessions', 'POST',
+    { startCli: 'claude', resumeConversation: conversation.id });
+  assert.equal(response.status, 400);
+  assert.equal(spawned.length, before);
+});

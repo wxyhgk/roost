@@ -72,6 +72,12 @@ export function createSession(body?: {
    * cwd 也跟着那条对话走（不另外传时），因为 `--resume` 只带回会话、不带回工作目录。
    */
   resumeConversation?: string;
+  /**
+   * 开一个新终端并直接把这个 CLI 起起来——「新建对话」就是这个。
+   * 传的是 cliId 不是命令：命令由后端从 CLI 定义里取，前端传 argv 等于把任意命令执行
+   * 开成接口。身份也不铸——CLI 起来后自己报出 session id。
+   */
+  startCli?: string;
 }) {
   return request<Session>("/api/sessions", {
     method: "POST",

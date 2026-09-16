@@ -37,6 +37,7 @@ import { createFileWatcher } from "./watcher";
 import { createIsolatedFileWatcher } from './watcher-process';
 import { createAiSessionBridge, AiSessionBridgeError, type AiSessionBridge } from "@roost/ai-session-bridge";
 import { createSessionResume, resumePlanFor, type ResumePlan } from "./session-resume.ts";
+import { DEFAULT_CLI_DEFINITIONS } from "@roost/cli-adapters";
 /* 前端拿到 GET .../resume 之后按钮就不该出现了；走到这里说明中间变了，文案给的是那个变化。 */
 const RESUME_UNAVAILABLE = {
   no_conversation: "this terminal has no AI conversation to resume",
@@ -350,6 +351,32 @@ export function createBackendServer({ store, runtime, workspaceRoot, access, aut
       const resumeConversationId = typeof body.resumeConversation === "string" ? body.resumeConversation : null;
       let resumeCommand: readonly string[] | undefined;
       let resumeCwd: string | undefined;
+      /*
+        `startCli`：开一个新终端并直接把这个 CLI 起起来——「从 GUI 新建一条对话」就是这个。
+
+        **不接受调用方传 argv，只接受一个 cliId**，命令从 CLI 定义里取。让 HTTP 决定
+        起什么进程等于把任意命令执行开成接口；而 cliId → command 这一步用的是用户自己
+        配的那份定义，和 `resumeArgv` 取 command 的来源是同一个。
+
+        身份仍然由 CLI 产生：我们不铸 session id，起来之后它自己发 SessionStart 报出
+        是哪一条，绑定和对话随之出现。所以这条路不需要赌 `--session-id` 收不收新 UUID。
+      */
+      const startCliId = typeof body.startCli === "string" ? body.startCli : null;
+      if (startCliId !== null && resumeConversationId !== null) {
+        sendError(res, 400, "invalid_request", "startCli and resumeConversation are mutually exclusive");
+        return;
+      }
+      if (startCliId !== null) {
+        const definition = store.cliConfigs.get(startCliId)
+          ?? DEFAULT_CLI_DEFINITIONS.find(builtin => builtin.id === startCliId);
+        // 认不出的 id 一律拒绝：这里绝不能退回「那就起个普通 shell 吧」——那会让界面
+        // 显示成新建成功，而用户等的那条对话永远不会出现。
+        if (!definition?.command) {
+          sendError(res, 400, "invalid_request", "unknown CLI");
+          return;
+        }
+        resumeCommand = [definition.command];
+      }
       if (resumeConversationId !== null) {
         // conversations.get 对不存在的 id 抛 ConversationError，而顶层 catch 会把它变成 500。
         // 「对话没了」是 404，不是服务器出错。

@@ -3,6 +3,7 @@ import { fetchConversation, listConversations, MAX_QUERY_LENGTH, type Conversati
 import { ApiError } from "../../shared/api/errors";
 import { ConversationDetail } from "./ConversationDetail";
 import { FollowTerminal } from "./FollowTerminal";
+import { NewConversation } from "./NewConversation";
 import { useWorkspace } from "../../shared/store";
 import { emptyList, reduceList } from "./list";
 import { SessionLogo, useCliIdentity } from "../../shared/ui/SessionLogo";
@@ -95,6 +96,7 @@ export function ConversationList() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      <NewConversation />
       <FollowTerminal />
       <div className="flex shrink-0 items-center gap-1.5 border-b border-border px-2.5 py-1.5">
         <input
