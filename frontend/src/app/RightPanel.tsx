@@ -54,7 +54,7 @@ export function RightPanel({ view, onChangeView, visible = true, monitorTarget }
       className="library-dialog m-auto h-[88dvh] max-h-[960px] w-[94vw] max-w-[1440px] overflow-hidden rounded-xl border border-border bg-bg-panel p-0 text-text shadow-modal backdrop:bg-black/55">
       <div className="flex h-full min-h-0 flex-col">
         <header className="flex h-14 shrink-0 items-center gap-4 border-b border-border px-5">
-          <h2 className="text-base font-semibold">{t.misc.rightPanel.library}</h2>
+          <h2 className="text-title font-semibold">{t.misc.rightPanel.library}</h2>
           <nav aria-label={t.misc.rightPanel.libraryKind} className="flex gap-1">
             {(["notes", "snippets"] as const).map(kind => <button key={kind} aria-pressed={view === kind} onClick={() => onChangeView(kind)} className={`rounded-md px-3 py-1.5 text-sm ${view === kind ? "bg-bg-active text-text" : "text-text-dim hover:bg-bg-hover"}`}>{titles[kind]}</button>)}
           </nav>

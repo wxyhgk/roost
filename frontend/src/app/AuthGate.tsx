@@ -107,7 +107,7 @@ function LoginOverlay({ phase, expired, onSignedIn, onRetry }: {
       onCancel={event => event.preventDefault()} onKeyDown={event => event.stopPropagation()}
       className="fixed inset-0 z-[200] m-0 grid h-dvh max-h-none w-screen max-w-none place-items-center border-0 bg-bg/95 p-4 text-text backdrop:bg-transparent">
       <div className="flex w-[min(360px,92vw)] flex-col gap-3 rounded-xl border border-border bg-bg-panel p-5 shadow-modal">
-        <div className="text-base font-semibold text-text">{desktopRuntime ? t.misc.auth.desktopTitle : t.misc.auth.title}</div>
+        <div className="text-title font-semibold text-text">{desktopRuntime ? t.misc.auth.desktopTitle : t.misc.auth.title}</div>
 
         {phase.kind === "checking" && <div className="text-caption text-text-dim">{desktopRuntime ? t.misc.auth.desktopConnecting : t.misc.auth.checking}</div>}
 

@@ -12,7 +12,7 @@ export function PanelHeader({
   actions?: ReactNode;
 }) {
   return (
-    <header className="flex h-9 shrink-0 items-center gap-1.5 border-b border-border px-2.5 text-body font-semibold tracking-[0.02em]">
+    <header className="flex h-9 shrink-0 items-center gap-1.5 border-b border-border px-2.5 text-body font-semibold">
       {icon}
       {/* 字符串标题需要截断；节点标题（比如 tab 栏）要保持自己的布局，
           裹进 truncate 的 span 会把下边框裁掉、也撑不满高度。 */}

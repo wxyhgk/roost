@@ -136,9 +136,15 @@ export function TermView({ sessionId, active, onCwd, onCli }: Props) {
       {/*
         多个观众共用一个 PTY，尺寸由最后一个改的说了算，其余观众看到的排版就是错的。
         在真正解决之前，至少让用户知道另一头有人——否则画面莫名其妙地不对而毫无线索。
+
+        **右上角是 TerminalDiagnostics 的地盘**（它自己是 `right-3 top-3`，而且只要终端
+        活着就一直在），所以这条提示压到它下面。`top-11` 是量出来的：诊断按钮
+        `px-2 py-1 text-caption` 约 26px 高，从 12px 起算落到 38px，44px 留 6px 间隙。
+
+        诊断展开成面板时会盖住这条提示——那是对的，面板是你主动点开的。
       */}
       {active && viewers.length > 0 && (
-        <div className="absolute top-2 right-3 z-[6] rounded-md bg-bg-raised/80 border border-border/60 px-2 py-1 text-caption text-text-dim backdrop-blur-md">
+        <div className="absolute top-11 right-3 z-[6] max-w-[calc(100%-24px)] truncate rounded-md bg-bg-raised/80 border border-border/60 px-2 py-1 text-caption text-text-dim backdrop-blur-md">
           {t.terminal.view.othersWatching(viewers.map(v => v.label).join("、"))}
         </div>
       )}

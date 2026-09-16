@@ -42,7 +42,7 @@ export function SettingsDialog({ onClose, onResetLayout }: { onClose(): void; on
       className="fixed inset-0 m-auto h-[min(720px,85dvh)] max-h-[85dvh] w-[min(1080px,94vw)] max-w-[94vw] overflow-hidden rounded-xl border border-border bg-bg-panel p-0 text-text shadow-2xl backdrop:bg-black/50">
       <div className="flex h-full flex-col">
         <header className="flex h-14 shrink-0 items-center justify-between border-b border-border px-5">
-          <h2 id="settings-title" className="text-base font-semibold">{t.settings.dialog.title}</h2>
+          <h2 id="settings-title" className="text-title font-semibold">{t.settings.dialog.title}</h2>
           <button type="button" aria-label={t.settings.dialog.close} title={t.settings.dialog.closeTitle} onClick={close} className="grid size-8 place-items-center rounded-md text-text-dim hover:bg-bg-hover hover:text-text focus-visible:outline-2 focus-visible:outline-accent"><XMarkIcon className="size-5" /></button>
         </header>
         <div className="flex min-h-0 flex-1 flex-col sm:flex-row">

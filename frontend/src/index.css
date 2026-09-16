@@ -99,10 +99,32 @@
   */
   --font-mono: "IBM Plex Mono", "SF Mono", ui-monospace, Consolas, "Liberation Mono",
     "PingFang SC", "Microsoft YaHei", monospace;
+  /*
+    字号体系。**这里原来只有两档有名字，实际在用的有七档**——除了下面这三个令牌，
+    代码里还有 77 处 `text-xs`(12px)、32 处 `text-sm`(14px) 和几处 16/18px，
+    全是 Tailwind 的默认值。后果不是「没有层次」，是**没人管**：11 和 12 混用、
+    13 和 14 混用，差 1px 不携带任何含义，用哪个全看写的人随手。
+
+    所以把整套写在这里，包括不属于我们、但确实在用的那两档：
+
+      11px  --text-caption   元数据、说明、状态读数（macOS Small）
+      12px  text-xs          次级标签。和 11 的差别只在密度，**没有语义差**
+      13px  --text-body      正文与控件（macOS Regular）——默认选它
+      14px  text-sm          比正文重一档的正文。同样**没有语义差**
+      15px  --text-title     对话框与区块标题（macOS Title 3）
+
+    **12 和 14 没有被扶正成令牌，是有意的**：给一个没有语义差的尺寸起名字，等于鼓励
+    继续在 11/12 和 13/14 之间随手挑。要收敛的话应该是把它们并回 11 和 13，那是一次
+    109 处的清扫，不该和这一笔混在一起。
+
+    16/18px 不在体系内：那三处对话框标题是 Tailwind 默认值，已经换成 --text-title。
+  */
   --text-caption: 11px;
   --text-caption--line-height: 1.45;
   --text-body: 13px;
   --text-body--line-height: 1.45;
+  --text-title: 15px;
+  --text-title--line-height: 1.3;
 }
 /* Dark is the base; the light block below overrides. Shadows are plain properties, not
    @theme tokens, because Tailwind inlines a theme shadow into the utility and would never
