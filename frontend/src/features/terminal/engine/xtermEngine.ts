@@ -103,6 +103,14 @@ export function mountXterm(host: HTMLElement, theme: TermTheme, onFileLink?: (li
     cursorBlink: true,
     fontFamily: TERMINAL_FONT_FAMILY,
     fontSize: TERMINAL_FONT_SIZE,
+    // 浏览器这边**故意比服务端留得深**：服务端只留 2000 行（那是量出来的，见
+    // packages/terminal-runtime/src/screen.ts 的 SCROLLBACK_ROWS），而在同一次页面加载
+    // 内，超出那 2000 行的部分只有浏览器有，翻得到就是真的翻得到。
+    //
+    // **代价要知道**：一旦走了全量重建——刷新、手动重载、或者网格尺寸对不上——服务端
+    // 只能给回它记得的那 2000 行，多出来的那一段就没了。所以这个数不是「保证能翻多深」，
+    // 是「这次页面加载内最多能翻多深」。真正丢的时候会有提示（见 sessionController 的
+    // history-shortened）。
     scrollback: 20000,
     theme,
     minimumContrastRatio: theme.minimumContrastRatio ?? 4.5,

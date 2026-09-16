@@ -30,6 +30,7 @@ function fixture(id: string, wait = Promise.resolve(), reopening = Promise.resol
   let stateUpdates = 0;
   let grid = { cols: 80, rows: 24 };
   let measured: { cols: number; rows: number } | null = null;
+  let bufferLines = 0;
   const term = { supportsSnapshot: true,
     get cols() { return grid.cols; }, get rows() { return grid.rows; },
     resize: (cols: number, rows: number) => { grid = { cols, rows }; },
@@ -41,6 +42,9 @@ function fixture(id: string, wait = Promise.resolve(), reopening = Promise.resol
     onScrollPosition(fn: typeof scroll) { scroll = fn; return { dispose() { scroll = () => {}; } }; },
     onRendered(fn: typeof render) { render = fn; return { dispose() { render = () => {}; } }; },
     scrollToBottom() { bottoms++; }, focus() { focuses++; }, dispose() { disposed++; },
+    // 只喂 bufferLines：控制器拿它比对「全量重建之后历史是不是变短了」。
+    inspect: () => ({ width: 800, height: 600, cols: grid.cols, rows: grid.rows, frozen: false,
+      bufferLines, viewportY: 0, baseY: 0, cellHeight: 17, fitsRows: grid.rows }),
   } as unknown as TermHandle;
   const deps: SessionDependencies = {
     url: 'test', waitForMeasurable: async (_host, abort) => { signal = abort; await wait; }, mount: () => { mounted++; return term; },
@@ -66,6 +70,7 @@ function fixture(id: string, wait = Promise.resolve(), reopening = Promise.resol
   };
   const controller = createTerminalSessionController({sessionId:id, host, active:true, onCwd: value => cwd.push(value), onCli() {}, onState() { stateUpdates++; }}, deps);
   return {controller, term, sent, writes, cwd, windowEvents, documentEvents, forced, resized,
+    setBufferLines: (n: number) => { bufferLines = n; },
     acceptInput: (value: boolean) => { accepting = value; },
     setGrid: (cols: number, rows: number) => { grid = { cols, rows }; },
     measure: (cols: number, rows: number) => { measured = { cols, rows }; },
@@ -235,6 +240,43 @@ test('local repaint preserves the mounted terminal and never reopens the shell o
  f.controller.dispose();f.controller.repaint();assert.equal(painted,1);
 });
 
+
+/*
+  浏览器留 20000 行滚动历史，服务端只留 2000（那个数是量出来的，见 screen.ts）。同一次
+  页面加载内，超出 2000 的那段只有浏览器有——**全量重建一次就没了**。
+
+  原来这件事是悄悄发生的：`truncated` 报的是服务端自己的历史有没有被截，和客户端丢没丢
+  无关。[实测] 用户手动重载一次，bufferLines 从 2131 掉到 2049（2049 = 服务端的 2000 +
+  一屏 49），少了 82 行，而诊断里 historyTruncated 仍然是 false。
+*/
+test('全量重建让历史变短时要说出来，不能悄悄少一截', async () => {
+  const f = fixture('history-shortened');
+  try {
+    await tick();
+    await f.callbacks().onHello('hist-instance', false);
+    f.setBufferLines(2131);                    // 重建前：浏览器攒下的比服务端记得的多
+    f.callbacks().onFrame({ type: 'replay', instanceId: 'hist-instance', seq: 1, data: 'history' }, () => true);
+    await tick();
+    f.setBufferLines(2049);                    // 服务端只给得回 2000 + 一屏
+    f.writes.shift()!(); await tick();
+    assert.equal(f.controller.snapshot().historyTruncated, true, '少了 82 行就得说');
+    assert.ok(f.controller.diagnostics().events.some(e => e.event === 'history-shortened' && e.value === 82));
+  } finally { f.controller.dispose(); }
+});
+
+test('历史没变短就别乱报', async () => {
+  const f = fixture('history-intact');
+  try {
+    await tick();
+    await f.callbacks().onHello('intact-instance', false);
+    f.setBufferLines(120);
+    f.callbacks().onFrame({ type: 'replay', instanceId: 'intact-instance', seq: 1, data: 'history' }, () => true);
+    await tick();
+    f.setBufferLines(2049);                    // 首次加载：从空到满，是变长不是变短
+    f.writes.shift()!(); await tick();
+    assert.equal(f.controller.snapshot().historyTruncated, false, '变长不该报截断');
+  } finally { f.controller.dispose(); }
+});
 
 /*
   有一类坏画面，向服务端重新要一份也修不好：服务端那份网格是**忠实解析**字节流得到的，

@@ -142,6 +142,15 @@ export function createTerminalSessionController(options: {
 
     const onFrame = (msg: ServerMessage, ready: () => boolean): boolean => {
       if (!valid() || !resume) return false;
+      /*
+        全量重建会把「只有浏览器有、服务端已经不记得」的那一段历史丢掉——浏览器留 20000
+        行，服务端只留 2000。**原来这件事是悄悄发生的**：`truncated` 那个标志报的是服务端
+        自己的历史有没有被截，和客户端丢没丢无关，于是重载一次少了 82 行，界面一声不吭。
+
+        所以在这里自己量一次：重建前后的缓冲行数，少了就说。复用现成那句「较早历史超出
+        保留范围」——这正是它该说的场景。
+      */
+      const linesBefore = msg.type !== 'output' ? term?.inspect?.().bufferLines ?? null : null;
       const result = resume.accept(msg as ResumeFrame);
       lastFrameAt = Date.now();
       const seq = 'seq' in msg ? msg.seq : undefined;
@@ -153,6 +162,11 @@ export function createTerminalSessionController(options: {
           if (!valid() || dead || !ready()) return;
           inputReady = true;
           phase = 'live'; trace.record('replay-applied');
+          const linesAfter = term?.inspect?.().bufferLines ?? null;
+          if (linesBefore !== null && linesAfter !== null && linesAfter < linesBefore) {
+            trace.record('history-shortened', linesBefore - linesAfter);
+            setHistoryTruncated(true);
+          }
           update({ viewIssue: null });
           term?.setAppearanceReady(true);
           fit();
