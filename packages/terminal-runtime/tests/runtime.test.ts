@@ -103,6 +103,50 @@ test("runtime instances isolate identical IDs and expose immutable session snaps
   } finally { a.dispose(); b.dispose(); }
 });
 
+/*
+  尺寸标记在流里的位置就是它的全部意义：它之前 emit 的每个 output 都是旧宽度产出的，
+  之后 PTY 才按新尺寸重画。客户端据此把自己的 reflow 推迟到这一点——已经在路上的旧宽度
+  字节就还能落进旧网格。抢在它们前面重排，就是把旧宽度的字节按新宽度解析，画面就花了。
+
+  跨太平洋的链路上在途字节最多，这个窗口恰好开到最大。做法抄自 tty7 的
+  FEATURE_RESIZE_ECHO，见 research/tty7-lessons.md。
+*/
+test("尺寸标记必须夹在旧宽度和新宽度的输出之间", () => {
+  const runtime = create();
+  try {
+    const view = runtime.ensureSession("echo", tmpdir());
+    const pty = ptys.at(-1)!;
+    const seen: string[] = [];
+    runtime.subscribe("echo", event => {
+      seen.push(event.type === "output" ? `out:${event.data}` :
+        event.type === "size" ? `size:${event.cols}x${event.rows}` : event.type);
+    });
+    pty.output("old-width");
+    runtime.resizeSession("echo", 120, 40);
+    pty.output("new-width");
+    assert.deepEqual(seen, ["out:old-width", "size:120x40", "out:new-width"],
+      "标记必须落在旧字节之后、新字节之前");
+    // 标记带实例身份：多个观众共用一个 PTY，别把另一个实例的几何塞给这个观众。
+    const sizes = seen.filter(e => e.startsWith("size:"));
+    assert.equal(sizes.length, 1);
+    assert.equal(view.instanceId.length > 0, true);
+  } finally { runtime.dispose(); }
+});
+
+test("尺寸标记要在 pty.resize 之前发 —— 之后 PTY 才开始按新尺寸产出", () => {
+  const runtime = create();
+  try {
+    runtime.ensureSession("order", tmpdir());
+    const pty = ptys.at(-1)!;
+    const order: string[] = [];
+    runtime.subscribe("order", event => { if (event.type === "size") order.push("marker"); });
+    const resize = pty.resize.bind(pty);
+    (pty as unknown as { resize: (c: number, r: number) => void }).resize = (c, r) => { order.push("pty"); resize(c, r); };
+    runtime.resizeSession("order", 100, 30);
+    assert.deepEqual(order, ["marker", "pty"], "先发标记再改 PTY，否则标记之后仍会来旧宽度的字节");
+  } finally { runtime.dispose(); }
+});
+
 test("output is stored before emission and one failing subscriber is isolated", () => {
   const runtime = create();
   try {

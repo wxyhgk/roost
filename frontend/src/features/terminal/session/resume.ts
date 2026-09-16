@@ -175,6 +175,13 @@ export function createResume(sink: Sink, opts: ResumeOptions = {}) {
       });
       return { kind: "accepted", done };
     },
+    /*
+      守护进程按流序插进来的尺寸标记，走**同一条写入队列**才落在正确的位置：排在它前面
+      的旧宽度字节先写进旧网格，然后才改几何。绕过队列直接 resize 就等于没推迟。
+    */
+    applySize(cols: number, rows: number) {
+      return enqueue(() => { sink.resize?.(cols, rows); });
+    },
     snapshot: () => enqueue(capture),
     snapshotNow: () => queued === 0 ? capture() : null,
     invalidate() { valid = false; },

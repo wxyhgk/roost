@@ -38,11 +38,27 @@ export type ReplayFrame = ResumeSnapshot & {
 };
 export type ServerMessage =
   /** `cols`/`rows` 是 PTY **现在**的尺寸——多个观众共用一个 PTY，客户端要靠它判断自己是否落后。 */
-  | { type: "hello"; protocol: typeof PROTOCOL_VERSION; instanceId: string; pid: number; heartbeat?: 1; dead?: false; cwd: string; cols?: number; rows?: number; cli: CliKind | null; cliId?: CliId | null }
+  | { type: "hello"; protocol: typeof PROTOCOL_VERSION; instanceId: string; pid: number; heartbeat?: 1; dead?: false; cwd: string; cols?: number; rows?: number; cli: CliKind | null; cliId?: CliId | null;
+      /** 守护进程会按流序回 `size` 帧。**问能力，不问版本**：没有它就退回就地重排。 */
+      sizeEcho?: true }
   | { type: "hello"; protocol?: typeof PROTOCOL_VERSION; instanceId?: string; pid: null; dead: true; cwd: string; cli: CliKind | null; cliId?: CliId | null }
   | { type: "pong"; nonce: number }
   | OutputFrame
   | ReplayFrame
+  /*
+    **尺寸回声**：守护进程应用一次 resize 时，往输出流里按序插一帧。
+
+    它标的是「从这一帧往后，字节是新宽度的」。客户端据此把自己的 reflow **推迟到这个
+    位置**，而不是窗口一变就重排——否则已经在路上的旧宽度字节会被按新宽度解析，画面就花
+    了。跨太平洋的链路上在途字节最多，这个窗口恰好开到最大。
+
+    没有这一帧的旧守护进程：客户端退回「请求时就地重排」，也就是这一笔之前的行为。
+    能力位在 hello 的 `sizeEcho` 上（见上面那条 hello）。
+
+    刻意**不带 seq**：帧按序投递、最后一个赢。订阅和取快照之间插进来的那次 resize，快照
+    本身已经是新尺寸，于是随后投递的这一帧是个空操作——不会把客户端设回旧尺寸。
+  */
+  | { type: "size"; cols: number; rows: number; instanceId: string }
   | { type: "exit"; reason?: string; exitCode?: number; signal?: number }
   | { type: "cwd"; cwd: string }
   | { type: "appearance-owner"; owner: boolean }

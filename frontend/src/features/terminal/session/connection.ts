@@ -11,6 +11,8 @@ export type ConnectionCallbacks = {
   onCwd: (cwd: string) => void;
   onCli: (cli: CliKind | null, cliId?: string | null) => void;
   onHello: (instanceId: string, forceFull: boolean, grid?: { cols: number; rows: number }) => Promise<number | undefined>;
+  /** 守护进程按流序回的尺寸标记：从这一帧往后，字节是新宽度的。 */
+  onSize: (cols: number, rows: number) => void;
   onFrame: (msg: ServerMessage, ready: () => boolean) => boolean;
   onExit: () => void;
   onAppearanceOwner?: (owner: boolean) => void;
@@ -29,7 +31,8 @@ export type ConnectionHandle = {
   sendInput(data: string): SendResult;
   sendAppearanceResponse(data: string): void;
   /** 返回是否真的把一个**新的**尺寸告诉了 PTY——没告诉就意味着不会有 SIGWINCH。 */
-  fit(): boolean;
+  fit(want?: { cols: number; rows: number }): boolean;
+  echoesSize(): boolean;
   restart(): void;
   /** 丢掉本地这一屏，向服务端重取。用在「本地画面已经不可信」的时候。 */
   refresh(): void;
@@ -46,6 +49,7 @@ export function createConnection(options: ConnectionOptions): ConnectionHandle {
   const encode = new TextEncoder();
 
   let ws: WebSocket | null = null;
+  let sizeEcho = false;
   let cancelled = false;
   let dead = false;
   let inputReady = false;
@@ -173,6 +177,8 @@ export function createConnection(options: ConnectionOptions): ConnectionHandle {
           return;
         }
         heartbeatSupported = msg.heartbeat === 1;
+        // 问能力，不问版本。老守护进程不带这个字段，客户端就退回「请求时就地重排」。
+        sizeEcho = msg.sizeEcho === true;
         const instanceId = msg.instanceId;
         liveInstance = instanceId;
         const ff = forceFull;
@@ -221,6 +227,7 @@ export function createConnection(options: ConnectionOptions): ConnectionHandle {
         return;
       }
 
+      if (msg.type === "size") { callbacks.onSize(msg.cols, msg.rows); return; }
       if (msg.type === "cwd" && msg.cwd) callbacks.onCwd(msg.cwd);
       if (msg.type === "cli") callbacks.onCli(msg.cli ?? null, msg.cliId);
     };
@@ -304,10 +311,17 @@ export function createConnection(options: ConnectionOptions): ConnectionHandle {
       if (!ws || ws.readyState !== WebSocket.OPEN) return;
       ws.send(JSON.stringify({ type: "snapshot", ...snapshot }));
     },
-    fit() {
+    /** 守护进程会不会按流序回尺寸标记。**决定客户端要不要推迟自己的 reflow。** */
+    echoesSize: () => sizeEcho,
+    /*
+      `want` 是「想要的尺寸」，给尺寸回声那条路用：那条路上本地网格**还没改**，
+      `getTermSize()` 读到的仍是旧值，不显式传就会发出一个和 PTY 已知相同的尺寸，
+      于是什么都不会发生。
+    */
+    fit(want?: { cols: number; rows: number }) {
       if (options.canResize && !options.canResize()) { lastSize = null; return false; }
       if (!inputReady || !ws || ws.readyState !== WebSocket.OPEN) return false;
-      const size = getTermSize();
+      const size = want ?? getTermSize();
       /*
         尺寸没变就什么都不发。**这一条不接受「强制」。**
 

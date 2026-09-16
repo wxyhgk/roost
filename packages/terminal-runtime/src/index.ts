@@ -15,7 +15,7 @@ import { batchCwds, cliForPid, pidCwdLinux, processTable } from "./processes";
 
 export type { ReplayStorage } from "./replay";
 export { ReplayTooLargeError } from "./replay";
-export type TerminalEvent = Extract<ServerMessage, { type: "output" | "exit" | "cwd" }>
+export type TerminalEvent = Extract<ServerMessage, { type: "output" | "exit" | "cwd" | "size" }>
   | { type: "command-status"; command: import("@roost/terminal-protocol").AiCommand }
   | { type: "cli"; cli: CliId | null }
   | { type: "agent"; agent: AgentEvent; terminalInstanceId?: string; sourceSeq?: number };
@@ -224,7 +224,21 @@ export function createTerminalRuntime(options: TerminalRuntimeOptions) {
   function resizeSession(id: string, cols: number, rows: number) {
     if (!Number.isInteger(cols) || !Number.isInteger(rows) || cols < 1 || rows < 1
       || cols > 1000 || rows > 1000) return;
-    live.get(id)?.pty.resize(cols, rows);
+    const session = live.get(id);
+    if (!session) return;
+    /*
+      **标记要在 `pty.resize` 之前发。**
+
+      它在流里的位置就是它的全部意义：此刻之前 emit 出去的每个 output 都是旧宽度产出的，
+      之后 PTY 才会按新尺寸重画。客户端据此把 reflow 推迟到这一点，已经在路上的旧宽度
+      字节就还能落进旧网格。
+
+      在 Node 里这是白送的——`emit` 是同步的，output 也是在 PTY 数据回调里同步 emit 的，
+      两者之间插不进别的东西。（tty7 为同一个性质付了一把状态锁，见
+      research/tty7-lessons.md。）
+    */
+    emit(id, { type: "size", cols, rows, instanceId: session.instanceId });
+    session.pty.resize(cols, rows);
     screen.resize(id, cols, rows);
   }
 

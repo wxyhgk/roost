@@ -30,6 +30,8 @@ test('shared frontend connection and resume reconnect and refresh the original r
    const resume=createResume({reset(){output=''},write(data,done){output+=data;done()},snapshot(){return output}});
    const connection=createConnection({url:base.replace('http','ws')+'/api/core/pty?id=stable-test',core:true,canResize:()=>false,getTermSize:()=>({cols:80,rows:24}),callbacks:{
     onStatus(s){live=s==='open'},onCwd(){},onCli(){},onExit(){},onHello:(id,full)=>resume.prepare(id,null,full),
+    // 尺寸标记走 resume 的队列，和生产路径一致：排在它前面的旧宽度字节先落进旧网格。
+    onSize(cols,rows){void resume.applySize(cols,rows)},
     onFrame(msg,ready){if(msg.type!=='replay'&&msg.type!=='catchup'&&msg.type!=='output')return false;const result=resume.accept(msg);if(msg.type!=='output')void result.done.then(ready);return result.kind!=='invalid'}
    }});clients.push({connection,resume});return connection;
   };

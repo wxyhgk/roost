@@ -245,6 +245,11 @@ export function createTerminalSessionController(options: {
         canResize,
         url: deps.url,
         callbacks: {
+          /*
+            守护进程按流序插进来的尺寸标记。**走 resume 的队列**，排在它前面的旧宽度
+            字节先落进旧网格，然后才改几何——这正是「推迟 reflow」的兑现点。
+          */
+          onSize: (cols: number, rows: number) => { if (valid()) void resume?.applySize(cols, rows); },
           onLatency: milliseconds => { if (valid()) lease.latency(milliseconds); },
           onReplayError: error => update({ connectionError: error === 'too-large' ? t.misc.terminal.replayTooLarge : error === 'unavailable' ? t.misc.terminal.replayUnavailable : null }),
           onTransportEvent: (event, value) => { if(valid()) trace.record(event, value); },
@@ -437,9 +442,20 @@ export function createTerminalSessionController(options: {
     function fit(): boolean {
       if (!valid() || !canResize()) return false;
       const before = term ? { rows: term.rows } : null;
-      term?.fit();
+      /*
+        **本地 reflow 推迟到守护进程把标记插进流里**（见 connection 的 echoesSize）。
+
+        原来这里是先 `term.fit()` 就地重排，再 `conn.fit()` 通知——那只保证了「同时发出」，
+        不保证「同一个流位置」。已经在 WebSocket 上飞着的旧宽度字节，到达时会被这个已经
+        重排过的终端按新宽度解析，画面就花了。跨太平洋的链路上在途字节最多。
+
+        守护进程不报这个能力时退回原来的行为：没有标记可等，就地重排仍然是最好的选择。
+      */
+      const echoes = conn?.echoesSize() ?? false;
+      const want = echoes ? term?.measureFit?.() : undefined;
+      if (!echoes) term?.fit();
       const shrank = !!before && !!term && term.rows < before.rows;
-      const told = conn?.fit() ?? false;
+      const told = conn?.fit(want) ?? false;
       /*
         本地缩了行，而 PTY 没被告知一个**不同的**尺寸——这两件同时成立，屏幕就已经不可信了。
 

@@ -17,7 +17,7 @@ function fixture(id: string, wait = Promise.resolve(), reopening = Promise.resol
   let callbacks!: ConnectionOptions['callbacks'];
   let connectionOptions!: ConnectionOptions;
   let focused = true, visible = true, accepting = true;
-  const forced: boolean[] = [];
+  let echoesSize = false;
   const resized: boolean[] = [];
   let lastSent: { cols: number; rows: number } | null = null;
   let signal!: AbortSignal;
@@ -54,23 +54,32 @@ function fixture(id: string, wait = Promise.resolve(), reopening = Promise.resol
       /*
         照真实实现建模：尺寸没变就什么都不发，被挡下时把「PTY 已知尺寸」置空。
         `resized` 里记的是**真正到达 PTY 的那些**——控制器多调几次 fit 不该体现在这里。
+
+        `want` 是尺寸回声那条路用的：那条路上本地网格还没改，`getTermSize()` 读到的是旧值，
+        不显式传就会发出一个和 PTY 已知相同的尺寸，什么都不会发生。
+
+        这里原来有个 `force` 形参，用来「抓谁把强制重发加回调用点」——但**从来没有任何
+        断言读过它记下的东西**，所以那条缝什么都抓不住。它要防的事现在由类型挡着：
+        `fit(true)` 过不了 typecheck。
       */
-      fit(force = false) {
-        fitted++; forced.push(force);
-        if (!options.canResize?.()) { lastSent = null; return; }
-        const size = options.getTermSize?.() ?? { cols: 0, rows: 0 };
-        // 真实实现已经不认 force 了。这里仍然认，**故意的**：它是这条缝，
-        // 谁要是把「强制重发」加回调用点，下面那条回归测试就会红。
-        if (!force && lastSent && lastSent.cols === size.cols && lastSent.rows === size.rows) return false;
+      fit(want?: { cols: number; rows: number }) {
+        fitted++;
+        if (!options.canResize?.()) { lastSent = null; return false; }
+        const size = want ?? options.getTermSize?.() ?? { cols: 0, rows: 0 };
+        if (lastSent && lastSent.cols === size.cols && lastSent.rows === size.rows) return false;
         lastSent = size; resized.push(true); return true;
-      }, restart() { restarts++; }, refresh() { refreshes++; }, isAlive: () => true, dispose() { stopped++; },
+      },
+      // 默认走**退化路径**（就地重排），这样已有的测试仍然在测原来的行为。
+      // 尺寸回声那条路由下面它自己的测试覆盖。
+      echoesSize: () => echoesSize, restart() { restarts++; }, refresh() { refreshes++; }, isAlive: () => true, dispose() { stopped++; },
     }; },
     reopen: () => { reopens++; return reopening; }, loadSnapshot: () => null, saveSnapshot() {},
     observeResize: () => () => {}, windowEvents, documentEvents, isVisible: () => visible, isFocused: () => focused,
     ...overrides,
   };
   const controller = createTerminalSessionController({sessionId:id, host, active:true, onCwd: value => cwd.push(value), onCli() {}, onState() { stateUpdates++; }}, deps);
-  return {controller, term, sent, writes, cwd, windowEvents, documentEvents, forced, resized,
+  return {controller, term, sent, writes, cwd, windowEvents, documentEvents, resized,
+    enableSizeEcho: () => { echoesSize = true; },
     setBufferLines: (n: number) => { bufferLines = n; },
     acceptInput: (value: boolean) => { accepting = value; },
     setGrid: (cols: number, rows: number) => { grid = { cols, rows }; },
@@ -276,6 +285,49 @@ test('历史没变短就别乱报', async () => {
     f.setBufferLines(2049);                    // 首次加载：从空到满，是变长不是变短
     f.writes.shift()!(); await tick();
     assert.equal(f.controller.snapshot().historyTruncated, false, '变长不该报截断');
+  } finally { f.controller.dispose(); }
+});
+
+/*
+  **本地 reflow 推迟到守护进程把标记插进流里。**
+
+  原来是先 `term.fit()` 就地重排、再通知守护进程——那只保证了「同时发出」，不保证「同一个
+  流位置」。已经在 WebSocket 上飞着的旧宽度字节，到达时会被这个已经重排过的终端按新宽度
+  解析，画面就花了。跨太平洋的链路上在途字节最多，这个窗口恰好开到最大。
+
+  做法抄自 tty7 的 FEATURE_RESIZE_ECHO，见 research/tty7-lessons.md。
+*/
+test('守护进程会回尺寸标记时，本地网格等标记来了才改', async () => {
+  const f = fixture('size-echo');
+  try {
+    await tick();
+    await f.callbacks().onHello('echo-instance', false);
+    f.callbacks().onFrame({ type: 'replay', instanceId: 'echo-instance', seq: 1, data: 'history' }, () => true);
+    await tick(); f.writes.shift()!(); await tick();
+    f.enableSizeEcho();
+    const was = { cols: f.term.cols, rows: f.term.rows };
+    f.measure(100, 30);                       // 容器变了
+    f.controller.repaint();                   // 走一次 fit
+    assert.deepEqual({ cols: f.term.cols, rows: f.term.rows }, was, '标记没到之前本地网格一格都不能动');
+    assert.deepEqual(f.resized.length > 0, true, '但想要的尺寸要发出去');
+    // 标记到了：这时候才重排。
+    f.callbacks().onSize(100, 30);
+    await tick();
+    assert.deepEqual({ cols: f.term.cols, rows: f.term.rows }, { cols: 100, rows: 30 }, '标记到了才改几何');
+  } finally { f.controller.dispose(); }
+});
+
+test('守护进程不报这个能力时，退回就地重排', async () => {
+  // 老守护进程没有标记可等——等一个没人承诺的回声会把网格永远挂住。
+  const f = fixture('size-echo-absent');
+  try {
+    await tick();
+    await f.callbacks().onHello('plain-instance', false);
+    f.callbacks().onFrame({ type: 'replay', instanceId: 'plain-instance', seq: 1, data: 'history' }, () => true);
+    await tick(); f.writes.shift()!(); await tick();
+    f.measure(100, 30);
+    f.controller.repaint();
+    assert.deepEqual({ cols: f.term.cols, rows: f.term.rows }, { cols: 100, rows: 30 }, '没有回声就该就地重排');
   } finally { f.controller.dispose(); }
 });
 

@@ -33,6 +33,25 @@ type RenderCore = {
 const renderCore = (term: Terminal) => (term as { _core?: RenderCore })._core;
 const cellSize = (term: Terminal) => renderCore(term)?._renderService?.dimensions?.css?.cell;
 
+/**
+ * 容器现在**应该**是多少行列。只测量，一格都不改。
+ *
+ * 尺寸回声那条路需要它：本地网格要等守护进程把标记插进流里才重排，但「想要多大」得先
+ * 算出来发过去。测和改原来是绑死在 fitExact 里的。
+ */
+function measureFit(term: Terminal) {
+  const parent = term.element?.parentElement;
+  const cell = cellSize(term);
+  const current = { cols: term.cols, rows: term.rows };
+  if (!parent || !cell?.width || !cell?.height) return current;
+  return fitSize(
+    { width: parent.clientWidth, height: parent.clientHeight },
+    cell,
+    term.options.scrollback === 0 ? 0 : 14,
+    current,
+  );
+}
+
 function fitExact(term: Terminal) {
   const parent = term.element?.parentElement;
   const core = renderCore(term);
@@ -244,7 +263,8 @@ export function mountXterm(host: HTMLElement, theme: TermTheme, onFileLink?: (li
       dec.absorb(data);
       term.write(data, cb);
     },
-    resize(cols, rows) { term.resize(cols, rows); },
+    resize(cols, rows) { renderCore(term)?._renderService?.clear?.(); term.resize(cols, rows); },
+    measureFit: () => measureFit(term),
     reset() {
       localEcho.clear();
       appearance.reset();

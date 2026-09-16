@@ -22,7 +22,9 @@ export function attachTerminal(ws:WebSocket,id:string,daemon:DaemonClient) {
   ws.on('error',()=>ws.terminate());
   ws.once('close',()=>{closed=true;clearTimeout(timeout);unsubscribe();disconnect?.()});
   const wireCli=(cli:string|null)=>cli&&['claude','codex','grok','qwen'].includes(cli)?cli:null;
-  send(ws,{type:'hello',protocol:PROTOCOL_VERSION,heartbeat:1,instanceId,pid:session.pid,cwd:session.cwd,cli:wireCli(session.cli),cliId:session.cli});
+  // sizeEcho：这个守护进程会按流序回 size 帧，客户端可以把 reflow 推迟到那一点。
+  // 报能力不报版本——老守护进程不带这个字段，客户端自己退回就地重排。
+  send(ws,{type:'hello',protocol:PROTOCOL_VERSION,heartbeat:1,instanceId,pid:session.pid,cwd:session.cwd,cli:wireCli(session.cli),cliId:session.cli,sizeEcho:true});
   // Appearance ownership in the business gateway is local to that gateway.
   // Recovery clients must not send automatic color replies or snapshots.
   send(ws,{type:'appearance-owner',owner:false});
@@ -34,6 +36,10 @@ export function attachTerminal(ws:WebSocket,id:string,daemon:DaemonClient) {
       if(event.type==='output'){
         if(event.instanceId!==instanceId||event.seq<=sentSeq)return;
         if(send(ws,event))sentSeq=event.seq;
+      }else if(event.type==='size'){
+        // 和 output 同一条实例闸：别把另一个实例的几何塞给这个观众。
+        // 刻意不比 sentSeq——size 没有 seq，它的位置就是它在流里的顺序。
+        if(event.instanceId===instanceId)send(ws,event);
       }else{
         send(ws,event.type==='cli'?{...event,cliId:event.cli,cli:wireCli(event.cli)}:event);
         if(event.type==='exit')ws.close();

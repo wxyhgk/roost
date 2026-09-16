@@ -43,6 +43,8 @@ export type TermHandle = {
   /** Restore the parser grid before writing a saved screen; sends no PTY resize. */
   resize(cols: number, rows: number): void;
   fit(): { cols: number; rows: number };
+  /** 容器**应该**是多少行列。只测不改——尺寸回声那条路要先知道该发什么。 */
+  measureFit?(): { cols: number; rows: number };
   setTheme(theme: TermTheme): void;
   setAppearanceOwner(owner: boolean): void;
   setAppearanceReady(ready: boolean): void;
