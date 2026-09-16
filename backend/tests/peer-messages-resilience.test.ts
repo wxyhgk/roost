@@ -30,12 +30,25 @@ async function fixture(t: TestContext) {
   const conversationId = ownerStore.conversations.list().items[0]!.id;
   const live = { id: 'B', instanceId: 'instance-B', cli: 'claude' as const, cwd: dir, pid: 123 };
   const underlying = createTerminalRuntime({ defaultCwd: dir, shell: '/bin/sh', env: {}, historyStore: ownerStore });
+  // `writes` 记的是**真正投出去的正文**，一条一次——不是字节层面的写入条数。
+  // 命令所有者现在分两次写：先粘贴，等正文在屏幕上回显出来，再单独写那一下回车。
+  // 所以这个假 CLI 也得像真 CLI 一样会回显，否则那个回车永远等不到。
   const writes: string[] = [];
+  let pending: string | null = null;
   const runtime = { ...underlying, getSession: (id: string) => id === 'B' ? live : undefined,
     writeSession(id: string, text: string) {
       assert.equal(id, 'B');
-      assert.ok(text.startsWith('\x1b[200~') && text.endsWith('\x1b[201~\r'), 'only the command owner can submit the simulated CLI prompt');
-      writes.push(text.slice('\x1b[200~'.length, -'\x1b[201~\r'.length));
+      if (text === '\r') {
+        assert.ok(pending !== null, '没有待提交的正文时，不该出现一个孤零零的回车');
+        writes.push(pending!); pending = null; composer();   // 提交后输入框清空
+        return;
+      }
+      assert.ok(text.startsWith('\x1b[200~') && text.endsWith('\x1b[201~'), 'only the command owner can submit the simulated CLI prompt');
+      pending = text.slice('\x1b[200~'.length, -'\x1b[201~'.length);
+      // 实测 2.1.273：多行粘贴不显示原文，折叠成 `[Pasted text #1 +N lines]`，N = 换行数。
+      // 这里的正文带着 `[Workspace message {...}]` 信封，本来就是多行的。
+      const newlines = (pending.match(/\n/g) ?? []).length;
+      composer(newlines ? `[Pasted text #1 +${newlines} lines]` : pending);
     } };
   const commands = createAiCommandOwner({ store: ownerStore, runtime, ownerId: 'resilience-owner', enabled: true,
     // 前台归属注入：真实现要跑 ps 判断「这条 PTY 的前台是谁」，而这里的 pid 是假的，

@@ -23,7 +23,10 @@ async function fixture(t:any,enabled=true,version:string|null='2.1.266'){
  await display();
  const input=(id='r',text='hello')=>({requestId:id,type:'submit' as const,terminalInstanceId:'i',generation:binding.generation,nativeSessionId:'native',text});
  t.after(async()=>{owner.dispose();store.close();await rm(dir,{recursive:true,force:true});});
- return {owner,store,path,writes,input,display,advance:()=>{time+=200;},bridge,setForeground(v:string|null|undefined){foreground=v;}};
+ return {owner,store,path,writes,input,display,advance:()=>{time+=200;},
+  // 回显窗口（PASTE_ECHO_MS）走完：正文进了输入框但屏幕上一直没出现，退回「等用户自己按」。
+  expireEcho:()=>{time+=2500;},
+  bridge,setForeground(v:string|null|undefined){foreground=v;}};
 }
 test('FIFO waits for TUI draft/working; one write is not accepted until a correlated hook and native user record',async t=>{
  const f=await fixture(t);f.owner.enqueue('s',f.input());f.owner.enqueue('s',f.input('r2'));
@@ -31,17 +34,24 @@ test('FIFO waits for TUI draft/working; one write is not accepted until a correl
  await f.display();f.owner.hook('s',{event:'UserPromptSubmit',sessionId:'native',prompt:'manual'},2);
  await f.owner.pump('s');assert.deepEqual(f.writes,[]);
  f.owner.hook('s',{event:'Stop',sessionId:'native'},3);await f.owner.pump('s');
- assert.deepEqual(f.writes,['\x1b[200~hello\x1b[201~\r']);assert.equal(f.store.aiCommands.get('s','r')?.status,'awaiting_acceptance');
- await f.owner.pump('s');assert.equal(f.writes.length,1);
+ // 第一次写入只有正文。回车要等它在屏幕上出现。
+ assert.deepEqual(f.writes,['\x1b[200~hello\x1b[201~']);
+ await f.display('hello');await f.owner.pump('s');
+ assert.deepEqual(f.writes,['\x1b[200~hello\x1b[201~','\r']);assert.equal(f.store.aiCommands.get('s','r')?.status,'awaiting_acceptance');
+ await f.display();   // claude 提交后清空输入框
+ await f.owner.pump('s');assert.equal(f.writes.length,2);
  await appendFile(f.path,JSON.stringify({type:'user',sessionId:'native',uuid:'user-1',message:{role:'user',content:'hello'}})+'\n');
  await f.owner.pump('s');assert.equal(f.store.aiCommands.get('s','r')?.status,'awaiting_acceptance');
  f.owner.hook('s',{event:'UserPromptSubmit',sessionId:'native',prompt:'hello'},4);await f.owner.pump('s');
  assert.equal(f.store.aiCommands.get('s','r')?.status,'accepted');assert.equal(f.store.aiCommands.get('s','r')?.nativeMessageId,'user-1');
- f.owner.hook('s',{event:'Stop',sessionId:'native'},5);await f.owner.pump('s');assert.equal(f.writes.length,2);
+ f.owner.hook('s',{event:'Stop',sessionId:'native'},5);await f.owner.pump('s');assert.equal(f.writes.length,3);
 });
 test('uncertain writes are never retried; late proof resolves them, while epoch changes cannot be mistaken for GUI acceptance',async t=>{
- const f=await fixture(t);f.owner.enqueue('s',f.input());await f.owner.pump('s');f.advance();await f.owner.pump('s');
- assert.equal(f.store.aiCommands.get('s','r')?.status,'uncertain');assert.equal(f.owner.enqueue('s',f.input()).status,'uncertain');await f.owner.pump('s');assert.equal(f.writes.length,1);
+ const f=await fixture(t);f.owner.enqueue('s',f.input());await f.owner.pump('s');
+ await f.display('hello');await f.owner.pump('s');   // 回显到了 → 按回车
+ assert.deepEqual(f.writes,['\x1b[200~hello\x1b[201~','\r']);
+ f.advance();await f.owner.pump('s');                // 回执一直不来
+ assert.equal(f.store.aiCommands.get('s','r')?.status,'uncertain');assert.equal(f.owner.enqueue('s',f.input()).status,'uncertain');await f.owner.pump('s');assert.equal(f.writes.length,2);
  f.owner.write('s','manual');f.owner.hook('s',{event:'UserPromptSubmit',sessionId:'native',prompt:'hello'},2);
  await appendFile(f.path,JSON.stringify({type:'user',sessionId:'native',uuid:'manual',message:{role:'user',content:'hello'}})+'\n');await f.owner.pump('s');
  assert.equal(f.store.aiCommands.get('s','r')?.status,'uncertain');
@@ -58,7 +68,8 @@ test('feature defaults off and incompatible versions never authorize writes',asy
 
 test('cancellation before write is final, late genuine acceptance can resolve timeout and protocol replies do not claim user input',async t=>{
  const f=await fixture(t);f.owner.enqueue('s',f.input('cancel'));f.owner.cancel('s','cancel');await f.owner.pump('s');assert.equal(f.writes.length,0);
- f.owner.enqueue('s',f.input());await f.owner.pump('s');f.advance();await f.owner.pump('s');assert.equal(f.store.aiCommands.get('s','r')?.status,'uncertain');
+ f.owner.enqueue('s',f.input());await f.owner.pump('s');await f.display('hello');await f.owner.pump('s');
+ f.advance();await f.owner.pump('s');assert.equal(f.store.aiCommands.get('s','r')?.status,'uncertain');
  f.owner.write('s','\x1b[?1;2c');
  f.owner.hook('s',{event:'UserPromptSubmit',sessionId:'native',prompt:'hello'},2);
  await appendFile(f.path,JSON.stringify({type:'user',sessionId:'native',uuid:'late',message:{role:'user',content:'hello'}})+'\n');
@@ -78,33 +89,105 @@ test('live kill switch pauses GUI queue without blocking ordinary TUI input',asy
 });
 
 /*
-  P2：没有实测验证过「自动提交」的 claude 版本，正文照样放进输入框，但**不替用户按回车**。
-
   `\r` 是一个没有寻址的字节——它的含义完全由接收方当时的画面决定。实测过一例：codex 的
-  登录界面上，一次带回车的写入真的触发了一条 OAuth 授权流程。而认清画面只能靠认 TUI 长相
-  的正则，正则又只在某个版本上验过，这就是版本钉子的由来。去掉那个回车，因果链就断了。
+  登录界面上，一次带回车的写入真的触发了一条 OAuth 授权流程。
 
-  这条曾经是「版本不对就整个拒绝」。语义平移成「版本不对就不按回车」，钉得比原来更紧：
-  原来只断言「没有写入」，现在断言「写了正文、且一个字节的回车都没有」。
+  这一条曾经钉版本号（「只在实测过的版本上替用户按回车」），那是拿「谁验过」当「画面是
+  什么」的替身。现在直接问画面：**看见自己那段正文落在输入框里，才按那一下。**
+  下面三条分别钉住这个判断的三种走向。
 */
-test('未验证的版本：正文照写，但绝不替用户按回车',async t=>{
+test('回显没到之前，绝不按那一下回车',async t=>{
  const f=await fixture(t);
- f.owner.hook('s',{event:'SessionStart',sessionId:'native',version:'2.1.999'},2);
  await f.display();
  f.owner.enqueue('s',f.input());
  await f.owner.pump('s');
  assert.deepEqual(f.writes,['\x1b[200~hello\x1b[201~'],'正文进去了');
- assert.ok(!f.writes[0]!.includes('\r'),`绝不能带回车：${JSON.stringify(f.writes[0])}`);
- // 诚实地说「不确定」——我们确实不知道用户会不会按、什么时候按。
+ // 屏幕上还没出现这段正文。反复 pump 也不能凭空补一个回车。
+ for(let i=0;i<4;i++)await f.owner.pump('s');
+ assert.equal(f.writes.length,1,`回显没到就按了回车：${JSON.stringify(f.writes)}`);
+ assert.ok(!f.writes.join('').includes('\r'),'一个字节的回车都不该有');
+ // 等够了还是没回显 → 退回老路，诚实地说「等你自己按」。
+ f.expireEcho();await f.owner.pump('s');
  const c=f.store.aiCommands.get('s','r');
  assert.equal(c?.status,'uncertain');assert.equal(c?.reason,'awaiting_user_submit');
+ assert.equal(f.writes.length,1,'退回老路之后也不许补按');
+});
+
+test('回显到了才按回车 —— 而且只按一次',async t=>{
+ const f=await fixture(t);
+ await f.display();f.owner.enqueue('s',f.input());
+ await f.owner.pump('s');assert.deepEqual(f.writes,['\x1b[200~hello\x1b[201~']);
+ await f.display('hello');                       // 正文出现在输入框里
+ await f.owner.pump('s');
+ assert.deepEqual(f.writes,['\x1b[200~hello\x1b[201~','\r']);
+ assert.equal(f.store.aiCommands.get('s','r')?.status,'awaiting_acceptance');
+ for(let i=0;i<3;i++)await f.owner.pump('s');
+ assert.equal(f.writes.length,2,'回车只能按一次');
+});
+
+test('贴完之后画面变成认不出的东西，就再也不按回车',async t=>{
+ // 这是替掉版本钉子的那条**安全**判据：授权来自「认得出的输入框、里面有字」，
+ // 不是来自谁验过哪个版本号。画面一旦认不出，回车就没有落点可言。
+ const f=await fixture(t);
+ await f.display();f.owner.enqueue('s',f.input());
+ await f.owner.pump('s');assert.deepEqual(f.writes,['\x1b[200~hello\x1b[201~']);
+ f.owner.output('s',{type:'output',instanceId:'i',seq:900,data:'\x1b[2J\x1b[Hshell> '});
+ await new Promise(r=>setTimeout(r,15));
+ for(let i=0;i<4;i++)await f.owner.pump('s');
+ assert.equal(f.writes.length,1,'认不出的画面上绝不能按回车');
+ f.expireEcho();await f.owner.pump('s');
+ assert.equal(f.writes.length,1);
+});
+
+/*
+  下面两条把 submitPasted 的两道守卫**分开**钉住。
+
+  第一版测试没做到这一点：认不出的画面上 composer 是 null，于是「看见自己的正文」那条
+  顺手把它挡了；输入框空着时 state 是 empty，于是「必须是输入框」那条顺手把它挡了。
+  两条互相兜底，拆掉任何一条测试都照样绿——**那样的测试测的是空气**。
+*/
+test('画面是弹框时不按回车 —— 哪怕输入框里确实是我们的正文',async t=>{
+ // 只有认 TUI 长相的 classifyClaudeComposer 认得出弹框；claudeComposerContent 不认，
+ // 它只看光标那一行和上下边框。所以这一格只能由「必须是 terminal_draft」这条挡住。
+ const f=await fixture(t);
+ await f.display();f.owner.enqueue('s',f.input());
+ await f.owner.pump('s');assert.deepEqual(f.writes,['\x1b[200~hello\x1b[201~']);
+ f.owner.output('s',{type:'output',instanceId:'i',seq:900,
+  data:screen('hello')+'\x1b[6;1HDo you want to proceed?\x1b[3;3H'});
+ await new Promise(r=>setTimeout(r,15));
+ for(let i=0;i<4;i++)await f.owner.pump('s');
+ assert.ok(!f.writes.join('').includes('\r'),'弹框上按回车就是在替用户做选择');
+});
+
+test('输入框里是别的东西时不按回车',async t=>{
+ // 这一格 state 就是 terminal_draft（认得出的输入框、里面有字），只能由
+ // 「必须看见自己那段正文」这条挡住。
+ const f=await fixture(t);
+ await f.display();f.owner.enqueue('s',f.input());
+ await f.owner.pump('s');assert.deepEqual(f.writes,['\x1b[200~hello\x1b[201~']);
+ await f.display('完全不是我们贴的东西');
+ for(let i=0;i<4;i++)await f.owner.pump('s');
+ assert.ok(!f.writes.join('').includes('\r'),'认不出是自己的正文就不能按');
+});
+
+test('贴完之后用户插了字，就不按回车 —— 发出去会是个混合体',async t=>{
+ // 两次写入之间的空档由 epoch 兜住：用户从网页打字走 write()，那里会 epoch++；
+ // 我们自己的粘贴走 runtime.writeSession 绕开它。
+ const f=await fixture(t);
+ await f.display();f.owner.enqueue('s',f.input());
+ await f.owner.pump('s');assert.deepEqual(f.writes,['\x1b[200~hello\x1b[201~']);
+ f.owner.write('s','x');                          // 用户插话
+ await f.display('hellox');
+ await f.owner.pump('s');
+ assert.ok(!f.writes.join('').includes('\r'),'插过话就不能替他按回车');
+ assert.equal(f.store.aiCommands.get('s','r')?.reason,'awaiting_user_submit');
 });
 
 test('用户自己按下回车之后，P2 那条会自己翻成已送达',async t=>{
  // 这是 P2 不是半残的理由：uncertain 仍在 pump 的 inflight 集合里，迟到的真实证据仍然作数。
  const f=await fixture(t);
- f.owner.hook('s',{event:'SessionStart',sessionId:'native',version:'2.1.999'},2);
  await f.display();f.owner.enqueue('s',f.input());await f.owner.pump('s');
+ f.expireEcho();await f.owner.pump('s');   // 回显一直没来 → 退回「等你自己按」
  assert.equal(f.store.aiCommands.get('s','r')?.status,'uncertain');
  // 用户按回车 → CLI 发 hook、转录落一行
  f.owner.hook('s',{event:'UserPromptSubmit',sessionId:'native',prompt:'hello'},3);
@@ -156,7 +239,9 @@ test('前台换回 CLI 之后照常写入 —— 这道闸不是单向的',async
  f.setForeground(null);f.owner.enqueue('s',f.input());await f.owner.pump('s');
  assert.deepEqual(f.writes,[]);
  f.setForeground('claude');await f.owner.pump('s');
- assert.deepEqual(f.writes,['\x1b[200~hello\x1b[201~\r']);
+ assert.deepEqual(f.writes,['\x1b[200~hello\x1b[201~']);
+ await f.display('hello');await f.owner.pump('s');
+ assert.deepEqual(f.writes,['\x1b[200~hello\x1b[201~','\r']);
 });
 
 /*
@@ -164,12 +249,13 @@ test('前台换回 CLI 之后照常写入 —— 这道闸不是单向的',async
 */
 test('P2 留下的那条要说准，不是笼统一句「不确定」',async t=>{
  const f=await fixture(t);
- f.owner.hook('s',{event:'SessionStart',sessionId:'native',version:'2.1.999'},2); // 未验证 → P2
  await f.display();
  f.owner.enqueue('s',f.input('r','看看当前的项目'));
  await f.owner.pump('s');
+ // 回显没赶上窗口（渲染慢），退回 P2；正文随后才出现在输入框里。
+ f.expireEcho();await f.owner.pump('s');
  assert.equal(f.store.aiCommands.get('s','r')?.reason,'awaiting_user_submit');
- // 画面上正文现在留在输入框里。界面问「为什么现在发不出去」时：
+ // 界面问「为什么现在发不出去」时：
  await f.display('看看当前的项目');
  assert.equal(f.owner.control('s').reason,'awaiting_user_submit','要说准：正文还在输入框里等你按回车');
 });
@@ -177,10 +263,10 @@ test('P2 留下的那条要说准，不是笼统一句「不确定」',async t=>
 test('多行消息被折叠成标记时同样认得出',async t=>{
  // 实测 2.1.273：粘 5 行显示成 [Pasted text #1 +4 lines]，画面上看不到原文。
  const f=await fixture(t);
- f.owner.hook('s',{event:'SessionStart',sessionId:'native',version:'2.1.999'},2);
  await f.display();
  f.owner.enqueue('s',f.input('r','a\nb\nc\nd\ne'));
  await f.owner.pump('s');
+ f.expireEcho();await f.owner.pump('s');
  await f.display('[Pasted text #1 +4 lines]');
  assert.equal(f.owner.control('s').reason,'awaiting_user_submit');
 });
@@ -199,10 +285,10 @@ test('正文已经不在输入框里时，不再说「按回车」',async t=>{
  // 用户清了输入框、或者已经按过回车而回执还没到 —— 这两者分不开（按回车之后输入框
  // 同样会空）。所以只判断「还在不在」，不猜它去哪了，退回笼统那句。
  const f=await fixture(t);
- f.owner.hook('s',{event:'SessionStart',sessionId:'native',version:'2.1.999'},2);
  await f.display();
  f.owner.enqueue('s',f.input('r','看看当前的项目'));
  await f.owner.pump('s');
+ f.expireEcho();await f.owner.pump('s');
  await f.display('看看当前的项目');
  assert.equal(f.owner.control('s').reason,'awaiting_user_submit');
  await f.display('');   // 输入框空了

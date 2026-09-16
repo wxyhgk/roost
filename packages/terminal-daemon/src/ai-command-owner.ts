@@ -53,20 +53,33 @@ export function createAiCommandOwner(options:{store:WorkspaceStore;runtime:Termi
    &&store.conversations.get(run.conversationId).trashedAt===null;
  }
 /*
-  实测验证过「粘贴 + 同一 buffer 里的回车会被提交」的 claude 版本。
+  粘贴之后，等到**在屏幕上看见自己那段正文**，才写那个回车。
 
-  **这个集合只管那一个 `\r`，不管能不能写。** 不在集合里的版本走 P2：正文照样放进输入框，
-  但**不替用户按最后那一下**，由用户自己按——转录里出现那一行时 `acceptFromTranscript`
-  会认领它，所以这条路是自愈的，不是半残。
+  `\r` 是一个**没有寻址的字节**，它的含义完全由接收方当时的画面决定。实测过一例：在
+  codex 的登录界面上，一次带回车的写入**真的触发了一条 OAuth 授权流程**。
 
-  为什么必须这么拆：`\r` 是一个**没有寻址的字节**，它的含义完全由接收方当时的画面决定。
-  实测过一例：在 codex 的登录界面上，一次带回车的写入**真的触发了一条 OAuth 授权流程**。
-  而认清画面这件事只能靠正则认 TUI 长相，正则又只在某个版本上验过——这就是版本钉子的由来。
-  去掉那个回车，这条因果链就断了，于是未验证的版本不必再被整个拒绝。
+  这里原来钉的是版本号——「只在实测过的 claude 版本上替用户按回车」。那是拿「谁验过」
+  当「画面是什么」的替身，而且是一个**每次 claude 升级都会重新关上**的闸：写这段话时
+  这台机器跑 2.1.273，集合里只有 2.1.266，于是功能是关着的，还不报错。换成清单也一样，
+  只是把一次手工编辑变成永远的手工编辑。
 
-  加版本进来的门槛：**必须自己实测过**「单次写入会提交」，不能凭别处的测量。
+  直接问画面就不必问版本。拆成两次写入之后，回车只在这两件事同时成立时才发出：
+
+    **安全**  屏幕是认得出的 claude 输入框、而且里面有字（`terminal_draft`）。
+             菜单和登录页不是这个形状——当年那次 OAuth 事故的画面永远不会显示我们
+             粘进去的正文。这一条比版本钉子严，且和版本无关。
+
+    **身份**  `epoch` 自粘贴以来没动过。用户从网页打的字走 `write()`，那里会
+             `epoch++`；我们自己的粘贴走 `runtime.writeSession` 绕开它。所以
+             「这段时间有没有人插话」不是猜的——epoch 没变就是没有。
+
+  代价是丢掉了「粘贴+回车一次写入」的原子性。换来的是回车落点有了直接证据，而不是
+  一个人名下的背书。两次写入之间被插话这件事，由上面那条 epoch 兜住。
+
+  回显一直不来怎么办：退回老路（正文在输入框里，等用户自己按回车）。那条路是自愈的
+  ——用户真按下去时 `acceptFromTranscript` 会认领那一行。
 */
-const CLAUDE_VERIFIED_SUBMIT=new Set(['2.1.266']);
+const PASTE_ECHO_MS=2000;
 
  function reason(id:string):string|null {
   if(!sendingEnabled)return 'disabled';
@@ -75,8 +88,8 @@ const CLAUDE_VERIFIED_SUBMIT=new Set(['2.1.266']);
   if(!configured(live.cli))return 'disabled';
   if(!s)return 'screen_unavailable';
   if(live.cli!==s.cli)return 'identity_unconfirmed';
-  // claude 只要求「版本探得到」。**版本不再决定能不能写，只决定能不能替用户按回车**——
-  // 见 CLAUDE_VERIFIED_SUBMIT。探不到版本仍然拒绝：那说明整条观察链没建起来。
+  // claude 只要求「版本探得到」——**版本号本身不参与任何判断**，它只是「hook 通了、
+  // 整条观察链建起来了」的证据。探不到就拒绝，理由是观察链没建起来，不是版本不对。
   if(s.cli==='claude'?!s.version:s.version!=='0.23.1'||s.protocolVersion!==2)return 'unsupported_version';
   const b=binding(id);if(!b||b.cliId!==s.cli||b.terminalInstanceId!==s.instance||b.nativeSessionId!==s.nativeId)return 'identity_unconfirmed';
   if(s.cli==='qwen'){
@@ -112,6 +125,46 @@ const CLAUDE_VERIFIED_SUBMIT=new Set(['2.1.266']);
   const unresolved=stuck.length>0;
   const transport=!!s&&s.cli===cli&&(cli==='claude'?!!s.version:cli==='qwen'&&s.version==='0.23.1'&&s.protocolVersion===2&&s.lifecycleSupported&&!!s.inputPath&&!!binding(id)?.transcriptPath);
   return {supported:sendingEnabled&&configured(cli)&&transport,reason:waiting?'awaiting_user_submit':unresolved?'acceptance_uncertain':why,inputEpoch:s?.epoch??0,queue:store.aiCommands.active(id)};
+ }
+ /**
+  * 粘贴之后那一下回车。**只在屏幕上看见自己那段正文之后才发。**
+  *
+  * 为什么不复用 `reason()`：它只在输入框**空**的时候放行（`view.state==='empty'`），
+  * 而我们刚往里贴了字，此刻必然是 `terminal_draft`。拿它来守这一步会把自己锁死。
+  * 两处问的本来就不是同一个问题——`reason()` 问「现在能不能开始写」，这里问「刚写进去
+  * 的那段，是不是真的落在了一个输入框里」。
+  */
+ async function submitPasted(c:AiCommand,s:State) {
+  const id=c.webSessionId;
+  // 回显一直不来：退回老路，正文留在输入框里等用户自己按。不置 working——什么都还没提交。
+  if(now()-(c.writtenAt??now())>PASTE_ECHO_MS){update(c,{status:'uncertain',reason:'awaiting_user_submit'});return;}
+  // epoch 变了 = 这段时间用户往终端里打过字。**不是把回车咽回去，是整条命令不再可信**：
+  // 输入框里已经不只有我们那段正文了，发出去会是个混合体。退回老路让用户自己看着办。
+  if(s.epoch!==c.inputEpoch){update(c,{status:'uncertain',reason:'awaiting_user_submit'});return;}
+  /*
+    **授权是这一条**：认得出的 claude 输入框、而且里面有字。菜单和登录页不是这个形状
+    ——当年那次 OAuth 事故的画面永远不会显示我们粘进去的正文。
+
+    最后那个 composerHoldsPrompt 不是授权，只回答「回显到了没有」：它自己写着不得用于
+    授权（无计数的 `[Pasted text #1]` 对任何 prompt 都成立）。上面两条才是。
+  */
+  const ready=()=>{
+   if(disposed||states.get(id)!==s||!matches(c,s)||s.working)return false;
+   const view=s.screen.inspect();
+   return view.settled&&view.state==='terminal_draft'&&composerHoldsPrompt(view.composer,c.text);
+  };
+  // 便宜的同步判据先走：等回显期间每 250ms 一次 pump，不该每次都去 fork 一个 ps。
+  if(!ready())return;
+  // 最后一次异步读，和写入路径同一个理由：之后到真正写入之间只剩同步代码。
+  const fg=await readForeground(id);
+  if(fg!==s.cli)return;
+  // —— 无 await 窗口 ——
+  if(s.epoch!==c.inputEpoch||!ready())return;
+  runtime.writeSession(id,'\r');
+  // writtenAt 往前推到回车这一刻：acceptanceMs 量的是「等回执等了多久」，
+  // 不该把等回显那段算进去。
+  update(c,{status:'awaiting_acceptance',reason:null,writtenAt:now()});
+  s.working=true;
  }
  async function acceptFromTranscript(c:AiCommand,s:State) {
   if(c.hookSeq===null)return;
@@ -154,6 +207,9 @@ const CLAUDE_VERIFIED_SUBMIT=new Set(['2.1.266']);
    if(inflight){
     await acceptFromTranscript(inflight,s);
     const fresh=store.aiCommands.get(id,inflight.requestId);
+    // 贴完了、还没按回车。**这不是「写到一半不知道成没成」**，是一个有明确下一步的等待，
+    // 所以要排在 write_boundary_unknown 前面，否则下一拍就被它当成断口收掉。
+    if(fresh?.status==='writing'&&fresh.reason==='awaiting_paste_echo'){await submitPasted(fresh,s);return;}
     if(fresh?.status==='writing')update(fresh,{status:'uncertain',reason:'write_boundary_unknown'});
     if(fresh?.status==='awaiting_acceptance'&&now()-(fresh.writtenAt??now())>(options.acceptanceMs??10000))update(fresh,{status:'uncertain',reason:'acceptance_timeout'});
     return;
@@ -195,7 +251,6 @@ const CLAUDE_VERIFIED_SUBMIT=new Set(['2.1.266']);
    if(disposed||states.get(id)!==s||s.epoch!==epoch||(s.cli==='claude'&&s.screen.inspect().version!==screen.version)||reason(id)||!matches(c,s))return;
    if(!peerWriteAllowed(c)){update(c,{status:'cancelled',reason:'peer_target_changed'});return;}
    const fresh=store.aiCommands.get(id,c.requestId);if(fresh?.status!=='queued')return;
-   const submit=s.cli!=='claude'||CLAUDE_VERIFIED_SUBMIT.has(s.version??'');
    const writing=update(fresh,{status:'writing',reason:null,inputEpoch:epoch,sourceSeq:s.hookSeq,writtenAt:now(),transcriptOffset:offset});
    if(!writing||writing.status!=='writing')return;
    if(!peerWriteAllowed(writing)){update(writing,{status:'cancelled',reason:'peer_target_changed',writtenAt:null});return;}
@@ -203,14 +258,15 @@ const CLAUDE_VERIFIED_SUBMIT=new Set(['2.1.266']);
    try{
     // Native Qwen input never edits the composer. Claude uses one bounded
     // bracketed paste + submit write; raw keys cannot interleave within it.
-    if(s.cli==='qwen')writeQwenCommand(s.inputPath!,c.text);
-    else runtime.writeSession(id,'\x1b[200~'+c.text+'\x1b[201~'+(submit?'\r':''));
-    if(submit){update(writing,{status:'awaiting_acceptance'});s.working=true;}
-    // P2：正文进了输入框，但没人按回车。**这就是「不确定」的字面意思**，而且是诚实的——
-    // 我们不知道用户会不会按、什么时候按。不置 working：什么都还没提交。
-    // 这条路不是死路：uncertain 仍在 pump 的 inflight 集合里，用户真按下回车之后
-    // acceptFromTranscript 会认领那一行，状态自己翻成 accepted。
-    else update(writing,{status:'uncertain',reason:'awaiting_user_submit'});
+    if(s.cli==='qwen'){
+     // qwen 写的是它自己的输入文件，不经过画面，也就没有「回车落在哪」这个问题。
+     writeQwenCommand(s.inputPath!,c.text);
+     update(writing,{status:'awaiting_acceptance'});s.working=true;
+    }else{
+     // 只贴，不按回车。回车交给 submitPasted()——它要先在屏幕上看见这段正文。
+     runtime.writeSession(id,'\x1b[200~'+c.text+'\x1b[201~');
+     update(writing,{status:'writing',reason:'awaiting_paste_echo'});
+    }
    }catch{update(writing,{status:'uncertain',reason:'write_failed'});}
   }finally{busy.delete(id);}
  }
