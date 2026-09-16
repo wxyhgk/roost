@@ -284,3 +284,29 @@ test('each viewer learns about the others and about nobody else when alone', asy
   assert.deepEqual(mac.seen.at(-1)?.viewers.map(v => v.label), ['Chrome · macOS'], '走了要收回');
   mac.ws.close();
 });
+
+/*
+  「这个终端里在跑什么」。
+
+  归属靠控制终端（tty）而不是父子关系：AI 起的后台服务在那次工具调用返回后会被过继到
+  PID 1，祖先链就断了，而 tty 还在（见 terminal-services.ts）。
+
+  这里钉的是**诚实降级**那一条：拿不到 tty 时必须明说「不支持」，不能回一个空列表——
+  空列表的意思是「什么都没跑」，那是完全不同的一件事。测试用的 PTY 是假的、没有 ptsName，
+  正好就是这一格。
+*/
+test('拿不到控制终端时明说不支持，而不是假装什么都没跑', async t => {
+  const f = await fixture(t);
+  const session = await (await f.request('POST', '/api/sessions', { cwd: f.dir })).json();
+  const response = await f.request('GET', `/api/sessions/${session.id}/processes`);
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.supported, false);
+  assert.equal(body.reason, 'no_tty');
+  assert.equal(body.services, undefined, '不支持时不该有列表');
+});
+
+test('不存在的终端是 404', async t => {
+  const f = await fixture(t);
+  assert.equal((await f.request('GET', '/api/sessions/missing/processes')).status, 404);
+});

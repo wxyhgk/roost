@@ -25,6 +25,11 @@ export type TerminalSession = Readonly<{
   cli: CliId | null;
   pid: number;
   instanceId: string;
+  /**
+   * 这条 PTY 的从设备名（`/dev/ttysNNN`），拿不到时为 null（Windows、或某版 node-pty 没有）。
+   * 用来把这个终端起的后台服务认出来——父子关系一过继就断，控制终端不会。
+   */
+  ptsName: string | null;
   /*
     PTY**现在**的尺寸。
 
@@ -60,6 +65,11 @@ type LiveSession = {
   id: string;
   cwd: string;
   cli: CliId | null;
+  /**
+   * 这条 PTY 的从设备名（`/dev/ttysNNN`）。**它是把后台服务归属到终端的判据**——
+   * 父子关系在进程被过继到 PID 1 之后就断了，而控制终端不会。见 terminal-services.ts。
+   */
+  ptsName: string | null;
   pty: IPty;
   instanceId: string;
   subscriptions: IDisposable[];
@@ -100,7 +110,7 @@ export function createTerminalRuntime(options: TerminalRuntimeOptions) {
   function view(session: LiveSession): TerminalSession {
     return Object.freeze({
       id: session.id, cwd: session.cwd, cli: session.cli,
-      pid: session.pty.pid, instanceId: session.instanceId,
+      pid: session.pty.pid, instanceId: session.instanceId, ptsName: session.ptsName,
       cols: session.pty.cols, rows: session.pty.rows,
     });
   }
@@ -154,6 +164,10 @@ export function createTerminalRuntime(options: TerminalRuntimeOptions) {
     }
     const session: LiveSession = {
       id, cwd: pidCwdLinux(pty.pid) ?? resolved, cli: null,
+      // node-pty 的 .d.ts 没有声明 ptsName，但运行时有（实测返回 /dev/ttys017）。
+      // 从 unknown 取而不是断言成有：某个平台/版本没有它时要安静地退化成 null。
+      ptsName: ((value: unknown) => typeof value === "string" && value ? value : null)(
+        (pty as unknown as Record<string, unknown>).ptsName),
       pty, instanceId: replay.getInstanceId(id)!, subscriptions: [],
     };
     live.set(id, session);
@@ -288,7 +302,9 @@ export function createTerminalRuntime(options: TerminalRuntimeOptions) {
  * 前台归属判断对外开放：daemon 的写入闸要用它回答「这些字节会被谁收到」。
  * 三态语义（尤其 `undefined` 必须当成「不写」）见 processes.ts 里那个函数的注释。
  */
-export { foregroundCli, processTable } from "./processes";
+export { foregroundCli, listeningSockets, processTable } from "./processes";
+/** 「这个终端里在跑什么、监听哪个端口」。判据是控制终端，不是父子关系——见该文件顶上。 */
+export { terminalServices, normalizeTty, type TerminalProcess } from "./terminal-services";
 
 export type TerminalRuntime = ReturnType<typeof createTerminalRuntime>;
 

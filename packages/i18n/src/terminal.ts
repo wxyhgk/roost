@@ -64,6 +64,15 @@ export const terminal = {
     /** 没有可识别的对话时不显示切换器，这条只在明确查询失败时用。 */
     noConversation: "这个终端还没有可识别的对话",
   },
+    /** 「这个终端里在跑什么」面板：AI 起的后台服务和它们的端口。 */
+    processes: {
+      title: "这个终端里在跑的",
+      refresh: "刷新",
+      loading: "查看中…",
+      empty: "这个终端里没有在跑的后台进程",
+      unsupported: "这个平台看不到终端的进程归属",
+      hint: "按控制终端归属。用 setsid 或标准 daemon 化脱离出去的进程看不到；nohup 起的仍然看得到。",
+    },
 
   pane: {
     title: "终端",

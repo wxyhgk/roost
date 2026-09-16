@@ -38,6 +38,7 @@ import { createIsolatedFileWatcher } from './watcher-process';
 import { createAiSessionBridge, AiSessionBridgeError, type AiSessionBridge } from "@roost/ai-session-bridge";
 import { createSessionResume, resumePlanFor, type ResumePlan } from "./session-resume.ts";
 import { DEFAULT_CLI_DEFINITIONS } from "@roost/cli-adapters";
+import { listeningSockets, processTable, terminalServices } from "@roost/terminal-runtime";
 /* 前端拿到 GET .../resume 之后按钮就不该出现了；走到这里说明中间变了，文案给的是那个变化。 */
 const RESUME_UNAVAILABLE = {
   no_conversation: "this terminal has no AI conversation to resume",
@@ -442,6 +443,37 @@ export function createBackendServer({ store, runtime, workspaceRoot, access, aut
       const id = decodeURIComponent(resumeQuery[1]);
       if (!getSessionRecord(id)) { text(res, 404, "session not found"); return; }
       json(res, 200, await verifiedResumePlan(id));
+      return;
+    }
+
+    /*
+      「这个终端里在跑什么、监听哪个端口」。
+
+      AI 常常起一些后台服务（`npm run dev &`、`python -m http.server &`），跑完那次工具
+      调用就返回了，用户既不知道起了什么、也不知道端口。这条按需回答它。
+
+      **归属靠控制终端（tty），不是父子关系**：服务被过继到 PID 1 之后祖先链就断了，
+      而 tty 还在。判据和限制写在 terminal-services.ts 顶上。
+
+      **按需，不轮询**：lsof 实测 41ms（连 ps 一起），点一下绰绰有余；常驻会在进程多的
+      机器上变味。
+    */
+    const processQuery = pathname.match(/^\/api\/sessions\/([^/]+)\/processes$/);
+    if (processQuery && req.method === "GET") {
+      const id = decodeURIComponent(processQuery[1]);
+      if (!getSessionRecord(id)) { text(res, 404, "session not found"); return; }
+      const live = runtime.getSession(id);
+      // 拿不到 tty（Windows、或这条 PTY 没有）时**明说不支持**，不要回一个空列表——
+      // 空列表的意思是「什么都没跑」，那是另一回事。
+      if (!live?.ptsName) { json(res, 200, { supported: false, reason: live ? "no_tty" : "terminal_exited" }); return; }
+      const [rows, listeners] = await Promise.all([processTable(), listeningSockets()]);
+      // 这条 PTY 自己的 shell 和 CLI 不算「服务」：它们是终端本身。
+      const own = rows.filter(row => row.pid === live.pid || row.ppid === live.pid).map(row => row.pid);
+      const services = terminalServices({ tty: live.ptsName, rows, listeners, excludePids: [live.pid, ...own] })
+        // 命令行可能很长，也可能夹带密钥（`FOO_KEY=... node server.js` 这种形状）。
+        // 截断是有界性，不是脱敏——真要脱敏是另一件事，见提交说明。
+        .map(service => ({ ...service, command: service.command.slice(0, 512) }));
+      json(res, 200, { supported: true, tty: live.ptsName, services });
       return;
     }
 

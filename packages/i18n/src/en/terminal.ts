@@ -64,6 +64,14 @@ export const terminal = {
     /** 没有可识别的对话时不显示切换器，这条只在明确查询失败时用。 */
     noConversation: "This terminal has no identified conversation yet",
   },
+    processes: {
+      title: "Running in this terminal",
+      refresh: "Refresh",
+      loading: "Checking…",
+      empty: "No background processes running in this terminal",
+      unsupported: "Process attribution is unavailable on this platform",
+      hint: "Attributed by controlling terminal. Processes that detach (setsid or full daemonization) are invisible; nohup ones still show.",
+    },
 
   pane: {
     title: "Terminal",

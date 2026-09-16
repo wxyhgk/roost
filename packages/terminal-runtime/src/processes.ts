@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { readlinkSync } from "node:fs";
 import { promisify } from "node:util";
 import { defaultShell } from './shell';
+import { parseListeners, type ListenerRow } from './terminal-services';
 import { detectCli, detectConfiguredCli, type CliDefinition } from "@roost/cli-adapters";
 
 const execFileAsync = promisify(execFile);
@@ -10,7 +11,16 @@ export function pidCwdLinux(pid: number) {
   try { return readlinkSync(`/proc/${pid}/cwd`); } catch { return null; }
 }
 
-type ProcRow = { pid: number; ppid: number; args: string; pgid?: number; tpgid?: number };
+export type ProcRow = { pid: number; ppid: number; args: string; pgid?: number; tpgid?: number;
+  /**
+   * 控制终端，如 `ttys002`；没有控制终端时是 `??`。
+   *
+   * **这是把后台服务归属到终端的唯一可靠判据。** 父子关系一退出就断——AI 起个
+   * `npm run dev &`，那次工具调用返回后服务就被过继到 PID 1（本机实测，两个 dev server
+   * 的祖先链都终止在 launchd）。而 tty 在过继之后**仍然保留**，只有进程主动脱离
+   * （setsid / 标准 daemon 化）或终端本身关闭时才变成 `??`。
+   */
+  tty?: string };
 
 export async function processTable(signal?: AbortSignal) {
   try {
@@ -31,17 +41,17 @@ export async function processTable(signal?: AbortSignal) {
     */
     let stdout = "";
     try {
-      ({ stdout } = await execFileAsync("ps", ["-axo", "pid=,ppid=,pgid=,tpgid=,args="], { timeout: 2000, signal }));
+      ({ stdout } = await execFileAsync("ps", ["-axo", "pid=,ppid=,pgid=,tpgid=,tty=,args="], { timeout: 2000, signal }));
     } catch {
       ({ stdout } = await execFileAsync("ps", ["-axo", "pid=,ppid=,args="], { timeout: 2000, signal }));
     }
     const rows: ProcRow[] = [];
     for (const line of stdout.split("\n")) {
       // tpgid 可以是 -1（该终端没有前台进程组），所以这一格要允许负号。
-      const wide = line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(-?\d+)\s+(.*)$/);
+      const wide = line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(-?\d+)\s+(\S+)\s+(.*)$/);
       if (wide) {
         rows.push({ pid: Number(wide[1]), ppid: Number(wide[2]), pgid: Number(wide[3]),
-          tpgid: Number(wide[4]), args: wide[5] });
+          tpgid: Number(wide[4]), tty: wide[5], args: wide[6] });
         continue;
       }
       // 退回三列：没有前台信息，但 cliForPid / cwd 那些照常工作。
@@ -142,4 +152,24 @@ export function foregroundCli(ptyPid: number, rows: ProcRow[], definitions?: rea
   const leader = rows.find(row => row.pid === shell.tpgid);
   if (!leader) return undefined;
   return (definitions ? detectConfiguredCli(leader.args, definitions) : detectCli(leader.args)) ?? null;
+}
+
+/**
+ * 此刻在监听 TCP 的进程。`lsof` 只列当前用户自己的进程，不需要 sudo。
+ *
+ * 本机实测约 28ms，所以这条按需调用（点按钮时）绰绰有余；**不要拿它做常驻轮询**——
+ * 进程多的机器上它会变味，而这个功能本来就是「想看的时候看一眼」。
+ *
+ * 拿不到就返回空数组：没有端口信息时仍然可以列出进程，那比整个功能失败有用。
+ */
+export async function listeningSockets(signal?: AbortSignal): Promise<ListenerRow[]> {
+  if (process.platform === "win32") return [];
+  try {
+    const { stdout } = await execFileAsync("lsof", ["-nP", "-iTCP", "-sTCP:LISTEN"],
+      { timeout: 3000, signal, maxBuffer: 4 * 1024 * 1024 });
+    return parseListeners(stdout);
+  } catch {
+    // lsof 没装、被策略挡住、或者一个监听都没有时它以非零退出——都按「不知道端口」处理。
+    return [];
+  }
 }
