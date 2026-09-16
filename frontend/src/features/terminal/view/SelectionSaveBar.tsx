@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPath, readFilePreview, writeFile } from "../../../shared/api";
 import type { Draft } from "../../library/client";
 import { library } from "../../library/runtime";
@@ -35,11 +35,12 @@ export function useTerminalSelection(sessionId: string) {
       setSaveBar(null);
       return;
     }
-    setSaveBar({
-      text,
-      x: Math.min(x, window.innerWidth - 250),
-      y: Math.min(y + 10, window.innerHeight - 60),
-    });
+    // 这里只记「用户点在哪」。别在这儿夹边界——那要先知道这条 bar 有多宽，而它还
+    // 没渲染，只能猜一个数（原来是 250）。那个数是照英文文案调的，量一下：英文
+    // 246px，中文 169px。于是它同时在犯两种错——中文下白白把 bar 往左推 81px，
+    // 英文下离撑破只剩 4px，任何一次改文案或改字号都可能让它挂到屏幕外。
+    // 真正的夹边在 SelectionSaveBar 里，量完再夹。
+    setSaveBar({ text, x, y: y + 10 });
   }
 
   function flashSaved() {
@@ -108,10 +109,22 @@ export function SelectionSaveBar({
 }) {
   // 按钮走 text-body：外壳 bar 上可点的文字都是这一档（顶栏同），和触屏那条选区
   // 工具条保持一致——两者是同一个功能的两种输入方式。
+  const box = useRef<HTMLDivElement>(null);
+  // 先按 x/y 摆，量到真实尺寸再夹回屏幕内。useLayoutEffect 在绘制前跑完，看不到挪动。
+  const [at, setAt] = useState({ left: Math.max(8, x), top: Math.max(8, y) });
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    setAt({
+      left: Math.max(8, Math.min(x, window.innerWidth - el.offsetWidth - 8)),
+      top: Math.max(8, Math.min(y, window.innerHeight - el.offsetHeight - 8)),
+    });
+  }, [x, y]);
   return (
     <div
+      ref={box}
       className="fixed z-30 flex items-center gap-1 rounded-lg border border-bar-text/10 bg-bar px-1.5 py-1 shadow-pop"
-      style={{ left: Math.max(8, x), top: Math.max(8, y) }}
+      style={at}
     >
       <button
         type="button"
