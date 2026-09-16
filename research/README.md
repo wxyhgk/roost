@@ -15,3 +15,4 @@
 订阅面板接口：[Claude、Codex 与 OpenCode Go 额度调研](ai-subscription-apis.md)。
 
 工具渲染与上下文管理：[DeepSeek Harness 工具调用渲染](deepseek-harness-ui.md)。
+- [从 Warp 学到什么](warp-lessons.md) —— 四路调研的合并结论：退掉读屏、外部真相源当脊梁、`--session-id` 自己铸身份
