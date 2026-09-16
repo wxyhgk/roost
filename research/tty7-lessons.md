@@ -60,6 +60,20 @@ roost 的主力使用场景下恰好开到最大。这是目前对「一段时�
    alternate screen，环里更早的 shell scrollback 会被画进 alternate buffer，然后随程序
    退出一起丢掉。
 
+   **查过了：roost 没有这个病，因为架构不同**（2026-09-16 [实测]）。tty7 重放的是原始
+   历史，所以 fold 必须替它补窗口之前的模式；roost 重放的是**服务端网格重新序列化出来的
+   当前画面**，alt screen 状态由快照自带——实测 SerializeAddon 排出来的正是
+   「normal 回滚 → `?1049h` → alt 内容」。而 roost 的 fold（`mouseModes.ts`）刻意只管
+   9/1000/1002/1003/1005/1006/1007/1015/1016，**47/1047/1049 不在里面**，所以它不可能
+   重复发那一条；全仓库也没有任何地方无条件发 `?1049h`。
+
+   真正撑住这条的是「全量重放前先 `reset()` 回 normal buffer」，而这件事原来一条断言都
+   没有。补在 `frontend/tests/resume-altscreen.test.ts`：把目标终端先摆进别的 TUI 的
+   alt screen 再重放，回滚必须还在 normal 里。去掉 reset 就红。
+
+   **剩一个降级路径没解**，见
+   `issues/2026-09-16-alt-screen-lost-when-server-screen-breaks.md`。
+
 **顺带一个副作用**：零件 1 让「网格对不上」不再是错误状态，于是 roost 那条
 「重连 → 服务端网格 ≠ 客户端网格 → 整个缓冲判废 → 全量重建 → 只剩 2000 行」的因果链
 在第二环就断了。attach 时服务端**明确忽略客户端报的网格**（`daemon/server.rs:814-817`，
