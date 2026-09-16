@@ -74,6 +74,23 @@ test('non-echoing input stays invisible, and controls invalidate an established 
     m.input('c', line('> a')); assert.equal(m.view(), null);
   }
 });
+/*
+  实测 claude 2.1.273（PTY 抓包）：在行尾打一个空格，回显是 `ESC[1C` —— 只把光标右移
+  一格，一个字符都不写。于是屏幕文字和上一帧完全相同。
+
+  「终端真的回显了」的证据原来只认文字变，这一格就掉信任，下一个字符要等一整个往返。
+  正常行文每 5、6 个字符一个空格，跨太平洋的链路（实测北京↔洛杉矶 ~200ms）上就是每
+  六次按键卡一次。
+*/
+test('行尾空格只推光标不改文字，不该因此丢掉信任', () => {
+  const model = warm();                       // 已确认 '> a'
+  model.input(' ', line('> a'));
+  model.observe(line('> a', 4));              // ESC[1C：文字没变，光标 3 → 4
+  model.input('b', line('> a', 4));
+  assert.ok(model.view(), '空格之后下一个字符仍应立刻预览，而不是等一个完整往返');
+  assert.equal(text(model.view()!.predicted), '> a b');
+});
+
 test('middle-of-line edits and wrapping fall back instead of overwriting authoritative cells', () => {
   const model = warm(); model.input('x', line('> abc', 3)); assert.equal(model.view(), null);
   const edge = createLocalEcho(), prefix = '>'.repeat(37);

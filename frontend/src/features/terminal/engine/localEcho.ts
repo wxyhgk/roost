@@ -68,7 +68,17 @@ export function createLocalEcho(now = () => performance.now()) {
       const matches = trusted ? sameText(line, prediction) : sameGrid(line, prediction) &&
         prediction.cells.slice(0, prediction.x).every((cell, x) => cell.text === line.cells[x]?.text && cell.width === line.cells[x]?.width);
       const provesEcho = trusted || pending.slice(0, i + 1).some(p => /[\p{L}\p{N}]/u.test(p.data));
-      if (provesEcho && line.x === prediction.x && matches && !sameText(line, base)) matched = i;
+      // 「终端真的回显了」的证据是**可观测状态变了**，文字或光标任一。
+      //
+      // 原来只认文字变。于是在行尾打一个空格就会掉信任：实测 claude 2.1.273 对行尾
+      // 空格只回 `ESC[1C`（光标右移一格），一个字符都不写，屏幕文字和 base 完全相同。
+      // 掉了信任下一个字符就要等一整个往返——正常行文每 5、6 个字符一个空格，跨太平洋
+      // 的链路上就是每六次按键卡一次。
+      //
+      // 放宽到光标是安全的：不回显的提示符**连光标都不动**，而这里还要求光标正好落在
+      // 预测的位置上（`line.x === prediction.x`），密码框达不到这个条件。
+      const echoed = !sameText(line, base) || line.x !== base.x;
+      if (provesEcho && line.x === prediction.x && matches && echoed) matched = i;
     }
     if (matched >= 0) {
       trusted = true;
