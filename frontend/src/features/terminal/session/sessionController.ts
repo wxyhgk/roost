@@ -137,6 +137,20 @@ export function createTerminalSessionController(options: {
       liveInstance = instanceId;
       phase = 'handshake';
       const cached = !forceFull && term?.supportsSnapshot ? deps.loadSnapshot() : null;
+      /*
+        **网格对不上就会把整个缓冲判废**（见 resume.prepare），于是走全量重建，而服务端
+        只留 2000 行——只有浏览器有的那一段就没了。[实测] 一次 1006 断线重连丢了 241 行。
+
+        那道判废是有道理的：客户端缓冲按旧宽度排，服务端接着按旧宽度发增量，硬接上去会
+        画花。但它是不是**这次**丢历史的原因，事件里看不出来——服务端报的网格从没被记下。
+        所以在这里记一笔：下次再丢，一眼就知道是网格还是别的。
+
+        断线期间最容易出现这个组合：面板被拖窄了，本地改了尺寸而 socket 断着、告诉不了 PTY。
+      */
+      if (grid && term && (grid.cols !== term.cols || grid.rows !== term.rows)) {
+        trace.record('grid-mismatch-on-hello', grid.cols * 1000 + grid.rows);
+        trace.record('local-grid', term.cols * 1000 + term.rows);
+      }
       return resume.prepare(instanceId, cached, forceFull, grid);
     };
 
