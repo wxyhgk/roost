@@ -34,6 +34,24 @@ const renderCore = (term: Terminal) => (term as { _core?: RenderCore })._core;
 const cellSize = (term: Terminal) => renderCore(term)?._renderService?.dimensions?.css?.cell;
 
 /**
+ * 要给滚动条让出多宽。
+ *
+ * **数只有一个，在 CSS 里**（`--terminal-scrollbar-width`）。xterm 6 用的是 VS Code 那套
+ * ScrollableElement——滚动条浮在内容上面，不占布局宽度，所以量容器是量不出来的，只能由
+ * 这边主动让。原来这里写死 14 而 CSS 把滚动条画成 6，多让的那 8 像素不够再站一列，右边
+ * 就凭空空掉一整列（实测 box=1068 cell=7.8：让 14 得 135 列，让 6 得 136 列）。
+ *
+ * 读不出来就退回 14：宁可多让一点，也不能让滚动条压在字上。
+ */
+function scrollbarGutter(term: Terminal) {
+  if (term.options.scrollback === 0) return 0;
+  const host = term.element;
+  if (!host) return 14;
+  const declared = Number.parseFloat(getComputedStyle(host).getPropertyValue("--terminal-scrollbar-width"));
+  return Number.isFinite(declared) && declared >= 0 ? declared : 14;
+}
+
+/**
  * 容器现在**应该**是多少行列。只测量，一格都不改。
  *
  * 尺寸回声那条路需要它：本地网格要等守护进程把标记插进流里才重排，但「想要多大」得先
@@ -47,7 +65,7 @@ function measureFit(term: Terminal) {
   return fitSize(
     { width: parent.clientWidth, height: parent.clientHeight },
     cell,
-    term.options.scrollback === 0 ? 0 : 14,
+    scrollbarGutter(term),
     current,
   );
 }
@@ -61,7 +79,7 @@ function fitExact(term: Terminal) {
   const { cols, rows } = fitSize(
     { width: parent.clientWidth, height: parent.clientHeight },
     cell,
-    term.options.scrollback === 0 ? 0 : 14,
+    scrollbarGutter(term),
     current,
   );
   if (cols !== term.cols || rows !== term.rows) {

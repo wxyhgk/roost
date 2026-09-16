@@ -278,9 +278,19 @@ html[data-terminal-theme="light"] {
   background: transparent;
 }
 
-/* xterm custom DOM scrollbar override (inline styles from xterm.js) */
+/*
+  xterm custom DOM scrollbar override (inline styles from xterm.js)
+
+  宽度提成变量，是因为**算列数的那边也要用同一个数**：xterm 6 用的是 VS Code 那套
+  ScrollableElement，滚动条浮在内容上面、不占布局宽度，所以 fit 必须自己给它让出位置。
+  原来 CSS 写 6、fit.ts 写死 14，两边不一致，右边就白白多空掉一整列
+  （实测 box=1068 cell=7.8：让 14 得 135 列，让 6 得 136 列）。
+*/
+:root {
+  --terminal-scrollbar-width: 6px;
+}
 .term-fit .xterm-scrollable-element > .scrollbar {
-  width: 6px !important;
+  width: var(--terminal-scrollbar-width) !important;
 }
 .term-fit .xterm-scrollable-element > .scrollbar > .slider {
   background: var(--color-scrollbar) !important;

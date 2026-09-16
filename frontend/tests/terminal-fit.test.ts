@@ -48,3 +48,22 @@ test('the floors are the ones the engine relies on', () => {
   assert.equal(MIN_FIT_COLS, 20);
   assert.equal(MIN_FIT_ROWS, 4);
 });
+
+/*
+  滚动条让多了，右边就白空掉一整列。
+
+  数字取自一台真机的诊断读数（2026-09-16）：`box=1068x845 cell=7.8x17 grid=135x49
+  painted=1053`——1068 减 1053 是 15 像素的空白，差不多两格宽。而 xterm 6 的滚动条是
+  浮在内容上的，CSS 把它画成 6px，从来不需要 14。
+
+  剩下的那点零头（不足一格）是 `Math.floor` 的必然，修不掉也不该修：显示半列比空着更糟。
+*/
+test('滚动条只让它真实的宽度，不多让', () => {
+  const box = { width: 1068, height: 845 };
+  const generous = fitSize(box, CELL, 14, CURRENT);
+  const exact = fitSize(box, CELL, 6, CURRENT);
+  assert.equal(generous.cols, 135, '这是改之前的实测值');
+  assert.equal(exact.cols, 136, '让 6 应该多站得下一列');
+  // 让出去的宽度仍然够滚动条站，字不会被压在底下。
+  assert.ok(exact.cols * CELL.width + 6 <= box.width);
+});
