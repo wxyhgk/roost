@@ -369,8 +369,45 @@ export function createTerminalSessionController(options: {
       会再 fit 一次——回到前台走 setActive、标签页可见和窗口获得焦点走 kick、
       握手完成和 engage 各自也有——所以不需要额外记账。
     */
-    function fit() {
-      if (!valid() || !canResize()) return;
+    /*
+      把尺寸抖一下，逼 TUI 自己重画。**只给「恢复画面」这一个手动入口用。**
+
+      为什么需要它：有一类坏画面，重新向服务端要一份也修不好——服务端那份网格是忠实解析
+      字节流得到的，可那段字节流本身画的就是错的。CLI 以为屏幕是 A、实际是 B，只有让它
+      重画才有救，而让它重画的唯一办法是一次真的 SIGWINCH。
+
+      **这件事在仓库里被否过两次，两次都有道理，而且都不适用于这里：**
+
+      - `issues/2026-09-10-restore-loses-rows-below-cursor.md` §4.3「明确没有做」：
+        omp 收到 SIGWINCH 会把整段对话重新打印一遍。那是在讨论**自动**修复——用抖尺寸去
+        掩盖一个尺寸没同步的 bug，属于修果不修因。用户按下「恢复画面」是另一回事：
+        他要的就是把画面弄回来，重刷一屏是他愿意付的代价。文案里写明了。
+      - `connection.ts` 的 `fit()`：「这一条不接受『强制』」。以前那个 `force` 开关被删掉，
+        是因为它接在 `setActive` 这条自动路径上，点一下卡片就刷一屏。
+
+      所以这里**不绕过** `fit()` 的同尺寸判断——让尺寸真的变两次，它自然就发出去了。
+      先长一行再变回来，不是先缩：xterm 缩行丢的是光标下面的行，那正是这份 issue 里
+      被吃掉的东西；长一行只是在底部加一条空行，变回来时再摘掉。
+
+      本地和 PTY 仍然一起改，那条不变式没破。
+    */
+    function nudgePty() {
+      if (!term || !valid() || !canResize()) return;
+      const cols = term.cols, rows = term.rows;
+      term.resize(cols, rows + 1);
+      const grew = conn?.fit() ?? false;
+      term.resize(cols, rows);
+      const restored = conn?.fit() ?? false;
+      trace.record(grew && restored ? 'pty-nudged' : 'pty-nudge-skipped');
+    }
+
+    /**
+     * 返回值：这一次**有没有任何东西到达 PTY 或服务端**——发出了新尺寸，或者改走了重取。
+     * 两者都会让画面自己更新（真尺寸变化 = 真 SIGWINCH，TUI 自己重画；重取 = 拿权威那份），
+     * 所以调用方据此判断还需不需要「抖尺寸」这条最后手段：只有两者都没发生才需要。
+     */
+    function fit(): boolean {
+      if (!valid() || !canResize()) return false;
       const before = term ? { rows: term.rows } : null;
       term?.fit();
       const shrank = !!before && !!term && term.rows < before.rows;
@@ -387,14 +424,22 @@ export function createTerminalSessionController(options: {
         SIGWINCH 会把整段对话重新打印一遍（tasks/terminal-flood/README.md）。
         见 issues/2026-09-10-restore-loses-rows-below-cursor.md。
       */
-      if (shrank && !told) { trace.record('grid-shrank-unannounced'); conn?.refresh(); }
+      if (shrank && !told) { trace.record('grid-shrank-unannounced'); conn?.refresh(); return true; }
+      return told;
     }
     return {
       dispose, restart, persist, send,
       dismissInputNotice: () => update({ inputNotice: false }),
       // 只有这条「用户明确要求恢复画面」的路才解冻：卡住的 visibility 得清掉，
       // 而切回前台那条不该动它（那时冻结可能是合法的，见 engine 的 repaint）。
-      repaint() { if(!valid()) return; trace.record('manual-repaint'); term?.setFrozen?.(false); term?.repaint?.(); engaged = true; fit(); },
+      /*
+        顺序是有讲究的：先 fit()，它有两种情况会让画面自己更新——真发出了新尺寸（真
+        SIGWINCH，TUI 自己会重画），或者改走了重取（本地缩了行而 PTY 从没听说过那个尺寸，
+        正解就是拿服务端那份权威网格，**不是** SIGWINCH）。两者任一发生，再抖一下都只是
+        白刷一屏。**只有两者都没发生**——尺寸没变、也没重取——画面才可能停在错的样子而
+        CLI 毫不知情，那时才轮到抖尺寸这条最后手段。
+      */
+      repaint() { if(!valid()) return; trace.record('manual-repaint'); term?.setFrozen?.(false); term?.repaint?.(); engaged = true; if (!fit()) nudgePty(); },
       diagnostics: () => ({ phase, status: state.status, historyTruncated: state.historyTruncated, active, visible: deps.isVisible(), inputReady, lastFrameAt,
         renderer: term?.inspect?.() ?? null, replay: resume?.inspect() ?? null, events: trace.read() }),
       snapshot: () => state,

@@ -228,11 +228,38 @@ test('local repaint preserves the mounted terminal and never reopens the shell o
  f.controller.repaint();assert.equal(painted,1);
  // 解冻是这条路独有的：卡住的 visibility 得清掉，而切回前台那条不该动它。
  assert.equal(thawed,1,'恢复画面必须解冻');
+ // 这个 fixture 还不满足「已解析/前台/可见/有焦点」，抖尺寸该整个跳过而不是报错。
+ assert.deepEqual(f.resized,[],'不能改尺寸时不该硬抖');
  assert.equal(f.metrics().mounted,1);assert.equal(f.metrics().reopens,0);assert.equal(f.metrics().restarts,0);
  assert.ok(f.controller.diagnostics().events.some(e=>e.event==='manual-repaint'));
  f.controller.dispose();f.controller.repaint();assert.equal(painted,1);
 });
 
+
+/*
+  有一类坏画面，向服务端重新要一份也修不好：服务端那份网格是**忠实解析**字节流得到的，
+  可那段字节流本身画的就是错的——CLI 以为屏幕是 A、实际是 B。只有让 CLI 自己重画才有救，
+  而唯一的办法是一次真的 SIGWINCH。
+
+  代价是全屏 TUI 会把当前这一屏重新打印一遍，所以**只给「恢复画面」这一个手动入口**，
+  文案里写明了。自动路径一律不许抖——见 issues/2026-09-10-restore-loses-rows-below-cursor.md
+  §4.3，以及 connection.ts 里那条「不接受强制」。
+*/
+test('恢复画面会把尺寸抖一下逼 TUI 重画，抖完回到原尺寸', async () => {
+  const f = fixture('repaint-nudge');
+  try {
+    await tick();
+    await f.callbacks().onHello('nudge-instance', false);
+    f.callbacks().onFrame({ type: 'replay', instanceId: 'nudge-instance', seq: 1, data: 'history' }, () => true);
+    await tick(); f.writes.shift()!(); await tick();
+    assert.equal(f.canResize(), true);
+    const before = f.resized.length, rows = f.term.rows, cols = f.term.cols;
+    f.controller.repaint();
+    // 一去一回：两次尺寸**真的**不同，所以 fit() 自然发得出去，不需要绕过同尺寸判断。
+    assert.equal(f.resized.length - before, 2, '要抖出两次真 resize');
+    assert.deepEqual({ cols: f.term.cols, rows: f.term.rows }, { cols, rows }, '抖完必须回到原尺寸');
+  } finally { f.controller.dispose(); }
+});
 
 /*
   谁有资格改 PTY 的尺寸：解析完了、是前台、标签页可见、窗口有焦点，四条都要。

@@ -36,7 +36,7 @@ export const terminal = {
     reconnected: "Reattached to the original terminal",
     copied: "Diagnostics copied",
     copyFailed: "Copy failed, try again",
-    noteRetain: "Restoring the screen keeps the current buffer: it unfreezes and fully repaints. Reloading rebuilds the view and reattaches to the same shell without restarting it; older history is limited by server retention.",
+    noteRetain: "Restoring the screen keeps the current buffer: it unfreezes, fully repaints, and nudges the terminal size so the CLI redraws itself — **a full-screen TUI will reprint its current screen**, which is the only way to make it redraw. Reloading rebuilds the view and reattaches to the same shell without restarting it; older history is limited by server retention.",
     notePrivacy: "Diagnostics contain only state, dimensions, and timing, not commands or output contents.",
   },
 
