@@ -75,7 +75,7 @@ workspace-store 新增独立 ai_commands 表；命令不会冒充原生 transcri
 
 ## 启用、暂停与限制
 
-新 daemon 启动时设置 `ROOST_CLAUDE_GUI_SEND=1` 才配置发送能力。需要新建终端，经现有 zsh Claude launcher 启动，才能取得版本 hook 并从启动时建立屏幕投影。首轮实测版本为 **Claude Code 2.1.266**；其他版本保守禁用。原有 daemon 会返回不支持，不影响普通终端。
+新 daemon 启动时设置 `ROOST_CLAUDE_GUI_SEND=1` 才配置发送能力。需要新建终端，经现有 zsh Claude launcher 启动，才能取得版本 hook 并从启动时建立屏幕投影。首轮实测版本为 **Claude Code 2.1.266**；其他版本保守禁用。2026-09-15 另测了 **2.1.273**，空输入框/对话框/草稿三支判定与 2.1.266 一致，证据见 [verification/claude-2.1.273-screen.md](conversation-database/verification/claude-2.1.273-screen.md)；**代码里的钉子仍是 2.1.266，没有放宽**。原有 daemon 会返回不支持，不影响普通终端。
 
 ```sh
 node --import tsx scripts/ai-command-control.mjs status
