@@ -1,6 +1,6 @@
 import { createMouseModes } from "./mouseModes";
 import { randomUUID } from "node:crypto";
-import { MAX_REPLAY_JSON_BYTES, terminalGrid, type ReplayCursor, type ReplayFrame, type OutputFrame } from "@roost/terminal-protocol";
+import { MAX_REPLAY_JSON_BYTES, terminalGrid, type ReplayCursor, type ReplayFrame, type ReplayResize, type OutputFrame } from "@roost/terminal-protocol";
 import type { ScreenSnapshot } from "./screen";
 export type { ReplayCursor } from "@roost/terminal-protocol";
 
@@ -18,6 +18,14 @@ export class ReplayTooLargeError extends Error {
   constructor() { super("terminal replay exceeds transport byte limit"); }
 }
 type Chunk = { seq: number; data: string };
+/**
+ * 环里的一个几何切换点。`afterSeq` 是**改尺寸那一刻最后一个已产出的 chunk**——也就是说
+ * 它夹在 `afterSeq` 和 `afterSeq + 1` 之间：前者及更早是旧宽度产出的，后者起是新宽度的。
+ *
+ * 不给它自己的 seq：seq 是输出的序号，订阅者拿它去重和续传，凭空插一个空洞的序号会让
+ * 「收到的 seq 必须是上一个 +1」这条不变式失效（见 resume.ts 的 accept）。
+ */
+type SizeMark = { afterSeq: number; cols: number; rows: number };
 type Snapshot = Chunk & { cols?: number; rows?: number };
 type DiskState = {
   version: 1;
@@ -32,6 +40,14 @@ type ReplayState = {
   instanceId: string;
   seq: number;
   chunks: Chunk[];
+  /*
+    会话中途的每一次 resize，按 afterSeq 升序。
+
+    **只活在内存里，不落盘**：hydrate 会把整个环拍平成一个 `history` 字符串（快照＋所有
+    chunk 拼起来），拍平之后段落边界就不存在了，存下来的位置也没有东西可以指。跨守护进程
+    重启的那份历史本来就只有一个几何，这一笔不改那件事。
+  */
+  sizes: SizeMark[];
   bytes: number;
   // A cursor at floor can still receive every complete chunk after it.
   floor: number;
@@ -77,6 +93,41 @@ function leaveHistoricalModes(data: string) {
 
 function validSeq(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+/**
+ * 环被内存上限截掉一截之后，落在 floor 之前的标记只剩一个用处：说清楚**剩下的第一个
+ * chunk 是什么几何**。所以把它们压成一条，锚在 floor 上，其余丢掉。
+ */
+function pruneSizes(state: ReplayState) {
+  const live = state.sizes.filter((mark) => mark.afterSeq > state.floor);
+  if (live.length === state.sizes.length) return;
+  const stale = state.sizes.filter((mark) => mark.afterSeq <= state.floor).at(-1);
+  state.sizes = stale ? [{ ...stale, afterSeq: state.floor }, ...live] : live;
+}
+
+/**
+ * 把 chunk 拼成一条重放数据，同时算出每次几何切换落在哪个下标上。
+ *
+ * `fromSeq` 之前的标记不发：那段字节要么根本不在这一帧里，要么已经被快照重新渲染过——
+ * 快照是按当前几何序列化出来的，更早的尺寸变化都烘进去了。
+ */
+function stream(base: string, chunks: Chunk[], sizes: SizeMark[], fromSeq: number, tail: string) {
+  const marks = sizes.filter((mark) => mark.afterSeq >= fromSeq);
+  const resizes: ReplayResize[] = [];
+  let data = base;
+  let next = 0;
+  const marksBefore = (seq: number) => {
+    while (next < marks.length && marks[next].afterSeq < seq) {
+      const { cols, rows } = marks[next++];
+      // 同一个下标上的几次切换之间没有字节，后一次直接盖掉前一次。
+      if (resizes.at(-1)?.at === data.length) resizes[resizes.length - 1] = { at: data.length, cols, rows };
+      else resizes.push({ at: data.length, cols, rows });
+    }
+  };
+  for (const chunk of chunks) { marksBefore(chunk.seq); data += chunk.data; }
+  marksBefore(Number.MAX_SAFE_INTEGER);
+  return { data: data + tail, ...(resizes.length ? { resizes } : {}) };
 }
 
 function readDisk(value: string | null | undefined): DiskState | null {
@@ -157,7 +208,7 @@ export function createReplayStore(
     if (history) history = leaveHistoricalModes(history) + "\r\n\x1b[2m─── restored ───\x1b[0m\r\n";
     detached.delete(id);
     states.set(id, {
-      mouseModes: createMouseModes(), instanceId: randomUUID(), seq: 0, chunks: [], bytes: 0, floor: 0,
+      mouseModes: createMouseModes(), instanceId: randomUUID(), seq: 0, chunks: [], sizes: [], bytes: 0, floor: 0,
       history, historyTruncated, snapshot: null, dirty: Boolean(pending?.dirty),
     });
     if (pending?.dirty) scheduleFlush(id);
@@ -187,9 +238,27 @@ export function createReplayStore(
       // This chunk is only partially retained, so a cursor before it has a gap.
       state.floor = last.seq;
     }
+    pruneSizes(state);
     state.dirty = true;
     scheduleFlush(id);
     return { instanceId: state.instanceId, ...chunk };
+  }
+
+  /**
+   * 记下「从这里往后的字节是新几何产出的」。
+   *
+   * 调用点必须在 `pty.resize` **之前**，理由和发给活订阅者的那个 size 帧一样：标记的
+   * 全部意义就是它在流里的位置。
+   */
+  function appendSize(id: string, cols: number, rows: number) {
+    const state = states.get(id);
+    if (!state) return;
+    const last = state.sizes.at(-1);
+    // 尺寸没变就不是一次切换——中间有没有输出都一样。
+    if (last && last.cols === cols && last.rows === rows) return;
+    // 同一个流位置上连着改了几次：只有最后一次算数，前面那些没有字节夹在中间。
+    if (last?.afterSeq === state.seq) { last.cols = cols; last.rows = rows; return; }
+    state.sizes.push({ afterSeq: state.seq, cols, rows });
   }
 
   function setSnapshot(id: string, data: string, instanceId: string, seq: number): boolean {
@@ -237,7 +306,13 @@ export function createReplayStore(
     if (same && validSeq(cursor.seq) && cursor.seq >= state.floor && cursor.seq <= state.seq) {
       const catchup: ReplayPayload = {
         type: "catchup", instanceId: state.instanceId, seq: state.seq,
-        data: state.chunks.filter((chunk) => chunk.seq > cursor.seq).map((chunk) => chunk.data).join("") + state.mouseModes.restore(),
+        /*
+          断线期间改过尺寸时，这里最需要几何标记：客户端的网格停在断线那一刻，而这段
+          增量里有一半是新宽度产出的。今天它一个提示都收不到——活着时发的那个 size 帧
+          恰好是它没订阅的那段时间发出去的。
+        */
+        ...stream("", state.chunks.filter((chunk) => chunk.seq > cursor.seq), state.sizes, cursor.seq,
+          state.mouseModes.restore()),
         revived: false, truncated: false,
       };
       if (fits(catchup)) return catchup;
@@ -245,7 +320,9 @@ export function createReplayStore(
     const view = full(state, id);
     const frame: ReplayPayload = {
       type: "replay", instanceId: state.instanceId, seq: state.seq,
-      data: (view.snapshot?.data ?? view.history) + view.chunks.map((chunk) => chunk.data).join("") + state.mouseModes.restore(),
+      ...stream(view.snapshot?.data ?? view.history, view.chunks, state.sizes,
+        // 快照之后的才算切换；没有快照时（重放原始历史）从环还留着的地方算起。
+        view.snapshot ? view.snapshot.seq : state.floor, state.mouseModes.restore()),
       revived: Boolean(state.history), truncated: view.truncated || same,
       ...terminalGrid(view.snapshot),
     };
@@ -377,5 +454,5 @@ export function createReplayStore(
     }
   }
 
-  return { hydrate, getInstanceId, append, setSnapshot, resume, flush, flushAll, detach, drop, dispose };
+  return { hydrate, getInstanceId, append, appendSize, setSnapshot, resume, flush, flushAll, detach, drop, dispose };
 }

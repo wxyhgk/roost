@@ -236,8 +236,13 @@ export function createTerminalRuntime(options: TerminalRuntimeOptions) {
       在 Node 里这是白送的——`emit` 是同步的，output 也是在 PTY 数据回调里同步 emit 的，
       两者之间插不进别的东西。（tty7 为同一个性质付了一把状态锁，见
       research/tty7-lessons.md。）
+
+      **同一个位置要记两处**：活着的观众收上面这一帧，环里留一个标记给以后重连的人。
+      少了后者，断线期间发生的 resize 对重连者完全不存在——它拿到的增量有一半是新宽度
+      产出的，却还按断线那一刻的网格解析。
     */
     emit(id, { type: "size", cols, rows, instanceId: session.instanceId });
+    replay.appendSize(id, cols, rows);
     session.pty.resize(cols, rows);
     screen.resize(id, cols, rows);
   }

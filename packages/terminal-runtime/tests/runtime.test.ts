@@ -320,3 +320,19 @@ test("a session with no command still gets a plain login shell", () => {
     assert.deepEqual(spawnedArgs, ["-l"]);
   } finally { runtime.dispose(); }
 });
+
+test("resizeSession 把几何标记记进环，断线期间改的尺寸才补得上", () => {
+  const runtime = create();
+  try {
+    const view = runtime.ensureSession("geometry", tmpdir());
+    const pty = ptys.at(-1)!;
+    pty.output("AAA");
+    runtime.resizeSession("geometry", 100, 30);
+    pty.output("BBB");
+    // 从头续传：这段增量横跨一次 resize，客户端要知道在哪一刀上改网格。
+    const frame = runtime.resume("geometry", { instanceId: view.instanceId, seq: 0 })!;
+    assert.equal(frame.type, "catchup");
+    assert.equal(frame.data, "AAABBB");
+    assert.deepEqual(frame.resizes, [{ at: 3, cols: 100, rows: 30 }]);
+  } finally { runtime.dispose(); }
+});

@@ -31,10 +31,28 @@ export function terminalGrid(value: { cols?: unknown; rows?: unknown } | null | 
 }
 export type ResumeSnapshot = ReplayCursor & { data: string; cols?: number; rows?: number };
 export type OutputFrame = ResumeSnapshot & { type: "output" };
+/**
+ * 重放数据里的一个几何切换点：写到 `data[at]` **之前**先把网格改成 `cols`×`rows`。
+ *
+ * **是偏移不是副本。** 段落本来可以直接发成一串 `{cols,rows,data}`，但那样要么把 data
+ * 发两遍（老客户端还得读旧字段），要么加一轮能力协商。偏移只有几十个字节，老客户端
+ * 不认这个字段就按一整块写——正是这一笔之前的行为。
+ *
+ * 索引是 JS 字符串下标（UTF-16 码元）。两端都是 JS，中间是 JSON，数法一致。
+ */
+export type ReplayResize = TerminalGrid & { at: number };
 export type ReplayFrame = ResumeSnapshot & {
   type: "replay" | "catchup";
   revived: boolean;
   truncated: boolean;
+  /**
+   * 这段重放数据横跨过的几何变化，按 `at` 升序。
+   *
+   * 会话中途改过尺寸时，环里的旧字节是按**当时**的宽度产出的。整段按最终宽度重放，
+   * 等于把它们重新折行——TUI 的 cursor-up 重绘就落在半帧上。帧级的 `cols`/`rows`
+   * 是**起始**几何（快照那一份），这里是此后的每一次切换。
+   */
+  resizes?: ReplayResize[];
 };
 export type ServerMessage =
   /** `cols`/`rows` 是 PTY **现在**的尺寸——多个观众共用一个 PTY，客户端要靠它判断自己是否落后。 */

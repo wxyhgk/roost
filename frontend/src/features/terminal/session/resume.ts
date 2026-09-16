@@ -1,7 +1,7 @@
 import { terminalGrid, type TerminalGrid, MAX_SNAPSHOT_LENGTH, type ResumeSnapshot, type OutputFrame, type ReplayFrame } from "@roost/terminal-protocol";
 export { MAX_SNAPSHOT_LENGTH, type ResumeSnapshot } from "@roost/terminal-protocol";
 type Sink = { readonly cols?: number; readonly rows?: number; resize?(cols: number, rows: number): void; write(data: string, done: () => void): void; reset(): void; snapshot(maxLength?: number): string | null; setFrozen?(frozen: boolean): void; setReplaying?(replaying: boolean): void };
-export type ResumeFrame = OutputFrame | Pick<ReplayFrame, "type" | "instanceId" | "seq" | "data" | "cols" | "rows">;
+export type ResumeFrame = OutputFrame | Pick<ReplayFrame, "type" | "instanceId" | "seq" | "data" | "cols" | "rows" | "resizes">;
 
 /** All screen changes and captures share one queue; a cursor means parsed output. */
 export type ResumeOptions = {
@@ -75,6 +75,30 @@ export function createResume(sink: Sink, opts: ResumeOptions = {}) {
       finishWrites.add(done); sink.write(data, done);
     }
   });
+  /**
+   * 按守护进程标出的几何切换点分段写。
+   *
+   * 会话中途改过尺寸时，这一帧里的字节不是同一个宽度产出的。整段按最终宽度解析，等于把
+   * 旧宽度的输出重新折行——TUI 的 cursor-up 重绘就落在半帧上。守护进程给的是**下标**而不
+   * 是切好的段（省一份 data 的重量），所以切分在这边做。
+   *
+   * 没有 `resizes` 就是一整块，也就是老守护进程和「全程没改过尺寸」的情形。
+   *
+   * 下标做了钳制：帧是外部输入，越界或乱序不该把重放卡死——最坏退化成少切一刀。
+   */
+  async function writeSpanning(frame: ResumeFrame) {
+    const resizes = "resizes" in frame ? frame.resizes : undefined;
+    if (!resizes?.length) { await write(frame.data); return; }
+    let cursor = 0;
+    for (const { at, cols, rows } of resizes) {
+      const end = Math.min(Math.max(at, cursor), frame.data.length);
+      if (end > cursor) await write(frame.data.slice(cursor, end));
+      if (disposed) return;
+      sink.resize?.(cols, rows);
+      cursor = end;
+    }
+    await write(frame.data.slice(cursor));
+  }
   function capture(): ResumeSnapshot | null {
     if (disposed || !valid || !instanceId) return null;
     const data = sink.snapshot(MAX_SNAPSHOT_LENGTH);
@@ -165,7 +189,7 @@ export function createResume(sink: Sink, opts: ResumeOptions = {}) {
         if (needsFreeze) freeze();
         sink.setReplaying?.(true);
         try {
-          await write(frame.data);
+          await writeSpanning(frame);
         } finally {
           if (!disposed) { sink.setReplaying?.(false); if (needsFreeze) unfreeze(); }
         }
