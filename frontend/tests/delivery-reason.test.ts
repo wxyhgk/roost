@@ -20,7 +20,7 @@ test("后端会吐出的原因都有人话，不把内部标识漏给用户", ()
     "recipient_offline", "identity_unconfirmed", "screen_unavailable", "screen_unknown",
     "terminal_input", "command_pending", "message_not_submittable", "conversation_trashed",
     "lifecycle_unavailable", "transcript_unavailable", "transport_unavailable",
-    "foreground_not_cli", "foreground_unknown",
+    "foreground_not_cli", "foreground_unknown", "awaiting_user_submit",
     "terminal_draft", "busy", "dialog"];
   for (const reason of reasons) {
     const text = queuedText(reason);

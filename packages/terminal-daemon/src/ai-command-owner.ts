@@ -6,6 +6,7 @@ import type {TerminalRuntime,TerminalSession,TerminalEvent} from '@roost/termina
 import {foregroundCli,processTable} from '@roost/terminal-runtime';
 
 import {createClaudeScreen,type ClaudeScreen} from './claude-screen.ts';
+import {composerHoldsPrompt} from './claude-composer-owner.ts';
 import {writeQwenCommand} from './qwen-launch.ts';
 
 // These exact replies contain no composer text. Never trust a caller's tag alone.
@@ -89,13 +90,28 @@ const CLAUDE_VERIFIED_SUBMIT=new Set(['2.1.266']);
   if(s.screen.inspect().state==='dialog')return 'dialog';
   if(s.working)return 'busy';
   if(now()-s.lastInput<300)return 'terminal_input';
-  const screen=s.screen.inspect();return screen.settled&&screen.state==='empty'?null:screen.state;
+  const view=s.screen.inspect();
+  if(view.settled&&view.state==='empty')return null;
+  return view.state;
  }
  function control(id:string):AiControl {
   const why=reason(id),s=states.get(id),cli=runtime.getSession(id)?.cli;
-  const unresolved=store.aiCommands.active(id).some(c=>c.status==='uncertain'&&s&&matches(c,s));
+  const stuck=store.aiCommands.active(id).filter(c=>c.status==='uncertain'&&s&&matches(c,s));
+  /*
+    P2 留下的那一条要说得准，而不是笼统一句「有条命令不确定」。
+
+    「已经放进输入框，按回车发出」只有在**正文确实还在那儿**时才是真话。所以要拿输入框
+    内容核一遍——多行粘贴会被 claude 折叠成 `[Pasted text #1 +4 lines]`，所以核的是
+    `composerHoldsPrompt` 而不是字符串相等（实测 2.1.273，见 claude-composer-owner.ts）。
+
+    核不上就退回笼统那句：用户可能清了输入框、可能已经按过回车而回执还没到。
+    **这两者分不开**——按回车之后输入框同样会空，而转录证据可能滞后。所以这里只做
+    「还在不在」这一个判断，不去猜它去哪了。
+  */
+  const waiting=s&&stuck.some(c=>c.reason==='awaiting_user_submit'&&composerHoldsPrompt(s.screen.inspect().composer,c.text));
+  const unresolved=stuck.length>0;
   const transport=!!s&&s.cli===cli&&(cli==='claude'?!!s.version:cli==='qwen'&&s.version==='0.23.1'&&s.protocolVersion===2&&s.lifecycleSupported&&!!s.inputPath&&!!binding(id)?.transcriptPath);
-  return {supported:sendingEnabled&&configured(cli)&&transport,reason:unresolved?'acceptance_uncertain':why,inputEpoch:s?.epoch??0,queue:store.aiCommands.active(id)};
+  return {supported:sendingEnabled&&configured(cli)&&transport,reason:waiting?'awaiting_user_submit':unresolved?'acceptance_uncertain':why,inputEpoch:s?.epoch??0,queue:store.aiCommands.active(id)};
  }
  async function acceptFromTranscript(c:AiCommand,s:State) {
   if(c.hookSeq===null)return;

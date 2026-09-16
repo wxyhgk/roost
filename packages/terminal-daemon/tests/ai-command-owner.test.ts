@@ -158,3 +158,53 @@ test('前台换回 CLI 之后照常写入 —— 这道闸不是单向的',async
  f.setForeground('claude');await f.owner.pump('s');
  assert.deepEqual(f.writes,['\x1b[200~hello\x1b[201~\r']);
 });
+
+/*
+  P2 留在输入框里的是**我们自己的**正文。下一条消息被挡住时，提示不能去怪用户。
+*/
+test('P2 留下的那条要说准，不是笼统一句「不确定」',async t=>{
+ const f=await fixture(t);
+ f.owner.hook('s',{event:'SessionStart',sessionId:'native',version:'2.1.999'},2); // 未验证 → P2
+ await f.display();
+ f.owner.enqueue('s',f.input('r','看看当前的项目'));
+ await f.owner.pump('s');
+ assert.equal(f.store.aiCommands.get('s','r')?.reason,'awaiting_user_submit');
+ // 画面上正文现在留在输入框里。界面问「为什么现在发不出去」时：
+ await f.display('看看当前的项目');
+ assert.equal(f.owner.control('s').reason,'awaiting_user_submit','要说准：正文还在输入框里等你按回车');
+});
+
+test('多行消息被折叠成标记时同样认得出',async t=>{
+ // 实测 2.1.273：粘 5 行显示成 [Pasted text #1 +4 lines]，画面上看不到原文。
+ const f=await fixture(t);
+ f.owner.hook('s',{event:'SessionStart',sessionId:'native',version:'2.1.999'},2);
+ await f.display();
+ f.owner.enqueue('s',f.input('r','a\nb\nc\nd\ne'));
+ await f.owner.pump('s');
+ await f.display('[Pasted text #1 +4 lines]');
+ assert.equal(f.owner.control('s').reason,'awaiting_user_submit');
+});
+
+test('用户自己打的字仍然算用户的草稿',async t=>{
+ // 反过来这一格必须保守：没有待定的自家消息时，一律按用户草稿处理。
+ const f=await fixture(t);
+ await f.display('用户自己在打字');
+ f.owner.enqueue('s',f.input());
+ await f.owner.pump('s');
+ assert.equal(f.store.aiCommands.get('s','r')?.reason,'terminal_draft');
+ assert.deepEqual(f.writes,[]);
+});
+
+test('正文已经不在输入框里时，不再说「按回车」',async t=>{
+ // 用户清了输入框、或者已经按过回车而回执还没到 —— 这两者分不开（按回车之后输入框
+ // 同样会空）。所以只判断「还在不在」，不猜它去哪了，退回笼统那句。
+ const f=await fixture(t);
+ f.owner.hook('s',{event:'SessionStart',sessionId:'native',version:'2.1.999'},2);
+ await f.display();
+ f.owner.enqueue('s',f.input('r','看看当前的项目'));
+ await f.owner.pump('s');
+ await f.display('看看当前的项目');
+ assert.equal(f.owner.control('s').reason,'awaiting_user_submit');
+ await f.display('');   // 输入框空了
+ assert.equal(f.owner.control('s').reason,'acceptance_uncertain','不能再声称它在等你按回车');
+});
