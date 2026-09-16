@@ -30,15 +30,22 @@ export function TopBar({
   const session = sessions.find((s) => s.id === selectedId) ?? null;
   const project = projects.find((p) => p.id === session?.projectId) ?? null;
 
+  /*
+    按钮 36px、图标 20px——和左右两条图标栏对齐。
+
+    顶栏和那两条竖栏是同一层外壳（都吃 `bg-bar`），原来却是 32px 按钮配 16px 图标，
+    而竖栏是 36 配 20。同一个表面上两套尺寸，交界处（左上角那个折叠按钮紧挨着左栏第一个
+    图标）差 4px 一眼能看出来。
+  */
   return (
     <header className="bar-chrome flex h-10 shrink-0 items-center gap-2 bg-bar px-2.5">
       <IconButton
         inverse
-        className="h-8 w-8"
+        className="h-9 w-9"
         title={leftCollapsed ? t.topBar.expandSessions : t.topBar.collapseSessions}
         onClick={onToggleLeft}
       >
-        <ChevronLeftIcon className={`size-4 transition-transform ${leftCollapsed ? "rotate-180" : ""}`} />
+        <ChevronLeftIcon className={`size-5 transition-transform ${leftCollapsed ? "rotate-180" : ""}`} />
       </IconButton>
       <nav className="flex min-w-0 items-center gap-1.5 text-body" aria-label={t.topBar.breadcrumb}>
         {project && (
@@ -62,19 +69,19 @@ export function TopBar({
         <NewMenu scope={scope} />
         <IconButton
           inverse
-          className="h-8 w-8"
+          className="h-9 w-9"
           title={theme === "dark" ? t.topBar.toLightTheme : t.topBar.toDarkTheme}
           onClick={toggleTheme}
         >
-          {theme === "dark" ? <SunIcon className="size-4" /> : <MoonIcon className="size-4" />}
+          {theme === "dark" ? <SunIcon className="size-5" /> : <MoonIcon className="size-5" />}
         </IconButton>
         <IconButton
           inverse
-          className="h-8 w-8"
+          className="h-9 w-9"
           title={rightCollapsed ? t.topBar.expandRight : t.topBar.collapseRight}
           onClick={onToggleRight}
         >
-          <ChevronRightIcon className={`size-4 transition-transform ${rightCollapsed ? "rotate-180" : ""}`} />
+          <ChevronRightIcon className={`size-5 transition-transform ${rightCollapsed ? "rotate-180" : ""}`} />
         </IconButton>
       </div>
     </header>

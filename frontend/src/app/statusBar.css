@@ -1,24 +1,39 @@
+/*
+  底色跟外壳走（`--color-bar`），不跟内容面板走。
+
+  状态栏和顶栏、两条图标栏是同一层东西——应用的外框。原来它用 `--color-bg-panel`，
+  和右栏内容一个颜色，于是整条栏看起来像贴在底下的一块内容，而不是框的一条边。
+*/
 .status-bar {
   display: flex; height: 30px; flex-shrink: 0; align-items: center; gap: 8px; padding: 0 10px;
-  background: var(--color-bg-panel); border-top: 1px solid var(--color-border); color: var(--color-text-dim);
+  background: var(--color-bar); color: var(--color-bar-dim);
   font-size: 11px; font-variant-numeric: tabular-nums;
 }
+.status-bar .status-button:hover { background: var(--color-bar-hover); color: var(--color-bar-text); }
 .status-button { display: flex; height: 26px; flex-shrink: 0; align-items: center; gap: 5px; border-radius: 4px; padding: 0 6px; white-space: nowrap; }
-.status-button:hover { background: var(--color-bg-hover); color: var(--color-text); }
+
+/*
+  `flex: 1` 是有意的：左边是「这台机器是谁」，右边是读数，中间那段空白就是这条分界。
+  （我一度把它当成死空白改掉过，那是误诊——而且改完之后监控面板打开、资源组不渲染时，
+  就没有任何东西把额度推到右边了。）
+
+  真正的毛病在**固定宽度**：`width` 让数字变短时格子内部留白、变长时被截断。
+  改成 `min-width`，短了收拢、长了自己撑开。
+*/
 .status-connection { min-width: 0; flex: 1; display: flex; align-items: center; gap: 8px; }
 .status-host { min-width: 0; max-width: 160px; flex-shrink: 1; }
-.status-cpu { width: 72px; }
-.status-memory { width: 132px; }
-.status-rate { width: 90px; }
-.status-latency { display: flex; width: 80px; flex-shrink: 0; align-items: center; gap: 4px; }
+.status-cpu { min-width: 56px; }
+.status-memory { min-width: 104px; }
+.status-rate { min-width: 74px; }
+.status-latency { display: flex; min-width: 62px; flex-shrink: 0; align-items: center; gap: 4px; }
 .status-resources { display: flex; align-items: center; gap: 2px; }
-.status-subscription { display: flex; flex-shrink: 0; border-left: 1px solid var(--color-border); padding-left: 5px; }
+.status-subscription { display: flex; flex-shrink: 0; border-left: 1px solid var(--color-bar-line); padding-left: 5px; margin-left: 5px; }
 @media (max-width: 900px) { .status-rate { display: none; } }
 @media (max-width: 640px) {
   .status-bar { gap: 3px; padding-inline: 4px; }
-  .status-memory { width: 72px; } .status-memory-total { display: none; }
-  .status-cpu { width: 62px; } .status-host { max-width: 80px; }
-  .status-latency { width: 60px; } .status-latency svg { display: none; }
+  .status-memory { min-width: 62px; } .status-memory-total { display: none; }
+  .status-cpu { min-width: 50px; } .status-host { max-width: 80px; }
+  .status-latency { min-width: 48px; } .status-latency svg { display: none; }
 }
 @media (max-width: 400px) { .status-host { max-width: 42px; } .status-connection { gap: 2px; } }
 @media (pointer: coarse) { .status-bar { height: 40px; } .status-button { height: 36px; } .subscription-popover { bottom: 50px; } }

@@ -13,12 +13,13 @@ export function NewMenu({ scope }: { scope: Scope }) {
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
         <button
-          className="grid h-8 w-8 place-items-center rounded-md text-bar-dim transition-colors hover:bg-bar-text/10 hover:text-bar-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-bar-text"
+          // 36px/20px：和顶栏其余按钮、以及左右两条图标栏对齐。它就挨着它们。
+          className="grid h-9 w-9 place-items-center rounded-md text-bar-dim transition-colors hover:bg-bar-text/10 hover:text-bar-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-bar-text"
           title={t.newMenu.trigger}
           type="button"
           aria-label={t.newMenu.trigger}
         >
-          <PlusIcon className="size-4 shrink-0" />
+          <PlusIcon className="size-5 shrink-0" />
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>

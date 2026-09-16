@@ -69,6 +69,10 @@
   --color-bar: #1c1c1e;
   --color-bar-text: #ffffff;
   --color-bar-dim: rgba(255, 255, 255, 0.6);
+  /* 外壳上的悬停底与分隔线。和 --color-bar-dim 一样按主题写死字面值——
+     仓库里所有半透明都是这么定的，不用相对颜色语法。 */
+  --color-bar-hover: rgba(255, 255, 255, 0.1);
+  --color-bar-line: rgba(255, 255, 255, 0.15);
   --color-danger: #ff453a;
   --color-success: #30d158;
   --color-warning: #ffd60a;
@@ -114,6 +118,8 @@ html[data-theme="light"] {
   --color-bar: #e7e7eb;
   --color-bar-text: #1c1c1e;
   --color-bar-dim: rgba(28, 28, 30, 0.62);
+  --color-bar-hover: rgba(28, 28, 30, 0.08);
+  --color-bar-line: rgba(28, 28, 30, 0.14);
   --color-bg: #f4f4f6;
   --color-bg-panel: #ffffff;
   --color-bg-raised: #ffffff;
