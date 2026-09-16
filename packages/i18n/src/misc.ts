@@ -271,6 +271,14 @@ export const misc = {
           identityUnconfirmed: "还没确认这个终端在哪条对话里",
           screenUnavailable: "还没看到终端的画面",
           screenUnknown: "认不出终端现在的画面，不敢往里写",
+          /**
+           * 前台归属：写进去的字节会被谁收到。CLI 起了 vim（`git commit`）或 less 时，
+           * 键盘归那个程序——而 vim 的 normal mode 下正文本身就是命令，所以这一格必须
+           * 一个字节都不写。
+           */
+          foregroundNotCli: "终端里现在是别的程序在前台",
+          foregroundNotCliHint: "CLI 可能开了编辑器或分页器（比如 git commit 打开的 vim）。等它回到 CLI，这条会自己发出去。",
+          foregroundUnknown: "判断不了终端前台是什么，先不写",
           terminalInput: "你刚在终端里敲过字，稍等一下",
           commandPending: "前面还有一条在写，排队等待",
           notSubmittable: "这条消息没法提交给 CLI",

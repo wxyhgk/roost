@@ -26,10 +26,12 @@ function build() {
     identity_unconfirmed: r.identityUnconfirmed, screen_unavailable: r.screenUnavailable,
     screen_unknown: r.screenUnknown, terminal_input: r.terminalInput, command_pending: r.commandPending,
     message_not_submittable: r.notSubmittable, conversation_trashed: r.conversationTrashed,
+    foreground_not_cli: r.foregroundNotCli, foreground_unknown: r.foregroundUnknown,
     lifecycle_unavailable: r.lifecycleUnavailable, transcript_unavailable: r.transcriptUnavailable,
     transport_unavailable: r.transportUnavailable,
   });
-  Object.assign(HINT, { disabled: r.disabledHint, unsupported_version: r.unsupportedVersionHint });
+  Object.assign(HINT, { disabled: r.disabledHint, unsupported_version: r.unsupportedVersionHint,
+    foreground_not_cli: r.foregroundNotCliHint });
 }
 
 /** 这条排队消息现在卡在什么上。`reason` 为 null 或 `pending` 都表示「正常排队」。 */

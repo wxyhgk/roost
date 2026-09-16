@@ -38,6 +38,9 @@ async function fixture(t: TestContext) {
       writes.push(text.slice('\x1b[200~'.length, -'\x1b[201~\r'.length));
     } };
   const commands = createAiCommandOwner({ store: ownerStore, runtime, ownerId: 'resilience-owner', enabled: true,
+    // 前台归属注入：真实现要跑 ps 判断「这条 PTY 的前台是谁」，而这里的 pid 是假的，
+    // 会被判成「判断不了」从而拒绝一切写入。这条链路测的不是那道闸，直接喂真值。
+    foreground: async () => 'claude',
     recoverOnCreate: false, changed: () => {}, acceptanceMs: 60_000, now: () => 1000 });
   commands.ensure(live);
   let hookSeq = 1, outputSeq = 0;

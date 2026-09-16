@@ -3,6 +3,8 @@ import {open,stat} from 'node:fs/promises';
 import {AiCommandError,validateAiCommandInput,type AiCommand,type AiCommandInput,type AiControl} from '@roost/terminal-protocol';
 import type {WorkspaceStore} from '@roost/workspace-store';
 import type {TerminalRuntime,TerminalSession,TerminalEvent} from '@roost/terminal-runtime';
+import {foregroundCli,processTable} from '@roost/terminal-runtime';
+
 import {createClaudeScreen,type ClaudeScreen} from './claude-screen.ts';
 import {writeQwenCommand} from './qwen-launch.ts';
 
@@ -15,8 +17,18 @@ const key=(c:AiCommand)=>c.webSessionId+"\0"+c.requestId;
 const fileIdentity=(s:{dev:number;ino:number})=>`${s.dev}:${s.ino}`;
 
 /** One owner arbitrates all writes; gateways never run another executor. */
-export function createAiCommandOwner(options:{store:WorkspaceStore;runtime:TerminalRuntime;enabled:boolean;qwenEnabled?:boolean;ownerId?:string;recoverOnCreate?:boolean;changed:(command:AiCommand)=>void;acceptanceMs?:number;now?:()=>number}) {
+export function createAiCommandOwner(options:{store:WorkspaceStore;runtime:TerminalRuntime;enabled:boolean;qwenEnabled?:boolean;ownerId?:string;recoverOnCreate?:boolean;changed:(command:AiCommand)=>void;acceptanceMs?:number;now?:()=>number;
+ /**
+  * 「此刻这条 PTY 的前台是哪个 CLI」。注入是为了可测——真实现要跑 `ps`，而测试里的 pid
+  * 是假的。三态：CLI 名 / `null`（确定不是 CLI）/ `undefined`（判断不了，调用方必须不写）。
+  */
+ foreground?:(webSessionId:string)=>Promise<string|null|undefined>}) {
  const {store,runtime,enabled}=options,now=options.now??Date.now;
+ const readForeground=options.foreground??(async(id:string)=>{
+  const pid=runtime.getSession(id)?.pid;
+  if(!Number.isInteger(pid)||pid!<=0)return undefined;
+  return foregroundCli(pid!,await processTable());
+ });
  const configured=(cli:string|null|undefined)=>cli==='claude'?enabled:cli==='qwen'?options.qwenEnabled===true:false;
  const anyConfigured=enabled||options.qwenEnabled===true;
  let sendingEnabled=anyConfigured;
@@ -137,6 +149,32 @@ const CLAUDE_VERIFIED_SUBMIT=new Set(['2.1.266']);
    if(!b?.transcriptPath){if(c.reason!=='transcript_unavailable')update(c,{reason:'transcript_unavailable'});return;}
    let offset=0,identity:string|null=null;
    try{const info=await stat(b.transcriptPath);if(!info.isFile())return;offset=info.size;identity=fileIdentity(info);}catch(e){if((e as NodeJS.ErrnoException).code!=='ENOENT')return;}
+   /*
+     前台归属闸：**我们写进去的字节到底会被谁收到。**
+
+     只管往 PTY 写字节这条路（claude）。qwen 写的是它自己的输入文件，前台是谁与它无关。
+
+     为什么必须有这道闸：`live.cli` 来自 `cliForPid`，那是在**整棵进程子树里**找 CLI、
+     找到就返回——claude 起了 `vim`（`git commit`）或 `less` 时它仍然回答「claude」，
+     可那些字节会进 vim。而 vim 的 normal mode 下正文本身就是一串命令，**危险全在正文里，
+     不在回车里**，所以 P2 那道「不按回车」对这种情况一点用都没有。
+
+     在此之前唯一挡住它的是认 TUI 长相的屏幕正则——从像素去猜内核已经知道的答案。
+
+     **读不到就不写**（`undefined`）：Windows 没有这个概念、进程不在表里、tpgid 无效，
+     都归这一类。宁可发不出去，不可发到错的地方。
+
+     位置刻意排在 stat 之后、无 await 窗口之前：这是最后一次异步读，之后到真正写入之间
+     只剩同步代码。残留窗口消不掉（PTY 是单向字节流），但压到了最小。
+   */
+   if(s.cli!=='qwen'){
+    const fg=await readForeground(id);
+    if(fg!==s.cli){
+     const why=fg===undefined?'foreground_unknown':'foreground_not_cli';
+     if(c.reason!==why)update(c,{reason:why});
+     return;
+    }
+   }
    // No awaits between final observation, durable writing boundary and native write.
    if(disposed||states.get(id)!==s||s.epoch!==epoch||(s.cli==='claude'&&s.screen.inspect().version!==screen.version)||reason(id)||!matches(c,s))return;
    if(!peerWriteAllowed(c)){update(c,{status:'cancelled',reason:'peer_target_changed'});return;}

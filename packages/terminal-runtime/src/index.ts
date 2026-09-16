@@ -284,6 +284,12 @@ export function createTerminalRuntime(options: TerminalRuntimeOptions) {
   };
 }
 
+/**
+ * 前台归属判断对外开放：daemon 的写入闸要用它回答「这些字节会被谁收到」。
+ * 三态语义（尤其 `undefined` 必须当成「不写」）见 processes.ts 里那个函数的注释。
+ */
+export { foregroundCli, processTable } from "./processes";
+
 export type TerminalRuntime = ReturnType<typeof createTerminalRuntime>;
 
 /** A daemon-verified observation; callers must still pin the terminal instance on use. */

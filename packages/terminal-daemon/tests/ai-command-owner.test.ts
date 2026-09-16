@@ -12,14 +12,18 @@ async function fixture(t:any,enabled=true,version:string|null='2.1.266'){
  const live={id:'s',instanceId:'i',cli:'claude',cwd:dir,pid:1};const writes:string[]=[];
  const runtime={getSession:()=>live,writeSession:(_id:string,data:string)=>{writes.push(data);}} as unknown as TerminalRuntime;
  let time=1000,seq=0;
- const owner=createAiCommandOwner({store,runtime,enabled,changed:()=>{},now:()=>time,acceptanceMs:100});owner.ensure(live);
+ // 前台归属注入：测试里的 pid 是假的，真实现会跑 ps 并判成「判断不了」从而拒绝一切写入。
+ // 默认让前台就是这个 CLI；要测那道闸时把它改掉。
+ let foreground:string|null|undefined='claude';
+ const owner=createAiCommandOwner({store,runtime,enabled,changed:()=>{},now:()=>time,acceptanceMs:100,
+  foreground:async()=>foreground});owner.ensure(live);
  // version 为 undefined 时不喂：hook 里是 `event.version ?? s.version`，喂了就清不掉。
  owner.hook('s',{event:'SessionStart',sessionId:'native',...(version===null?{}:{version})},1);
  async function display(draft=''){owner.output('s',{type:'output',instanceId:'i',seq:++seq,data:screen(draft)});await new Promise(r=>setTimeout(r,15));}
  await display();
  const input=(id='r',text='hello')=>({requestId:id,type:'submit' as const,terminalInstanceId:'i',generation:binding.generation,nativeSessionId:'native',text});
  t.after(async()=>{owner.dispose();store.close();await rm(dir,{recursive:true,force:true});});
- return {owner,store,path,writes,input,display,advance:()=>{time+=200;},bridge};
+ return {owner,store,path,writes,input,display,advance:()=>{time+=200;},bridge,setForeground(v:string|null|undefined){foreground=v;}};
 }
 test('FIFO waits for TUI draft/working; one write is not accepted until a correlated hook and native user record',async t=>{
  const f=await fixture(t);f.owner.enqueue('s',f.input());f.owner.enqueue('s',f.input('r2'));
@@ -116,4 +120,41 @@ test('探不到版本仍然整个拒绝',async t=>{
  // 前者我们对这个终端一无所知，后者只是不敢替用户按最后那一下。
  const f=await fixture(t,true,null);
  assert.throws(()=>f.owner.enqueue('s',f.input()),/control_unavailable/);
+});
+
+/*
+  前台归属闸：我们写进 PTY 的字节会被谁收到。
+
+  `live.cli` 来自 cliForPid——在整棵子树里找 CLI、找到就返回。claude 起了 vim（`git commit`）
+  或 less 时它仍然回答「claude」，可那些字节会进 vim。而 vim 的 normal mode 下正文本身就是
+  一串命令，**危险全在正文里，不在回车里**——P2 那道「不按回车」对这种情况一点用都没有。
+
+  在此之前唯一挡住它的是认 TUI 长相的屏幕正则，那是从像素去猜内核已经知道的答案。
+*/
+test('前台不是这个 CLI 时，一个字节都不写',async t=>{
+ const f=await fixture(t);
+ f.setForeground(null);            // 前台确定不是 CLI（vim / less / 裸 shell）
+ f.owner.enqueue('s',f.input());
+ await f.owner.pump('s');
+ assert.deepEqual(f.writes,[],'正文也不能写：vim 里正文本身就是命令');
+ assert.equal(f.store.aiCommands.get('s','r')?.reason,'foreground_not_cli');
+});
+
+test('判断不了前台时也不写 —— 读不到就不写',async t=>{
+ // Windows 没有这个概念、进程不在表里、tpgid 无效都归这一类。
+ // 宁可发不出去，不可发到错的地方。
+ const f=await fixture(t);
+ f.setForeground(undefined);
+ f.owner.enqueue('s',f.input());
+ await f.owner.pump('s');
+ assert.deepEqual(f.writes,[]);
+ assert.equal(f.store.aiCommands.get('s','r')?.reason,'foreground_unknown');
+});
+
+test('前台换回 CLI 之后照常写入 —— 这道闸不是单向的',async t=>{
+ const f=await fixture(t);
+ f.setForeground(null);f.owner.enqueue('s',f.input());await f.owner.pump('s');
+ assert.deepEqual(f.writes,[]);
+ f.setForeground('claude');await f.owner.pump('s');
+ assert.deepEqual(f.writes,['\x1b[200~hello\x1b[201~\r']);
 });
