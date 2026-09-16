@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises';
 import { extname, normalize, sep } from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { proxyUpgrade } from './ws-upgrade.mjs';
 
 const BACKEND_HOST = process.env.BACKEND_HOST ?? '127.0.0.1';
 const BACKEND_PORT = Number(process.env.BACKEND_PORT ?? process.env.PORT ?? 8787);
@@ -101,39 +102,14 @@ const server = createServer((req, res) => {
   void serveStatic(req, res);
 });
 
-// WS upgrade 只接 /api 前缀，原样透传 upgrade 握手
+// WS upgrade 只接 /api 前缀，握手原样透传（实现和理由见 ws-upgrade.mjs）
 server.on('upgrade', (req, socket, head) => {
   const pathname = new URL(req.url, 'http://localhost').pathname;
   if (pathname !== '/api' && !pathname.startsWith('/api/')) {
     socket.destroy();
     return;
   }
-  const headers = { ...req.headers, host: `${BACKEND_HOST}:${BACKEND_PORT}`, connection: 'Upgrade' };
-  const upstream = httpRequest({
-    host: BACKEND_HOST, port: BACKEND_PORT, path: req.url, method: 'GET', headers,
-  });
-  upstream.on('error', () => socket.destroy());
-  // 后端拒绝握手（403/404/503）时直接断开，不让浏览器空等超时
-  upstream.on('response', (ures) => {
-    ures.resume();
-    socket.end(`HTTP/1.1 ${ures.statusCode ?? 502} ${ures.statusMessage ?? 'rejected'}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
-    socket.destroy();
-  });
-  upstream.on('upgrade', (ures, usock, uhead) => {
-    const fail = () => { usock.destroy(); socket.destroy(); };
-    usock.on('error', fail);
-    socket.on('error', fail);
-    const lines = ['HTTP/1.1 101 Switching Protocols'];
-    if (ures.headers.upgrade) lines.push(`Upgrade: ${ures.headers.upgrade}`);
-    if (ures.headers.connection) lines.push(`Connection: ${ures.headers.connection}`);
-    if (ures.headers['sec-websocket-accept']) lines.push(`Sec-WebSocket-Accept: ${ures.headers['sec-websocket-accept']}`);
-    socket.write(lines.join('\r\n') + '\r\n\r\n');
-    if (head?.length) usock.write(head);
-    if (uhead?.length) socket.write(uhead);
-    usock.pipe(socket);
-    socket.pipe(usock);
-  });
-  upstream.end();
+  proxyUpgrade(req, socket, head, { host: BACKEND_HOST, port: BACKEND_PORT });
 });
 
 // 先起 backend，它的日志直接透出，方便查看。
