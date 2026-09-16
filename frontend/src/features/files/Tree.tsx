@@ -167,7 +167,8 @@ export function Tree({
 
   return (
     <>
-      {viewer.linkError && <div role="alert" className="shrink-0 break-words border-b border-border p-3 text-xs text-danger">{viewer.linkError}<button type="button" className="ml-2 underline" onClick={viewer.dismissLinkError}>{t.files.preview.close}</button></div>}
+      {/* 下面那条 error 也是「一句话 + 重试按钮」的报错条，它是 text-body；这条原来 12px。 */}
+      {viewer.linkError && <div role="alert" className="shrink-0 break-words border-b border-border p-3 text-body text-danger">{viewer.linkError}<button type="button" className="ml-2 underline" onClick={viewer.dismissLinkError}>{t.files.preview.close}</button></div>}
       <div
         className="min-h-0 flex-1 overflow-auto"
         onContextMenu={(e) => {

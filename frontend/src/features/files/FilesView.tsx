@@ -117,10 +117,12 @@ function SessionFiles({ session }: { session: Session }) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {/* 这一排、下面的面包屑、再下面的筛选框是三条叠在一起的工具栏，都是控件。
+          前两条原来 12px、筛选框 13px，统一到 text-body。 */}
       <div role="group" aria-label={t.files.browser.modeLabel} className="flex shrink-0 gap-1 border-b border-border px-2.5 py-1">
         {([{ mode: "tree", label: t.files.browser.tree, Icon: QueueListIcon }, { mode: "list", label: t.files.browser.list, Icon: ListBulletIcon }] as const).map(({ mode, label, Icon }) => (
           <button key={mode} type="button" aria-pressed={location.mode === mode} onClick={() => changeMode(mode)}
-            className={`flex items-center gap-1 rounded px-2 py-1 text-xs focus-visible:outline-2 ${location.mode === mode ? "bg-bg-active text-text" : "text-text-dim hover:bg-bg-hover"}`}>
+            className={`flex items-center gap-1 rounded px-2 py-1 text-body focus-visible:outline-2 ${location.mode === mode ? "bg-bg-active text-text" : "text-text-dim hover:bg-bg-hover"}`}>
             <Icon className="size-3.5" />{label}
           </button>
         ))}
@@ -132,7 +134,7 @@ function SessionFiles({ session }: { session: Session }) {
             className="grid size-6 shrink-0 place-items-center rounded text-text-dim hover:bg-bg-hover disabled:opacity-30">
             <ArrowUpIcon className="size-4" />
           </button>
-          <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto text-xs">
+          <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto text-body">
             {[{ name: session.cwd.replaceAll('\\', '/').split("/").filter(Boolean).at(-1) || "/", path: "" },
               ...directory.split("/").filter(Boolean).map((name, i, parts) => ({ name, path: parts.slice(0, i + 1).join("/") }))].map((crumb, i) => (
               <span key={crumb.path} className="flex shrink-0 items-center gap-1">

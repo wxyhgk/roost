@@ -74,6 +74,8 @@ export function TerminalSearchBar({ search }: { search: TerminalSearch }) {
   const { query, notFound, inputRef, run, close, setQuery } = search;
   return (
     <div className="flex shrink-0 items-center gap-1.5 border-b border-border px-2.5 py-1.5">
+      {/* 字号跟笔记/文件/对话那几个搜索框一致：这是要打字的控件，走 text-body；
+          旁边的「未找到」和箭头是状态字，留在 text-caption。 */}
       <input
         ref={inputRef}
         value={query}
@@ -88,7 +90,7 @@ export function TerminalSearchBar({ search }: { search: TerminalSearch }) {
         }}
         placeholder={t.terminal.pane.searchPlaceholder}
         spellCheck={false}
-        className="h-7 min-w-0 flex-1 rounded-md border border-border bg-bg px-2 font-mono text-xs text-text outline-none placeholder:text-text-dim/60 focus:border-accent"
+        className="h-7 min-w-0 flex-1 rounded-md border border-border bg-bg px-2 font-mono text-body text-text outline-none placeholder:text-text-dim/60 focus:border-accent"
       />
       {notFound && query && <span className="shrink-0 text-caption text-text-dim">{t.terminal.pane.notFound}</span>}
       <button

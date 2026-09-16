@@ -26,7 +26,8 @@ export function ConversationCatalog({ onClose }: { onClose: () => void }) {
       <div ref={dialog} tabIndex={-1} role="dialog" aria-modal="true" aria-label={t.misc.conversations.catalogTitle}
         className="flex h-[80dvh] w-[min(720px,94vw)] flex-col overflow-hidden rounded-xl border border-border bg-bg-panel shadow-modal outline-none">
         <header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
-          <h2 className="flex-1 text-body font-medium text-text">{t.misc.conversations.catalogTitle}</h2>
+          {/* 对话框标题走 text-title，和设置/资料库/服务器监控一致（见 index.css 的字号体系）。 */}
+          <h2 className="flex-1 text-title font-semibold text-text">{t.misc.conversations.catalogTitle}</h2>
           <IconButton title={t.misc.conversations.close} onClick={onClose}><IconClose /></IconButton>
         </header>
         <div className="flex min-h-0 flex-1 flex-col"><ConversationList /></div>

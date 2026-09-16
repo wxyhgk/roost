@@ -46,9 +46,12 @@ export function SubscriptionSwitcher() {
     <div id={id} ref={popover} popover="auto" role="dialog" aria-label={m.subscriptions}
       onToggle={event => { setOpen(event.newState === 'open'); if (event.newState !== 'open') { setKey(''); setKeyOpen(false); } }}
       className="subscription-popover server-monitor" onKeyDown={event => event.stopPropagation()}>
+      {/* 这是状态栏自己的弹层（.subscription-action 已经是 11px，状态栏也是 11px），
+          里面全是配额读数和元数据。原来文字一律 text-xs(12)，紧挨着 11px 的按钮差 1px。
+          整个弹层并到 text-caption。 */}
       <header className="flex items-center gap-2 border-b border-border p-3">
         <img src={provider.logo} alt="" className="subscription-logo" />
-        <select aria-label={m.platform} value={selected} disabled={saving} className="min-w-0 flex-1 rounded border border-border bg-bg-panel px-2 py-1 text-xs"
+        <select aria-label={m.platform} value={selected} disabled={saving} className="min-w-0 flex-1 rounded border border-border bg-bg-panel px-2 py-1 text-caption"
           onChange={event => { const next = providers.find(p => p.id === event.target.value); if (next) { setSelected(next.id); saveProvider(next.id); setKey(''); setKeyOpen(false); setSaveError(false); } }}>
           {providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
@@ -56,27 +59,27 @@ export function SubscriptionSwitcher() {
         <button type="button" aria-label={m.close} title={m.close} onClick={() => popover.current?.hidePopover()} className="rounded p-1 hover:bg-bg-hover"><XMarkIcon className="size-4" /></button>
       </header>
       <div className="space-y-4 p-4">
-        <div><p className="text-xs text-text-dim">{m.remaining}{primary && ' · ' + windowLabel(primary)}</p><p className="mt-1 text-2xl tabular-nums">{number(remaining)}</p>
-          {stale && <p className="mt-1 flex items-center gap-1 text-xs text-text-dim"><ClockIcon className="size-3" />{m.stale}</p>}
-          {message && <p role="status" className="mt-2 text-xs text-text-dim">{message}</p>}
+        <div><p className="text-caption text-text-dim">{m.remaining}{primary && ' · ' + windowLabel(primary)}</p><p className="mt-1 text-2xl tabular-nums">{number(remaining)}</p>
+          {stale && <p className="mt-1 flex items-center gap-1 text-caption text-text-dim"><ClockIcon className="size-3" />{m.stale}</p>}
+          {message && <p role="status" className="mt-2 text-caption text-text-dim">{message}</p>}
         </div>
         {!!snapshot?.windows.length && <div className="space-y-3">{snapshot.windows.map(window => <div key={window.id} className="subscription-window">
-          <div className="flex justify-between gap-2 text-xs"><span title={window.scope} className="min-w-0 truncate">{windowLabel(window)}{selected === 'chatgpt' && ' · ' + window.scope}</span><span className="shrink-0 tabular-nums">{m.used} {number(window.usedPercent)}</span></div>
+          <div className="flex justify-between gap-2 text-caption"><span title={window.scope} className="min-w-0 truncate">{windowLabel(window)}{selected === 'chatgpt' && ' · ' + window.scope}</span><span className="shrink-0 tabular-nums">{m.used} {number(window.usedPercent)}</span></div>
           <div role="progressbar" aria-label={window.scope + ' ' + windowLabel(window) + ' ' + m.used} aria-valuenow={window.usedPercent == null ? undefined : Math.min(100, window.usedPercent)} aria-valuemin={0} aria-valuemax={100} className="subscription-meter"><span style={{ width: Math.min(100, window.usedPercent ?? 0) + '%' }} /></div>
-          <p className="mt-1 flex items-center gap-1 text-xs text-text-dim"><ClockIcon className="size-3" aria-hidden="true" />{m.reset} · {dateText(window.resetsAt)}</p>
+          <p className="mt-1 flex items-center gap-1 text-caption text-text-dim"><ClockIcon className="size-3" aria-hidden="true" />{m.reset} · {dateText(window.resetsAt)}</p>
         </div>)}</div>}
-        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-xs">
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-caption">
           {[[m.runtime, snapshot?.runtimeId], [m.account, snapshot?.accountLabel || (selected === 'claude' && snapshot?.windows.length ? m.sessionSource : null)], [m.plan, snapshot?.plan], [m.renewal, dateText(snapshot?.renewalAt)], [m.updated, dateText(snapshot?.observedAt)], [m.source, snapshot ? m.sources[snapshot.source] : null]].map(([label, value]) => <div key={label} className="contents"><dt className="text-text-dim">{label}</dt><dd className="min-w-0 break-words text-right">{value || '—'}</dd></div>)}
         </dl>
         {selected === 'claude' && snapshot?.canConnect && <button type="button" disabled={saving} className="subscription-action" onClick={() => void configure(connectClaudeSubscription)}>{m.connectClaude}</button>}
         {selected === 'opencode-go' && <div>
-          <button type="button" aria-expanded={keyOpen} className="flex items-center gap-2 text-xs text-text-dim hover:text-text" onClick={() => { setKeyOpen(!keyOpen); setKey(''); }}><KeyIcon className="size-4" />{m.configureKey}</button>
+          <button type="button" aria-expanded={keyOpen} className="flex items-center gap-2 text-caption text-text-dim hover:text-text" onClick={() => { setKeyOpen(!keyOpen); setKey(''); }}><KeyIcon className="size-4" />{m.configureKey}</button>
           {keyOpen && <form className="mt-3 space-y-2" onSubmit={event => { event.preventDefault(); const value = key.trim(); if (value) { setKey(''); void configure(signal => saveGoKey(value, signal)); } }}>
-            <input type="password" aria-label={m.key} value={key} autoComplete="off" spellCheck={false} maxLength={4096} onChange={event => setKey(event.target.value)} className="w-full rounded border border-border bg-bg-panel p-2 text-xs" />
+            <input type="password" aria-label={m.key} value={key} autoComplete="off" spellCheck={false} maxLength={4096} onChange={event => setKey(event.target.value)} className="w-full rounded border border-border bg-bg-panel p-2 text-caption" />
             <div className="flex flex-wrap gap-2"><button type="submit" className="subscription-action" disabled={saving || !key.trim()}>{m.saveKey}</button><button type="button" className="subscription-action" disabled={saving} onClick={() => void configure(signal => saveGoKey(null, signal))}>{m.useCliAccount}</button></div>
           </form>}
         </div>}
-        {saveError && <p role="alert" className="text-xs">{m.failed}</p>}
+        {saveError && <p role="alert" className="text-caption">{m.failed}</p>}
       </div>
     </div>
   </>;

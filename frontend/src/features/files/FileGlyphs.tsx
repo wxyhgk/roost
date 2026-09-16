@@ -38,6 +38,9 @@ export function HighlightedCode({ code, filename }: { code: string; filename: st
 
   if (!html)
     return (
+      /* 12.5 不是漏在字号体系外的：这是高亮到达之前的同一块代码，尺寸必须和
+         index.css 里 `.md-body pre code` / `.code-highlight` 一致，否则 shiki 一
+         回来整块就跳一下字号。三处一起改，或者都别改。 */
       <pre className="m-0 whitespace-pre-wrap [overflow-wrap:anywhere] p-3 font-mono text-[12.5px] leading-[1.55]">
         {code}
       </pre>

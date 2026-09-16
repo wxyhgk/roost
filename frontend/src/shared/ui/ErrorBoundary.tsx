@@ -24,7 +24,8 @@ export class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.error) {
       if (this.props.fallback !== undefined) return this.props.fallback;
-      if (this.props.region) return <div role="alert" className="p-4 text-sm text-text-dim">
+      // 它顶替的是某块面板的正文，字号就按正文来（原来的 14 是 Tailwind 默认值，没人选过）。
+      if (this.props.region) return <div role="alert" className="p-4 text-body text-text-dim">
         <p>{t.misc.errorBoundary.unavailable(this.props.region)}{this.state.error.message}</p>
         <button className="mt-2 rounded border border-border px-3 py-1" onClick={() => this.setState({ error: null })}>{t.misc.errorBoundary.retry}</button>
       </div>;

@@ -117,18 +117,20 @@ export function SessionMenu({ session, onRename, onNote, onOpenChange }: {
               <div className="px-2 pt-1.5 pb-0.5 text-body font-medium text-text">
                 {t.session.killConfirm.title}
               </div>
-              <div className="px-2 pb-2 text-xs leading-relaxed text-text-dim">
+              {/* 标题 text-body、说明 text-caption；两个按钮和同一张菜单里的
+                  SessionMenuItem 一样是 text-body，原来它们比菜单项小 1px。 */}
+              <div className="px-2 pb-2 text-caption leading-relaxed text-text-dim">
                 {t.session.killConfirm.detail}
               </div>
               <div className="flex items-center justify-end gap-1.5 px-1 pb-1">
                 <button
-                  className="rounded-md px-2 py-1 text-xs text-text-dim hover:bg-bg-hover"
+                  className="rounded-md px-2 py-1 text-body text-text-dim hover:bg-bg-hover"
                   onClick={() => setKillOpen(false)}
                 >
                   {t.common.cancel}
                 </button>
                 <button
-                  className="rounded-md bg-danger px-2 py-1 text-xs font-medium text-white hover:brightness-110"
+                  className="rounded-md bg-danger px-2 py-1 text-body font-medium text-white hover:brightness-110"
                   onClick={() => {
                     setKillOpen(false);
                     killSession(session.id);

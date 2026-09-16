@@ -167,7 +167,8 @@ export function NotesView({ tab, expanded = false, searchRef }: { tab: NotesTab;
         <div className="relative min-h-0 flex-1 overflow-hidden"><SnippetEditor key={draft.value.id} code={draft.value.code ?? ""} filename={snippetFilename(draft.value.lang ?? "plaintext")} onChange={code => client.edit(draft, { code })} /></div>
       </>}
     </>}
-    {!draft && <div className="m-auto p-6 text-center text-xs text-text-dim">{loading ? t.notes.detail.loading : t.notes.detail.empty}</div>}
+    {/* 同一个视图里其余的加载/空状态提示（列表那几条）都是 text-caption，这条 12px 是孤例。 */}
+    {!draft && <div className="m-auto p-6 text-center text-caption text-text-dim">{loading ? t.notes.detail.loading : t.notes.detail.empty}</div>}
     </div>
     </div>
     <Toast message={notice || null} />

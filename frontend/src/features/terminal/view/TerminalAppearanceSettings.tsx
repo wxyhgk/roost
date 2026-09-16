@@ -4,7 +4,9 @@ import { t } from "@roost/i18n";
 export function TerminalAppearanceSettings() {
   const { terminalAppearance, setTerminalAppearance, terminalContrast, setTerminalContrast } = useTheme();
   return (
-    <details className="relative text-xs font-normal">
+    /* 挂在 PanelHeader 的 actions 里，和 13px 的标题同一排：这是控件，跟着走 text-body，
+       别在标题和元信息之间再插一个 12px。font-normal 是为了不继承标题的 semibold。 */
+    <details className="relative text-body font-normal">
       <summary className="cursor-pointer list-none rounded px-2 py-1 text-text-dim hover:bg-bg-hover hover:text-text" aria-label={t.settings.terminal.triggerLabel}>{t.settings.terminal.trigger}</summary>
       <div className="absolute right-0 top-8 z-30 w-64 space-y-3 rounded-lg border border-border bg-bg-panel p-3 text-text shadow-lg">
         <label className="flex items-center justify-between gap-2">

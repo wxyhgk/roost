@@ -114,8 +114,10 @@ export function WorkspaceSessionRow({ session, current, onOpen }: {
             onCommit={next => renameSession(session.id, next)}
             editOnDoubleClick
           />
+          {/* cwd、静默时长、活动状态是同一层元数据，同一条基线上却是 12/11/12 三档。
+              都是「元数据/状态读数」，并到 text-caption。 */}
           <span className="flex items-baseline gap-1.5">
-            <span className="min-w-0 flex-1 truncate font-mono text-xs text-text-dim">{session.cwd}</span>
+            <span className="min-w-0 flex-1 truncate font-mono text-caption text-text-dim">{session.cwd}</span>
             {(badge.quietLabel || badge.quietUnknown) && (
               <span className="shrink-0 text-caption text-text-dim"
                 title={badge.quietUnknown ? t.session.quiet.unknownHint : t.session.quiet.hint}>
@@ -124,7 +126,7 @@ export function WorkspaceSessionRow({ session, current, onOpen }: {
             )}
           </span>
           {!["active", "quiet"].includes(activity.state) && (
-            <span className="text-xs text-text-dim">{badge.activityLabel}</span>
+            <span className="text-caption text-text-dim">{badge.activityLabel}</span>
           )}
         </span>
 

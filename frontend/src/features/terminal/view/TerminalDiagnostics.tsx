@@ -32,10 +32,12 @@ export function TerminalDiagnostics(props: Props) {
   const [data,setData]=useState(()=>props.diagnostics());
   useEffect(()=>{if(!open)return;setData(read.current());const timer=setInterval(()=>setData(read.current()),1000);return()=>clearInterval(timer)},[open]);
   const current=data.current,render=current?.renderer,replay=current?.replay;
+  // 按钮、提示框、面板是同一组浮层，统一用 text-caption：这一整块都是状态读数，
+  // 原来按钮 11 而它撑开的面板 12，差的那 1px 不表示任何东西。
   return <div className="absolute right-3 top-3 z-[12] max-w-[calc(100%-24px)]" onMouseUp={e=>e.stopPropagation()}>
     <button className="float-right rounded-md border border-border bg-bg-panel/90 px-2 py-1 text-caption text-text-dim hover:text-text" onClick={()=>setOpen(v=>!v)} aria-expanded={open}>{t.terminal.diagnostics.toggle}</button>
-    {props.viewIssue&&!open&&<div role="status" className="clear-both mt-9 max-w-80 rounded-md border border-border bg-bg-raised p-3 text-xs text-warning">{props.viewIssue}</div>}
-    {open&&<section aria-label={t.terminal.diagnostics.title} className="clear-both mt-9 w-80 max-w-full rounded-lg border border-border bg-bg-panel p-4 text-xs text-text shadow-pop">
+    {props.viewIssue&&!open&&<div role="status" className="clear-both mt-9 max-w-80 rounded-md border border-border bg-bg-raised p-3 text-caption text-warning">{props.viewIssue}</div>}
+    {open&&<section aria-label={t.terminal.diagnostics.title} className="clear-both mt-9 w-80 max-w-full rounded-lg border border-border bg-bg-panel p-4 text-caption text-text shadow-pop">
       <dl className="grid grid-cols-2 gap-x-2 gap-y-2">
         <dt className="text-text-dim">{t.terminal.diagnostics.phaseLabel}</dt><dd>{PHASE[current?.phase??'']??t.terminal.diagnostics.phaseFallback}</dd>
         <dt className="text-text-dim">{t.terminal.diagnostics.historyLabel}</dt><dd>{current ? current.historyTruncated ? t.terminal.diagnostics.historyTruncated : t.terminal.diagnostics.historyOk : '—'}</dd>

@@ -18,7 +18,7 @@ function ImagePreview({ file }: { file: PreviewFile }) {
       <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border px-3">
         <span className="truncate text-caption font-medium text-text">{file.name}</span>
         {dims && (
-          <span className="ml-auto shrink-0 font-mono text-xs text-text-dim">
+          <span className="ml-auto shrink-0 font-mono text-caption text-text-dim">
             {dims.w}×{dims.h}
           </span>
         )}

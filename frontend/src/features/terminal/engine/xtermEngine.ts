@@ -150,7 +150,8 @@ export function mountXterm(host: HTMLElement, theme: TermTheme, onFileLink?: (li
         hover: () => {
           hideLinkHint();
           linkHint = document.createElement('div');
-          linkHint.className = 'xterm-hover absolute left-2 right-2 top-1 z-20 pointer-events-none rounded border border-border bg-bg-panel px-3 py-2 text-xs text-text shadow-lg break-words';
+          // 字号和 TermView 里那几条终端浮层一致（text-caption），它们是同一类东西。
+          linkHint.className = 'xterm-hover absolute left-2 right-2 top-1 z-20 pointer-events-none rounded border border-border bg-bg-panel px-3 py-2 text-caption text-text shadow-lg break-words';
           const modifier = /mac|iphone|ipad/i.test(navigator.platform) ? '⌘ Command' : 'Ctrl';
           linkHint.textContent = t.misc.terminal.openLinkHint(modifier, m.path, m.line ? t.misc.terminal.lineSuffix(m.line) : '');
           term.element?.append(linkHint);

@@ -18,7 +18,8 @@ export function PanelHeader({
           裹进 truncate 的 span 会把下边框裁掉、也撑不满高度。 */}
       {typeof title === "string" ? <span className="min-w-0 truncate">{title}</span> : title}
       {sub && (
-        <span className="ml-auto max-w-[45%] shrink-0 truncate font-mono text-xs font-normal text-text-dim">
+        /* 元信息走 caption：和 13px 的标题同排，原来的 12 只比标题小 1px，读不出主次。 */
+        <span className="ml-auto max-w-[45%] shrink-0 truncate font-mono text-caption font-normal text-text-dim">
           {sub}
         </span>
       )}

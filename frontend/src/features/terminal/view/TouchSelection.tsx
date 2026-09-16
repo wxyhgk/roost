@@ -79,7 +79,8 @@ export function TouchSelectionBar({
   onSaveSnippet: (text: string) => void;
   onSaveFile: (text: string) => void;
 }) {
-  const button = "shrink-0 whitespace-nowrap rounded-md px-2.5 py-2 text-xs text-bar-text/85 hover:bg-bar-text/10 disabled:opacity-40";
+  // 按钮用 text-body、上面那行提示留 text-caption：原来是 12 压着 11，差 1px 读不出主次。
+  const button = "shrink-0 whitespace-nowrap rounded-md px-2.5 py-2 text-body text-bar-text/85 hover:bg-bar-text/10 disabled:opacity-40";
   const hint = state.copied === "ok" ? t.misc.selection.touch.copied
     : state.copied === "fail" ? t.misc.selection.touch.copyFailed
     : !state.anchor ? t.misc.selection.touch.hintAnchor

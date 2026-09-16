@@ -192,7 +192,9 @@ export function MoleculeModal({ open, root, path, sessionId, onClose, onDirtyCha
     } catch (err) { setError(String(err)); }
   }
   actions.current = { save: () => { void save(); }, close };
-  const button = 'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm hover:bg-bg-hover disabled:opacity-40 disabled:cursor-not-allowed';
+  // 这个文件是**宿主侧**（见 embeds/README.md 的分工表）：它和终端工作台在同一个
+  // realm、同一份 CSS 里，所以字号走主界面的令牌，而不是 iframe 里 Ketcher 自己那套。
+  const button = 'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-body hover:bg-bg-hover disabled:opacity-40 disabled:cursor-not-allowed';
   return createPortal(
     /*
       关闭走 `invisible`（`visibility: hidden`）而不是卸载或 `display:none`：
@@ -205,12 +207,12 @@ export function MoleculeModal({ open, root, path, sessionId, onClose, onDirtyCha
       onMouseDown={event => { if (event.target === event.currentTarget) close(); }}>
       <section role="dialog" aria-modal="true" aria-label={t.files.molecule.dialogLabel} className="flex h-[90vh] w-[min(1400px,96vw)] flex-col overflow-hidden rounded-xl border border-border bg-bg text-text shadow-2xl">
         <header className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3">
-          <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium" title={`${root}/${path}`}>{path}</div><div role="status" className="text-xs text-text-dim">{dirty ? '● ' : ''}{message}</div></div>
+          <div className="min-w-0 flex-1"><div className="truncate text-body font-medium" title={`${root}/${path}`}>{path}</div><div role="status" className="text-caption text-text-dim">{dirty ? '● ' : ''}{message}</div></div>
           <button className={button} disabled={!ready || busy || conflict} onClick={() => void save()}><ArrowDownTrayIcon className="size-4"/>{t.files.molecule.save}</button>
           <button className={`${button} bg-accent/15 text-accent`} disabled={!ready || busy || conflict} onClick={() => void save(true)}><PaperAirplaneIcon className="size-4"/>{t.files.molecule.handToAi}</button>
           <button className={button} aria-label={t.files.molecule.closeLabel} disabled={busy} onClick={close}><XMarkIcon className="size-5"/></button>
         </header>
-        {error && <div role="alert" className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-4 py-2 text-sm text-danger">
+        {error && <div role="alert" className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-4 py-2 text-body text-danger">
           <span className="flex-1">{error}</span>
           {ready && <button className={button} disabled={busy} onClick={() => void download()}>{t.files.molecule.downloadDraft}</button>}
           <button className={button} disabled={busy} onClick={() => {
@@ -222,11 +224,11 @@ export function MoleculeModal({ open, root, path, sessionId, onClose, onDirtyCha
             else setReload(value => value + 1);
           }}>{conflict ? t.files.molecule.reloadRemote : t.files.molecule.reload}</button>
         </div>}
-        {notice && <div role="status" className="shrink-0 border-b border-border px-4 py-2 text-sm text-text-dim">{notice}</div>}
+        {notice && <div role="status" className="shrink-0 border-b border-border px-4 py-2 text-body text-text-dim">{notice}</div>}
         <div className="relative min-h-0 flex-1 bg-white">
           <iframe key={frameEpoch} ref={frame} src="/molecule.html" title={t.files.molecule.canvasLabel} className="h-full w-full border-0" />
           {/* 画布本身是白的，所以这层覆盖也用白底；文字走令牌而不是写死的 slate。 */}
-          {(!ready || busy) && <div className="absolute inset-0 flex items-center justify-center bg-white/70 text-sm text-text">{message}</div>}
+          {(!ready || busy) && <div className="absolute inset-0 flex items-center justify-center bg-white/70 text-body text-text">{message}</div>}
         </div>
       </section>
     </div>, document.body,

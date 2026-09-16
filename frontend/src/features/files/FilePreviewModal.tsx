@@ -253,8 +253,10 @@ export function FilePreviewModal({
         style={panel.style}
         onClick={(e) => e.stopPropagation()}
       >
+        {/* 文件名是这个模态的**主体身份**，不是说明——和 embeds/molecule 的文件名头栏同档(13)。
+            （旁边的编辑/完成按钮是 11，那是控件；头栏里 13 标题配更小的动作，和 PanelHeader 同形。） */}
         <div
-          className="flex h-9 shrink-0 cursor-move touch-none select-none items-center gap-2 border-b border-border px-3 font-mono text-xs"
+          className="flex h-9 shrink-0 cursor-move touch-none select-none items-center gap-2 border-b border-border px-3 font-mono text-body"
           title={t.files.preview.moveHint}
           {...panel.moveHandlers}
         >

@@ -153,7 +153,7 @@ export function TermView({ sessionId, active, onCwd, onCli }: Props) {
           revision={resumePlanRevision} restart={restart} />
       )}
       {active && imagePaste && (
-        <div className="absolute bottom-3 right-3 z-[7] flex max-w-[calc(100%-24px)] items-center gap-3 rounded-lg border border-border bg-bg-raised p-3 text-xs text-text shadow-lg" role={imagePaste.phase === "error" ? "alert" : "status"}>
+        <div className="absolute bottom-3 right-3 z-[7] flex max-w-[calc(100%-24px)] items-center gap-3 rounded-lg border border-border bg-bg-raised p-3 text-caption text-text shadow-lg" role={imagePaste.phase === "error" ? "alert" : "status"}>
           {imagePaste.preview && <img src={imagePaste.preview} alt={t.terminal.view.pendingImageAlt} className="h-12 w-16 rounded object-contain" />}
           <span>{imagePaste.message}</span>
           {imagePaste.phase === "confirm" && <button type="button" className="shrink-0 rounded border border-border px-2 py-1" onClick={insertImage}>{t.terminal.view.insertImage}</button>}

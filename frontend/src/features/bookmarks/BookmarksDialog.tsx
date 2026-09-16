@@ -56,7 +56,7 @@ export function BookmarksDialog({ onClose }: { onClose: () => void }) {
     className={`m-auto max-h-[95dvh] max-w-none overflow-hidden rounded-xl border border-border bg-bg p-0 text-text shadow-2xl backdrop:bg-black/45 ${emptyBoard ? "h-[min(65vh,520px)] w-[min(850px,96vw)]" : "h-[min(82vh,850px)] w-[min(1100px,96vw)]"}`}>
     <div className="flex h-full min-h-0 flex-col">
       <header className="flex shrink-0 items-center gap-3 border-b border-border px-5 py-4">
-        <BookmarkIcon className="size-6 text-accent" /><div className="min-w-0 flex-1"><h2 id="bookmarks-title" className="font-semibold">{t.bookmarks.title}</h2><p className="text-caption text-text-dim">{t.bookmarks.subtitle}</p></div>
+        <BookmarkIcon className="size-6 text-accent" /><div className="min-w-0 flex-1"><h2 id="bookmarks-title" className="text-title font-semibold">{t.bookmarks.title}</h2><p className="text-caption text-text-dim">{t.bookmarks.subtitle}</p></div>
         <button className={button} onClick={() => { if (picking) { setPicking(false); setConversation(null); } else pickHistory(); }}>{picking ? t.bookmarks.back : t.bookmarks.addFromHistory}</button>
         <button className={button} disabled={state.loading || state.busy} onClick={() => void bookmarks.refresh()}>{t.bookmarks.refresh}</button>
         <button aria-label={t.bookmarks.close} className="rounded-md p-1.5 hover:bg-bg-hover" onClick={onClose}><XMarkIcon className="size-5" /></button>

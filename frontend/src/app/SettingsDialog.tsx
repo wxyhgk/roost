@@ -34,7 +34,16 @@ export function SettingsDialog({ onClose, onResetLayout }: { onClose(): void; on
       if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
     };
   }, []);
-  const control = 'rounded-md border border-border bg-bg px-3 py-2 text-sm text-text outline-none focus-visible:ring-2 focus-visible:ring-accent';
+  /*
+    这个对话框原来是 14/12（Tailwind 默认的 text-sm/text-xs），而它的三个分区各自
+    挑了不同的那一档：PasswordSettings 的字段标签 14、CliSettings 的字段标签 12，
+    两边包的是同一个 text-sm 输入框。同一个角色两个字号，差 1px 不携带意义。
+
+    并到令牌：控件与行标签 text-body(13)、说明与状态 text-caption(11)。
+    对照组是同一组里的登录页 AuthGate——那也是阅读面，已经是 13/11/15。
+    顺带把 h3 从 14 挪开：它和 h2 的 text-title(15) 只差 1px，看不出是下一级。
+  */
+  const control = 'rounded-md border border-border bg-bg px-3 py-2 text-body text-text outline-none focus-visible:ring-2 focus-visible:ring-accent';
   return createPortal(
     <dialog ref={dialog} aria-labelledby="settings-title" onCancel={event => { event.preventDefault(); close(); }}
       onKeyDown={event => event.stopPropagation()}
@@ -48,26 +57,26 @@ export function SettingsDialog({ onClose, onResetLayout }: { onClose(): void; on
         <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
           <nav aria-label={t.settings.dialog.navLabel} className="flex shrink-0 gap-1 overflow-x-auto border-b border-border p-3 sm:w-40 sm:flex-col sm:border-r sm:border-b-0">
             {sections.map(({ id, name, Icon }) => <button key={id} type="button" aria-current={section === id ? 'page' : undefined} onClick={() => { if (id !== section && canLeave()) setSection(id); }}
-              className={`flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-accent ${section === id ? 'bg-bg-active text-text' : 'text-text-dim hover:bg-bg-hover hover:text-text'}`}><Icon className="size-4" />{name}</button>)}
+              className={`flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-body focus-visible:outline-2 focus-visible:outline-accent ${section === id ? 'bg-bg-active text-text' : 'text-text-dim hover:bg-bg-hover hover:text-text'}`}><Icon className="size-4" />{name}</button>)}
           </nav>
           <section aria-label={sections.find(item => item.id === section)!.name} className={`min-h-0 min-w-0 flex-1 p-6 ${section === 'cli' ? 'flex flex-col overflow-hidden' : 'overflow-auto'}`}>
-            <h3 className="mb-5 shrink-0 text-sm font-semibold">{sections.find(item => item.id === section)!.name}</h3>
+            <h3 className="mb-5 shrink-0 text-body font-semibold">{sections.find(item => item.id === section)!.name}</h3>
             {section === 'appearance' && <div className="space-y-5">
-              <label className="flex items-center justify-between gap-4 text-sm">{t.settings.dialog.appearance.language}
+              <label className="flex items-center justify-between gap-4 text-body">{t.settings.dialog.appearance.language}
                 <select className={control} value={locale} onChange={event => setLocale(event.target.value as Locale)}><option value="zh">{t.settings.dialog.appearance.languageZh}</option><option value="en">{t.settings.dialog.appearance.languageEn}</option></select>
               </label>
-              <label className="flex items-center justify-between gap-4 text-sm">{t.settings.dialog.appearance.theme}
+              <label className="flex items-center justify-between gap-4 text-body">{t.settings.dialog.appearance.theme}
                 <select className={control} value={theme} onChange={event => { if (event.target.value !== theme) toggleTheme(); }}><option value="dark">{t.settings.dialog.appearance.dark}</option><option value="light">{t.settings.dialog.appearance.light}</option></select>
               </label>
-              <div className="flex items-center justify-between gap-4 text-sm"><div>{t.settings.dialog.appearance.layout}<p className="mt-1 text-xs text-text-dim">{t.settings.dialog.appearance.layoutDetail}</p></div><button type="button" className={control} onClick={onResetLayout}>{t.settings.dialog.appearance.resetLayout}</button></div>
-              <p className="text-xs leading-relaxed text-text-dim">{t.settings.dialog.appearance.hint}</p>
+              <div className="flex items-center justify-between gap-4 text-body"><div>{t.settings.dialog.appearance.layout}<p className="mt-1 text-caption text-text-dim">{t.settings.dialog.appearance.layoutDetail}</p></div><button type="button" className={control} onClick={onResetLayout}>{t.settings.dialog.appearance.resetLayout}</button></div>
+              <p className="text-caption leading-relaxed text-text-dim">{t.settings.dialog.appearance.hint}</p>
             </div>}
             {section === 'terminal' && <div className="space-y-5">
-              <label className="flex items-center justify-between gap-4 text-sm">{t.settings.terminal.label}
+              <label className="flex items-center justify-between gap-4 text-body">{t.settings.terminal.label}
                 <select className={control} value={terminalAppearance} onChange={event => setTerminalAppearance(event.target.value as TerminalAppearance)}><option value="follow">{t.settings.terminal.follow}</option><option value="dark">{t.settings.terminal.dark}</option><option value="light">{t.settings.terminal.light}</option></select>
               </label>
-              <label className="flex items-center justify-between gap-4 text-sm">{t.settings.terminal.contrast}<input type="checkbox" checked={terminalContrast} onChange={event => setTerminalContrast(event.target.checked)} className="size-4 accent-accent" /></label>
-              <p className="text-xs leading-relaxed text-text-dim">{t.settings.terminal.dialogHint}</p>
+              <label className="flex items-center justify-between gap-4 text-body">{t.settings.terminal.contrast}<input type="checkbox" checked={terminalContrast} onChange={event => setTerminalContrast(event.target.checked)} className="size-4 accent-accent" /></label>
+              <p className="text-caption leading-relaxed text-text-dim">{t.settings.terminal.dialogHint}</p>
             </div>}
             {section === 'cli' && <CliSettings onDirtyChange={value => { cliDirty.current = value; }} onBusyChange={value => { cliBusy.current = value; }} />}
             {section === 'security' && <PasswordSettings onBusyChange={onPasswordBusy} />}

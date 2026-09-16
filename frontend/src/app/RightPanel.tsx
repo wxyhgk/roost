@@ -29,7 +29,10 @@ const TerminalProcesses = lazy(() => import("../features/terminal/view/TerminalP
 export function RightPanel({ view, onChangeView, visible = true, monitorTarget }: { view: RightView; onChangeView: (view: RightView) => void; visible?: boolean; monitorTarget?: MonitorTarget }) {
   // 每次渲染重取：切换语言后标题要跟着变，不能缓存在模块顶层。
   // 同上：占位文案也要每次渲染重取，模块级常量会把语言定死在首次加载那一刻。
-  const panelFallback = <p className="p-3 text-xs text-text-dim">{t.misc.rightPanel.loading}</p>;
+  // 载入中是状态读数 → text-caption。下面资料库头里的按钮/提示同理并档：
+  // PanelHeader 自己是 text-body，展开按钮原来比它小 1px；对话框标题是 text-title(15)，
+  // 旁边的 tab 按钮 14px 和它只差 1px，并到 text-body 才看得出层级。
+  const panelFallback = <p className="p-3 text-caption text-text-dim">{t.misc.rightPanel.loading}</p>;
   /*
     键类型故意写成结构化的那个联合而不是 RightView：它和下面的 `titles[view]` 一起，
     把 shared/view.ts 里的 RightView 和 features/library 的 Kind 钉成同一个集合。
@@ -44,9 +47,9 @@ export function RightPanel({ view, onChangeView, visible = true, monitorTarget }
 
   return <section className={`flex h-full flex-col bg-bg-panel ${view === "server" ? "server-monitor" : ""}`}>
     <PanelHeader title={titles[view]} sub={view === "files" ? session?.cwd : undefined}
-      actions={isLibrary && <button ref={expandButton} className="rounded px-2 py-1 text-xs font-normal text-text-dim hover:bg-bg-hover hover:text-text" onClick={() => setExpanded(true)} aria-haspopup="dialog">{t.misc.rightPanel.expandLibrary}</button>} />
+      actions={isLibrary && <button ref={expandButton} className="rounded px-2 py-1 text-body font-normal text-text-dim hover:bg-bg-hover hover:text-text" onClick={() => setExpanded(true)} aria-haspopup="dialog">{t.misc.rightPanel.expandLibrary}</button>} />
     {view === "files" ? <div key="files" className="flex min-h-0 flex-1 flex-col"><Suspense fallback={panelFallback}><FilesView /></Suspense></div>
-      : view === "server" ? <Suspense fallback={<p className="p-3 text-xs text-text-dim">{t.serverMonitor.loading}</p>}><ServerMonitorView active={visible} target={monitorTarget} /></Suspense>
+      : view === "server" ? <Suspense fallback={<p className="p-3 text-caption text-text-dim">{t.serverMonitor.loading}</p>}><ServerMonitorView active={visible} target={monitorTarget} /></Suspense>
       : view === "processes" ? <Suspense fallback={panelFallback}><TerminalProcesses sessionId={session?.id ?? null} active={visible} /></Suspense>
       : <div key="library" ref={sideSlot} className="flex min-h-0 flex-1 flex-col" />}
     <dialog ref={dialog} aria-label={t.misc.rightPanel.library} onCancel={e => { e.preventDefault(); setExpanded(false); }} onClose={() => setExpanded(false)}
@@ -56,9 +59,9 @@ export function RightPanel({ view, onChangeView, visible = true, monitorTarget }
         <header className="flex h-14 shrink-0 items-center gap-4 border-b border-border px-5">
           <h2 className="text-title font-semibold">{t.misc.rightPanel.library}</h2>
           <nav aria-label={t.misc.rightPanel.libraryKind} className="flex gap-1">
-            {(["notes", "snippets"] as const).map(kind => <button key={kind} aria-pressed={view === kind} onClick={() => onChangeView(kind)} className={`rounded-md px-3 py-1.5 text-sm ${view === kind ? "bg-bg-active text-text" : "text-text-dim hover:bg-bg-hover"}`}>{titles[kind]}</button>)}
+            {(["notes", "snippets"] as const).map(kind => <button key={kind} aria-pressed={view === kind} onClick={() => onChangeView(kind)} className={`rounded-md px-3 py-1.5 text-body ${view === kind ? "bg-bg-active text-text" : "text-text-dim hover:bg-bg-hover"}`}>{titles[kind]}</button>)}
           </nav>
-          <span className="ml-auto hidden text-xs text-text-dim sm:inline">{t.misc.rightPanel.hint}</span>
+          <span className="ml-auto hidden text-caption text-text-dim sm:inline">{t.misc.rightPanel.hint}</span>
           <IconButton title={t.misc.rightPanel.collapse} onClick={() => setExpanded(false)}><IconClose /></IconButton>
         </header>
         <div ref={modalSlot} className="flex min-h-0 flex-1 flex-col" />

@@ -93,7 +93,9 @@ export function ConversationMeta({ conversation, onChanged }: {
                 value={conversation.projectId ?? ""}
                 disabled={busy}
                 onChange={event => void apply({ projectId: event.target.value || null })}
-                className="h-7 rounded-md border border-border bg-bg px-1 text-caption text-text outline-none focus:border-accent"
+                // 和同一行里的重命名输入框是同一种控件（h-7 的框），字号跟着它走 text-body；
+                // 外面那圈 text-caption 是标签和小按钮，不是控件本身。
+                className="h-7 rounded-md border border-border bg-bg px-1 text-body text-text outline-none focus:border-accent"
               >
                 <option value="">{m.noGroup}</option>
                 {projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}

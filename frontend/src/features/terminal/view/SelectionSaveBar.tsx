@@ -106,6 +106,8 @@ export function SelectionSaveBar({
   onSnippet: () => void;
   onFile: () => void;
 }) {
+  // 按钮走 text-body：外壳 bar 上可点的文字都是这一档（顶栏同），和触屏那条选区
+  // 工具条保持一致——两者是同一个功能的两种输入方式。
   return (
     <div
       className="fixed z-30 flex items-center gap-1 rounded-lg border border-bar-text/10 bg-bar px-1.5 py-1 shadow-pop"
@@ -113,21 +115,21 @@ export function SelectionSaveBar({
     >
       <button
         type="button"
-        className="whitespace-nowrap rounded-md px-2 py-1 text-xs text-bar-text/85 hover:bg-bar-text/10"
+        className="whitespace-nowrap rounded-md px-2 py-1 text-body text-bar-text/85 hover:bg-bar-text/10"
         onClick={onNote}
       >
         {t.misc.selection.saveNote}
       </button>
       <button
         type="button"
-        className="whitespace-nowrap rounded-md px-2 py-1 text-xs text-bar-text/85 hover:bg-bar-text/10"
+        className="whitespace-nowrap rounded-md px-2 py-1 text-body text-bar-text/85 hover:bg-bar-text/10"
         onClick={onSnippet}
       >
         {t.misc.selection.saveSnippet}
       </button>
       <button
         type="button"
-        className="whitespace-nowrap rounded-md px-2 py-1 text-xs text-bar-text/85 hover:bg-bar-text/10"
+        className="whitespace-nowrap rounded-md px-2 py-1 text-body text-bar-text/85 hover:bg-bar-text/10"
         onClick={onFile}
       >
         {t.misc.selection.saveFile}
@@ -138,7 +140,7 @@ export function SelectionSaveBar({
 
 export function SavedTick() {
   return (
-    <div className="fixed bottom-4 left-1/2 z-30 -translate-x-1/2 rounded-lg border border-bar-text/10 bg-bar px-3 py-1.5 text-xs text-bar-text shadow-pop">
+    <div className="fixed bottom-4 left-1/2 z-30 -translate-x-1/2 rounded-lg border border-bar-text/10 bg-bar px-3 py-1.5 text-body text-bar-text shadow-pop">
       {t.misc.selection.saved}
     </div>
   );

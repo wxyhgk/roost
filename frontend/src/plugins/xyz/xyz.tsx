@@ -83,14 +83,14 @@ function XyzPreview({ content }: { content: string }) {
             type="button"
             onClick={resetView}
             title={t.misc.xyz.resetTitle}
-            className="rounded px-1.5 py-0.5 font-mono text-xs text-text-dim hover:bg-bg-hover hover:text-text"
+            className="rounded px-1.5 py-0.5 font-mono text-caption text-text-dim hover:bg-bg-hover hover:text-text"
           >
             {t.misc.xyz.reset}
           </button>
           {Object.entries(counts).map(([el, n]) => (
             <span
               key={el}
-              className="flex items-center gap-1 rounded bg-bg-hover px-1.5 py-0.5 text-xs font-mono text-text"
+              className="flex items-center gap-1 rounded bg-bg-hover px-1.5 py-0.5 text-caption font-mono text-text"
             >
               <span
                 className="h-2 w-2 shrink-0 rounded-full"
