@@ -20,7 +20,7 @@
 | CLI | 无洪流路径 | 关键点 |
 |---|---|---|
 | omp 18.1.16 | `omp --mode rpc-ui -r <id>` | stdio NDJSON，启动只发 `ready` 帧；`get_messages_page {cursor, limit}` 拉历史（≤256/页）；随包带 TS/Python 客户端 |
-| claude 2.1.267 | Agent SDK `getSessionMessages(id, {limit, offset})` | 文档明写供「transcript viewers」用；`query({resume})` **只流新消息**；**禁止自己解析 `.jsonl`**（格式内部、随版本变） |
+| claude 2.1.267 | Agent SDK `getSessionMessages(id, {limit, offset})` | 文档明写供「transcript viewers」用；`query({resume})` **只流新消息**；**禁止自己解析 `.jsonl`**（格式内部、随版本变）。**2026-09-15 复核：换 SDK 并不能消除这条风险**——`getSessionMessages()` 的 `message` 字段是 `unknown`、文档自称「原始 payload」，会漂移的那一坨原样递回。见 [../claude-transcript-reading.md](../claude-transcript-reading.md) |
 | codex 0.153.4 | `codex app-server` + `thread/resume {excludeTurns:true}` | 其自有 schema 称全量历史注水为「deprecated for paginated threads」 |
 
 **而我们这个应用本来就自己存、自己渲染对话。TUI 是错的集成面。**
