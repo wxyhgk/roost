@@ -4,6 +4,25 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <!--
+      装成应用时的图标。没有 manifest 的话 Edge / Chrome 会拿标题首字母画一个，于是
+      只看得到一个 "R"。
+
+      图标必须是**不透明底的 PNG**，不能复用 favicon.svg：那个 svg 按
+      prefers-color-scheme 在近黑和近白之间切填充色，适合画在网页里；而应用图标是画在
+      系统的背景上的，透明底 + 近白图形在浅色任务栏上会直接消失。
+      所以这几张是固定深底浅鸟，不跟随主题。
+
+      maskable 那张图形只占 56%（普通版 72%）：Android/Edge 会按内切圆裁，安全区是
+      内侧 80%，按普通版的留白会把鸟的边缘切掉。
+
+      图标放在根目录而不是 icons/ 子目录，是因为安装清单的路径校验只放行 assets/ 和
+      logos/ 两个子目录（见 scripts/install-workbench.mjs）。那条正则是防路径穿越的，
+      为了摆图标去放宽它不划算。
+    -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="theme-color" content="#1c1c1e" />
     <title>Roost</title>
     <script>
       document.documentElement.dataset.theme =
