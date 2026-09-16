@@ -258,6 +258,8 @@ export const misc = {
         dispatching: "Submitting, waiting for the receipt",
         accepted: "The CLI received it",
         acceptedHint: "It reached the CLI's native input. That does not mean the task is done.",
+        awaitingUserSubmit: "Placed in the terminal's input box — press Enter to send",
+        awaitingUserSubmitHint: "Automatic submission is not verified for this CLI version, so we only place the text; the final keystroke is yours. Once you press Enter this is marked delivered.",
         uncertain: "It may have been written, but there is no confirmation",
         uncertainHint: "The request is kept. It will not resend automatically — resending could submit the same text twice.",
         failed: "Delivery failed",

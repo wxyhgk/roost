@@ -39,6 +39,22 @@ export function createAiCommandOwner(options:{store:WorkspaceStore;runtime:Termi
    &&run.nativeSessionId===c.nativeSessionId
    &&store.conversations.get(run.conversationId).trashedAt===null;
  }
+/*
+  实测验证过「粘贴 + 同一 buffer 里的回车会被提交」的 claude 版本。
+
+  **这个集合只管那一个 `\r`，不管能不能写。** 不在集合里的版本走 P2：正文照样放进输入框，
+  但**不替用户按最后那一下**，由用户自己按——转录里出现那一行时 `acceptFromTranscript`
+  会认领它，所以这条路是自愈的，不是半残。
+
+  为什么必须这么拆：`\r` 是一个**没有寻址的字节**，它的含义完全由接收方当时的画面决定。
+  实测过一例：在 codex 的登录界面上，一次带回车的写入**真的触发了一条 OAuth 授权流程**。
+  而认清画面这件事只能靠正则认 TUI 长相，正则又只在某个版本上验过——这就是版本钉子的由来。
+  去掉那个回车，这条因果链就断了，于是未验证的版本不必再被整个拒绝。
+
+  加版本进来的门槛：**必须自己实测过**「单次写入会提交」，不能凭别处的测量。
+*/
+const CLAUDE_VERIFIED_SUBMIT=new Set(['2.1.266']);
+
  function reason(id:string):string|null {
   if(!sendingEnabled)return 'disabled';
   const s=states.get(id),live=runtime.getSession(id);if(!live)return 'terminal_exited';
@@ -46,7 +62,9 @@ export function createAiCommandOwner(options:{store:WorkspaceStore;runtime:Termi
   if(!configured(live.cli))return 'disabled';
   if(!s)return 'screen_unavailable';
   if(live.cli!==s.cli)return 'identity_unconfirmed';
-  if(s.cli==='claude'?s.version!=='2.1.266':s.version!=='0.23.1'||s.protocolVersion!==2)return 'unsupported_version';
+  // claude 只要求「版本探得到」。**版本不再决定能不能写，只决定能不能替用户按回车**——
+  // 见 CLAUDE_VERIFIED_SUBMIT。探不到版本仍然拒绝：那说明整条观察链没建起来。
+  if(s.cli==='claude'?!s.version:s.version!=='0.23.1'||s.protocolVersion!==2)return 'unsupported_version';
   const b=binding(id);if(!b||b.cliId!==s.cli||b.terminalInstanceId!==s.instance||b.nativeSessionId!==s.nativeId)return 'identity_unconfirmed';
   if(s.cli==='qwen'){
    if(!s.lifecycleSupported)return 'lifecycle_unavailable';
@@ -64,7 +82,7 @@ export function createAiCommandOwner(options:{store:WorkspaceStore;runtime:Termi
  function control(id:string):AiControl {
   const why=reason(id),s=states.get(id),cli=runtime.getSession(id)?.cli;
   const unresolved=store.aiCommands.active(id).some(c=>c.status==='uncertain'&&s&&matches(c,s));
-  const transport=!!s&&s.cli===cli&&(cli==='claude'?s.version==='2.1.266':cli==='qwen'&&s.version==='0.23.1'&&s.protocolVersion===2&&s.lifecycleSupported&&!!s.inputPath&&!!binding(id)?.transcriptPath);
+  const transport=!!s&&s.cli===cli&&(cli==='claude'?!!s.version:cli==='qwen'&&s.version==='0.23.1'&&s.protocolVersion===2&&s.lifecycleSupported&&!!s.inputPath&&!!binding(id)?.transcriptPath);
   return {supported:sendingEnabled&&configured(cli)&&transport,reason:unresolved?'acceptance_uncertain':why,inputEpoch:s?.epoch??0,queue:store.aiCommands.active(id)};
  }
  async function acceptFromTranscript(c:AiCommand,s:State) {
@@ -123,6 +141,7 @@ export function createAiCommandOwner(options:{store:WorkspaceStore;runtime:Termi
    if(disposed||states.get(id)!==s||s.epoch!==epoch||(s.cli==='claude'&&s.screen.inspect().version!==screen.version)||reason(id)||!matches(c,s))return;
    if(!peerWriteAllowed(c)){update(c,{status:'cancelled',reason:'peer_target_changed'});return;}
    const fresh=store.aiCommands.get(id,c.requestId);if(fresh?.status!=='queued')return;
+   const submit=s.cli!=='claude'||CLAUDE_VERIFIED_SUBMIT.has(s.version??'');
    const writing=update(fresh,{status:'writing',reason:null,inputEpoch:epoch,sourceSeq:s.hookSeq,writtenAt:now(),transcriptOffset:offset});
    if(!writing||writing.status!=='writing')return;
    if(!peerWriteAllowed(writing)){update(writing,{status:'cancelled',reason:'peer_target_changed',writtenAt:null});return;}
@@ -131,9 +150,13 @@ export function createAiCommandOwner(options:{store:WorkspaceStore;runtime:Termi
     // Native Qwen input never edits the composer. Claude uses one bounded
     // bracketed paste + submit write; raw keys cannot interleave within it.
     if(s.cli==='qwen')writeQwenCommand(s.inputPath!,c.text);
-    else runtime.writeSession(id,'\x1b[200~'+c.text+'\x1b[201~\r');
-    update(writing,{status:'awaiting_acceptance'});
-    s.working=true;
+    else runtime.writeSession(id,'\x1b[200~'+c.text+'\x1b[201~'+(submit?'\r':''));
+    if(submit){update(writing,{status:'awaiting_acceptance'});s.working=true;}
+    // P2：正文进了输入框，但没人按回车。**这就是「不确定」的字面意思**，而且是诚实的——
+    // 我们不知道用户会不会按、什么时候按。不置 working：什么都还没提交。
+    // 这条路不是死路：uncertain 仍在 pump 的 inflight 集合里，用户真按下回车之后
+    // acceptFromTranscript 会认领那一行，状态自己翻成 accepted。
+    else update(writing,{status:'uncertain',reason:'awaiting_user_submit'});
    }catch{update(writing,{status:'uncertain',reason:'write_failed'});}
   }finally{busy.delete(id);}
  }

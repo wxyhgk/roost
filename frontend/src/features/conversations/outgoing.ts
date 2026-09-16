@@ -48,7 +48,10 @@ export function viewOf(delivery: Delivery): OutgoingView {
     case "uncertain":
       // 可能已经写进去了。保留这条请求，绝不自动换 requestId 重发——
       // 那会造成同一句话提交两次。
-      return { ...base, pending: true };
+      //
+      // `awaiting_user_submit` 是其中一格确定的情况：正文就在输入框里等着，最后那一下
+      // 回车由用户按。这一格必须给「去终端」的入口——那正是用户要做的事。
+      return { ...base, pending: true, jumpToTerminal: reason === "awaiting_user_submit" };
     case "accepted":
       return { ...base, hideFromPending: true };
     case "failed":

@@ -52,7 +52,8 @@ function label(delivery: Delivery) {
     case "queued": return queuedText(delivery.reason);
     case "dispatching": return s.dispatching;
     case "accepted": return s.accepted;
-    case "uncertain": return s.uncertain;
+    // P2：正文进了输入框但我们没按回车。它和「不知道写没写进去」是两件事，要分开说。
+    case "uncertain": return delivery.reason === "awaiting_user_submit" ? s.awaitingUserSubmit : s.uncertain;
     case "failed": return s.failed;
     case "cancelled": return s.cancelled;
   }
@@ -67,7 +68,8 @@ export function PendingMessage({ detail, onCancel, onRetry, onJump, readOnly = f
 }) {
   const view = viewOf(detail.delivery);
   const s = t.misc.conversations.detail.send;
-  const hint = detail.delivery.state === "uncertain" ? s.uncertainHint
+  const hint = detail.delivery.state === "uncertain"
+      ? (detail.delivery.reason === "awaiting_user_submit" ? s.awaitingUserSubmitHint : s.uncertainHint)
     : detail.delivery.state === "queued" ? queuedHint(detail.delivery.reason) : null;
   return (
     <div className="rounded-md border border-border bg-bg-raised px-2 py-1.5">
