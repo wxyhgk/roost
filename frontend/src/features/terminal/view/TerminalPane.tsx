@@ -11,7 +11,6 @@ import { TerminalSearchBar, useTerminalSearch } from "./TerminalSearch";
 import type { Lens, Mode, Scope } from "../../../shared/view";
 import { Empty } from "../../../shared/ui/Empty";
 import { IconButton } from "../../../shared/ui/IconButton";
-import { TerminalProcesses } from "./TerminalProcesses";
 import { PanelHeader } from "../../../shared/ui/PanelHeader";
 import { useWorkspace } from "../../../shared/store";
 import { sessionTitle } from "../../../shared/sessionTitle";
@@ -101,8 +100,6 @@ export function TerminalPane({
           mode === "terminal" && session && (
             <>
               <TerminalAppearanceSettings />
-              {/* AI 常在后台起服务，而那次工具调用一返回用户就不知道起了什么、端口是多少。 */}
-              <TerminalProcesses sessionId={session.id} />
               <IconButton title={t.terminal.pane.search} onClick={search.toggle}>
                 <IconSearch />
               </IconButton>

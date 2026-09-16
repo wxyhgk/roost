@@ -67,6 +67,8 @@ export const terminal = {
     /** 「这个终端里在跑什么」面板：AI 起的后台服务和它们的端口。 */
     processes: {
       title: "这个终端里在跑的",
+      noSession: "先选一个终端",
+      full: "完整命令",
       refresh: "刷新",
       loading: "查看中…",
       empty: "这个终端里没有在跑的后台进程",

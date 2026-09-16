@@ -25,6 +25,7 @@ import type { MonitorTarget } from '../features/server-monitor/navigation';
 const ServerMonitorView = lazy(() => import("../features/server-monitor/ServerMonitorView"));
 const FilesView = lazy(() => import("../features/files/FilesView").then(m => ({ default: m.FilesView })));
 const NotesView = lazy(() => import("../features/notes/NotesView").then(m => ({ default: m.NotesView })));
+const TerminalProcesses = lazy(() => import("../features/terminal/view/TerminalProcesses").then(m => ({ default: m.TerminalProcesses })));
 export function RightPanel({ view, onChangeView, visible = true, monitorTarget }: { view: RightView; onChangeView: (view: RightView) => void; visible?: boolean; monitorTarget?: MonitorTarget }) {
   // 每次渲染重取：切换语言后标题要跟着变，不能缓存在模块顶层。
   // 同上：占位文案也要每次渲染重取，模块级常量会把语言定死在首次加载那一刻。
@@ -34,7 +35,7 @@ export function RightPanel({ view, onChangeView, visible = true, monitorTarget }
     把 shared/view.ts 里的 RightView 和 features/library 的 Kind 钉成同一个集合。
     理由写在 shared/view.ts 的 RightView 上面。
   */
-  const titles: Record<"files" | "server" | NotesTab, string> = { server: t.serverMonitor.title, files: t.misc.rightPanel.titles.files, notes: t.misc.rightPanel.titles.notes, snippets: t.misc.rightPanel.titles.snippets };
+  const titles: Record<"files" | "server" | "processes" | NotesTab, string> = { server: t.serverMonitor.title, processes: t.terminal.processes.title, files: t.misc.rightPanel.titles.files, notes: t.misc.rightPanel.titles.notes, snippets: t.misc.rightPanel.titles.snippets };
   const { sessions, selectedId } = useWorkspace("sessions", "selectedId");
   const session = sessions.find(s => s.id === selectedId && !s.closed);
   // 文件和 AI 两个视图都是终端自己的内容，不走「资料库」那套弹出布局。
@@ -46,6 +47,7 @@ export function RightPanel({ view, onChangeView, visible = true, monitorTarget }
       actions={isLibrary && <button ref={expandButton} className="rounded px-2 py-1 text-xs font-normal text-text-dim hover:bg-bg-hover hover:text-text" onClick={() => setExpanded(true)} aria-haspopup="dialog">{t.misc.rightPanel.expandLibrary}</button>} />
     {view === "files" ? <div key="files" className="flex min-h-0 flex-1 flex-col"><Suspense fallback={panelFallback}><FilesView /></Suspense></div>
       : view === "server" ? <Suspense fallback={<p className="p-3 text-xs text-text-dim">{t.serverMonitor.loading}</p>}><ServerMonitorView active={visible} target={monitorTarget} /></Suspense>
+      : view === "processes" ? <Suspense fallback={panelFallback}><TerminalProcesses sessionId={session?.id ?? null} active={visible} /></Suspense>
       : <div key="library" ref={sideSlot} className="flex min-h-0 flex-1 flex-col" />}
     <dialog ref={dialog} aria-label={t.misc.rightPanel.library} onCancel={e => { e.preventDefault(); setExpanded(false); }} onClose={() => setExpanded(false)}
       onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && ["k", "b", "j"].includes(e.key.toLowerCase())) e.stopPropagation(); }}

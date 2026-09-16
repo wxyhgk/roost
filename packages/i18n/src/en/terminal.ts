@@ -66,6 +66,8 @@ export const terminal = {
   },
     processes: {
       title: "Running in this terminal",
+      noSession: "Select a terminal first",
+      full: "Full command",
       refresh: "Refresh",
       loading: "Checking…",
       empty: "No background processes running in this terminal",
