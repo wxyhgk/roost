@@ -251,6 +251,34 @@ export const misc = {
         queuedDraft: "终端输入框里还有草稿，暂不写入",
         queuedBusy: "CLI 正在处理上一轮，排队等待",
         queuedDialog: "终端里有待处理的选择框",
+        /**
+         * 排队原因的人话。原来只认 3 种，其余一律掉进 `queuedOther`，于是用户看到的是
+         * 「暂时不能投递（disabled）」这种把内部标识原样漏出来的句子——既看不懂，也不
+         * 知道该干什么。这些原因来自 `ai-command-owner.ts` 的 `reason()` 和
+         * `peer-delivery.ts` 的 pump，是个封闭集合，值得逐条给说法。
+         *
+         * `pending` **不在这里**：它是插入 peer_deliveries 时钉的初始值，意思是「刚入队，
+         * daemon 还没轮到」，根本不是一个阻塞原因。把它当理由显示是错的，见下面的 `queued`。
+         */
+        queuedReason: {
+          disabled: "GUI 发送没有开启",
+          disabledHint: "daemon 要带着 ROOST_CLAUDE_GUI_SEND=1 启动才会开这条通道。这条消息会一直排着，不会丢。",
+          unsupportedVersion: "这个 CLI 版本还没验证过写入",
+          unsupportedVersionHint: "往 TUI 里写字要先确认它的屏幕长什么样，认错了可能敲在选择框上。所以只对验证过的版本开放。",
+          unsupportedCli: "这个 CLI 还不支持从这里发送",
+          terminalExited: "那个终端已经退出了",
+          recipientOffline: "这个对话现在没有在跑的终端",
+          identityUnconfirmed: "还没确认这个终端在哪条对话里",
+          screenUnavailable: "还没看到终端的画面",
+          screenUnknown: "认不出终端现在的画面，不敢往里写",
+          terminalInput: "你刚在终端里敲过字，稍等一下",
+          commandPending: "前面还有一条在写，排队等待",
+          notSubmittable: "这条消息没法提交给 CLI",
+          conversationTrashed: "这个对话在回收站里",
+          lifecycleUnavailable: "这个 CLI 没给出可靠的完成信号",
+          transcriptUnavailable: "拿不到这个会话的转录文件",
+          transportUnavailable: "拿不到这个 CLI 的输入通道",
+        },
         queuedOther: (reason: string) => `暂时不能投递（${reason}）`,
         dispatching: "正在提交，等待回执",
         accepted: "CLI 已接收",

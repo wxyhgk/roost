@@ -4,6 +4,7 @@ import type { Outgoing } from "./useOutgoing";
 // 复用资料库那份 uid：它带了非安全上下文的 fallback（http 访问时 crypto.randomUUID
 // 不存在），重写一份只会漏掉这个已经踩过的坑。
 import { t } from "@roost/i18n";
+import { queuedHint, queuedText } from "./deliveryReason";
 
 /**
  * 发信区。
@@ -48,12 +49,7 @@ export function ConversationComposer({ outgoing }: { outgoing: Outgoing }) {
 function label(delivery: Delivery) {
   const s = t.misc.conversations.detail.send;
   switch (delivery.state) {
-    case "queued":
-      return delivery.reason === "terminal_draft" ? s.queuedDraft
-        : delivery.reason === "busy" ? s.queuedBusy
-        : delivery.reason === "dialog" ? s.queuedDialog
-        // 未知原因保守兜底：把服务端说法原样带出来，不假装知道它是什么。
-        : delivery.reason ? s.queuedOther(delivery.reason) : s.queued;
+    case "queued": return queuedText(delivery.reason);
     case "dispatching": return s.dispatching;
     case "accepted": return s.accepted;
     case "uncertain": return s.uncertain;
@@ -71,7 +67,8 @@ export function PendingMessage({ detail, onCancel, onRetry, onJump, readOnly = f
 }) {
   const view = viewOf(detail.delivery);
   const s = t.misc.conversations.detail.send;
-  const hint = detail.delivery.state === "uncertain" ? s.uncertainHint : null;
+  const hint = detail.delivery.state === "uncertain" ? s.uncertainHint
+    : detail.delivery.state === "queued" ? queuedHint(detail.delivery.reason) : null;
   return (
     <div className="rounded-md border border-border bg-bg-raised px-2 py-1.5">
       <div className="truncate text-caption text-text-dim">{detail.message.preview ?? detail.message.text}</div>
