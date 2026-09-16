@@ -99,6 +99,29 @@ export function createPeerDeliveryOwner(options: {
           } catch { reconcile(claimed); }
         } catch { /* Another writer may cancel or change identity before claim. */ }
       }
+      /*
+        孤儿扫描。
+
+        上面那个循环的外层是 `activeRuns`，所以**一条对话的 run 结束之后，它排队里的
+        消息就再也不会被访问到**——连那句 `setQueuedReason(..., "recipient_offline")`
+        都在循环里面，跟着一起够不着。结果是它永远停在入队时钉的 `'pending'`，而界面
+        把 pending 显示成「已排队，等待写入」。那句话只有在它真的会被写入时才成立。
+
+        所以这里单独扫一遍全局队列（`queued()` 不带参数，LIMIT 100），把确实没有任何
+        在跑的 run 的那些标成 offline。`setQueuedReason` 在原因没变时是 no-op，
+        不会每 250ms 制造一次 revision。
+
+        **只在完全没有 active run 时才标**：run 属于别的 daemon 实例时不归我们判断，
+        那边会自己投递——上面那个分支把「别人的 run」也当成 offline，这里不跟着学。
+
+        run 回来之后不需要在这里复位：上面的主循环会重新访问它，按当时的实际情况
+        写入新的原因或者直接投递。
+      */
+      for (const delivery of store.peerMessages.queued()) {
+        if (store.conversationRuns.active(delivery.recipientId)) continue;
+        try { store.peerMessages.setQueuedReason(delivery.id, "recipient_offline"); }
+        catch { /* 这一条被别处取消或改动了，下一轮再看。 */ }
+      }
     } finally { pumping = false; }
   }
 

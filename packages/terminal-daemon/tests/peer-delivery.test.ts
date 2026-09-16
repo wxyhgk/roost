@@ -207,3 +207,46 @@ test('failed socket acquisition does not recover another owner commands; success
     assert.equal(store.aiCommands.get('s','saved')?.text,'retained queued');
   }finally{await owner?.stop();if(guard.listening)await new Promise<void>(r=>guard.close(()=>r()));store.close();rmSync(dir,{recursive:true,force:true});}
 });
+
+/*
+  run 结束之后，排队里的消息不能被忘掉。
+
+  投递循环的外层是 activeRuns，所以一条对话的 run 一旦结束，它排队里的消息就再也不会
+  被访问到——连那句把原因改成 recipient_offline 的代码都在循环里面，跟着一起够不着。
+  于是它永远停在入队时钉的 'pending'，而界面把 pending 显示成「已排队，等待写入」。
+  对一条永远等不到的消息，那句话是假的。
+*/
+test('没有在跑的 run 时，排队消息被标成 offline 而不是永远停在 pending',t=>{
+  const f=fixture(t),message=f.send();
+  assert.equal(f.store.peerMessages.get(message.message.id).delivery.reason,'pending','入队时钉的初始值');
+  // 收件那个终端没了：run 建不起来，于是这条消息落在主循环的可达范围之外。
+  f.live.delete('B');
+  const owner=f.owner();owner.start();owner.pump();
+  // A 和 C 仍然活着——正是真实情形：别的对话有 run，唯独这一条没有。
+  assert.equal(f.store.conversationRuns.active(f.ids.B!),undefined,'前提：B 这条对话确实没有在跑的 run');
+  assert.ok(f.store.conversationRuns.listActive('owner').length>0,'别的对话还在跑，扫描要能分辨');
+  const delivery=f.store.peerMessages.get(message.message.id).delivery;
+  assert.equal(delivery.state,'queued','消息不丢，只是投不出去');
+  assert.equal(delivery.reason,'recipient_offline');
+});
+
+test('终端回来之后照常投递，孤儿标记不会挡住恢复',t=>{
+  const f=fixture(t),message=f.send();
+  f.live.delete('B');
+  const owner=f.owner();owner.start();owner.pump();
+  assert.equal(f.store.peerMessages.get(message.message.id).delivery.reason,'recipient_offline');
+  // 终端回来：主循环重新看得到它，按当时的实际情况改写原因并投递。
+  f.live.set('B',{id:'B',instanceId:'instance-B',cli:'omp',pid:123});
+  f.controls.set('B',{supported:true,reason:null});f.setMode('accepted');
+  owner.pump();owner.pump();
+  assert.equal(f.enqueues.length,1);
+  assert.equal(f.store.peerMessages.get(message.message.id).delivery.state,'accepted');
+});
+
+test('有在跑的 run 时不乱标：该说什么原因还说什么原因',t=>{
+  const f=fixture(t),message=f.send(),owner=f.owner();
+  f.controls.set('B',{supported:true,reason:'busy'});
+  owner.start();owner.pump();
+  // busy 是主循环给的说法；孤儿扫描不能把它盖成 offline。
+  assert.equal(f.store.peerMessages.get(message.message.id).delivery.reason,'busy');
+});
