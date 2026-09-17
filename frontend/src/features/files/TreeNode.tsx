@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type DragEvent as ReactDragEvent } from "react";
 import { downloadFileUrl, listDir, readFilePreview, renamePath, deletePath, type FileNode } from "../../shared/api";
 import { IconChevron, IconEdit, IconFolder, IconTrash } from "../../shared/icons";
 import { InlineRename } from "../../shared/ui/InlineRename";
@@ -46,6 +46,7 @@ export function TreeNode({
   onDeleted,
   folder,
   pending,
+  onDropFiles,
 }: {
   cwd: string;
   onNavigate?: (path: string) => void;
@@ -61,12 +62,21 @@ export function TreeNode({
   /** 落在被右键的那个目录上的动作，见 FolderActions。 */
   folder: FolderActions;
   pending: PendingCreate | null;
+  /**
+   * 从系统里拖文件进来，落在**这个目录**上。
+   *
+   * 只有目录接；拖在文件行上不拦，让事件冒泡到面板那层，落到当前浏览目录——
+   * 「拖到一个文件上」本来就没有明确含义，猜一个不如让它走默认。
+   */
+  onDropFiles?: (event: ReactDragEvent, directory: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [children, setChildren] = useState<FileNode[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  /** 系统文件正悬在这一行上。只对目录有意义。 */
+  const [dropTarget, setDropTarget] = useState(false);
   const isDir = node.kind === "dir";
   const active = selected === node.path;
   const q = query.trim().toLowerCase();
@@ -171,7 +181,7 @@ export function TreeNode({
     <li>
       <div
         className={`group flex w-full items-center gap-1.5 rounded px-2 py-1 ${
-          active ? "bg-bg-hover" : "hover:bg-bg-hover"
+          dropTarget ? "outline outline-2 outline-accent bg-bg-hover" : active ? "bg-bg-hover" : "hover:bg-bg-hover"
         }`}
         style={{ paddingLeft: 8 + depth * 14 }}
         draggable={!renaming}
@@ -180,6 +190,28 @@ export function TreeNode({
           e.dataTransfer.effectAllowed = "copy";
           e.dataTransfer.setData(ROOST_PATH_MIME, node.path);
           e.dataTransfer.setData("text/plain", node.path);
+        }}
+        /*
+          只有目录接系统拖进来的文件，而且必须 `stopPropagation`——不拦住的话面板那层
+          也会处理同一次 drop，同一批文件会被传两遍（一遍进这个目录、一遍进当前目录）。
+
+          判 `types.includes("Files")` 是因为树上的节点自己也可拖（拖去终端），
+          不判的话拖动节点经过别的目录会被当成上传。
+        */
+        onDragOver={(e) => {
+          if (!isDir || !onDropFiles || !e.dataTransfer.types.includes("Files")) return;
+          e.preventDefault();
+          e.stopPropagation();
+          e.dataTransfer.dropEffect = "copy";
+          setDropTarget(true);
+        }}
+        onDragLeave={(e) => { if (e.currentTarget === e.target) setDropTarget(false); }}
+        onDrop={(e) => {
+          if (!isDir || !onDropFiles || !e.dataTransfer.types.includes("Files")) return;
+          e.preventDefault();
+          e.stopPropagation();
+          setDropTarget(false);
+          onDropFiles(e, node.path);
         }}
         onContextMenu={(e) => {
           e.preventDefault();
@@ -254,6 +286,7 @@ export function TreeNode({
               node={c}
               depth={depth + 1}
               pending={pending}
+              onDropFiles={onDropFiles}
               selected={selected}
               onSelect={onSelect}
               query={query}

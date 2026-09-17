@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type DragEvent as ReactDragEvent } from "react";
 import { listDir, type FileNode } from "../../shared/api";
 import { Empty } from "../../shared/ui/Empty";
 import { t } from "@roost/i18n";
@@ -33,6 +33,7 @@ export function Tree({
   onMutated,
   folder,
   pending,
+  onDropFiles,
 }: {
   cwd: string;
   directory: string;
@@ -49,6 +50,8 @@ export function Tree({
   /** 右键菜单里落在目录上的那几项，由 FilesView 实现（上传队列和新建行都在那儿）。 */
   folder: FolderActions;
   pending: PendingCreate | null;
+  /** 拖到某个目录节点上时落到那个目录；不接就冒泡到面板，落当前目录。 */
+  onDropFiles?: (event: ReactDragEvent, directory: string) => void;
 }) {
   const loadedDirectory = useRef(directory);
   const [loading, setLoading] = useState(true);
@@ -207,6 +210,7 @@ export function Tree({
               onDeleted={handleDeleted}
               folder={folder}
               pending={pending}
+              onDropFiles={onDropFiles}
             />
           ))}
         </ul>}

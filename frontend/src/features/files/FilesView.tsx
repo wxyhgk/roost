@@ -315,6 +315,7 @@ function SessionFiles({ session }: { session: Session }) {
             onFileChange={rememberFile}
             pendingSelect={pendingSelect}
             onPendingSelectConsumed={() => setPendingSelect(null)}
+            onDropFiles={acceptDrop}
             onMutated={() => setRev((r) => r + 1)}
             folder={folder}
             pending={pending}
