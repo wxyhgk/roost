@@ -50,6 +50,21 @@ jobs:
       # macOS 自带 zsh，所以本机跑从来碰不到这一条。
       - name: Install zsh
         run: sudo apt-get install -y --no-install-recommends zsh
+      # runner 上有组可写的 fpath 目录，于是 zsh 启动时 `compinit` 会弹一个交互问题：
+      #
+      #   zsh compinit: insecure directories, run compaudit for list.
+      #   Ignore insecure directories and continue [y] or abort compinit [n]?
+      #
+      # 而 PTY 测试正好在那一刻往终端里写命令——**第一个字符被那个问题当成答案吃掉**，
+      # shell 于是去执行 `laude ...`（CI 日志里原样可见）。三条测试因此超时。
+      #
+      # 不是「CI 缺 CLI」（测试自带假的 claude），也不该靠跳过绕开：修掉权限位就行，
+      # 顺带把 compaudit 的原文打出来，下次再出别的目录一眼看得见。
+      - name: Make zsh's fpath pass compaudit
+        run: |
+          zsh -c 'autoload -Uz compaudit; compaudit' || true
+          zsh -c 'autoload -Uz compaudit; compaudit' 2>/dev/null | xargs -r sudo chmod -R go-w || true
+          zsh -c 'autoload -Uz compaudit; compaudit' && echo "仍有不安全目录" || echo "compaudit 干净了"
       - name: Install dependencies
         run: npm ci
       # 两个环境前提，缺了会红在和改动毫不相干的地方（见 AGENTS.md 第二节）：
