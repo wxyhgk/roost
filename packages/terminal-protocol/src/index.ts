@@ -58,7 +58,17 @@ export type ServerMessage =
   /** `cols`/`rows` 是 PTY **现在**的尺寸——多个观众共用一个 PTY，客户端要靠它判断自己是否落后。 */
   | { type: "hello"; protocol: typeof PROTOCOL_VERSION; instanceId: string; pid: number; heartbeat?: 1; dead?: false; cwd: string; cols?: number; rows?: number; cli: CliKind | null; cliId?: CliId | null;
       /** 守护进程会按流序回 `size` 帧。**问能力，不问版本**：没有它就退回就地重排。 */
-      sizeEcho?: true }
+      sizeEcho?: true;
+      /**
+       * 重放和增量帧会带上 `resizes`（几何切换点的下标）。
+       *
+       * 有它，客户端就**不必**因为「服务端网格和我缓存的那份对不上」而把整个缓冲判废：
+       * 横跨 resize 的那段字节自带切换点，接上去不会画花。判废的代价是走全量重建，而
+       * 服务端只留 2000 行、浏览器留 20000 行——中间那段只有浏览器有的历史当场消失。
+       *
+       * **和 `sizeEcho` 分开报**：两者是不同时期加的，中间那一版守护进程有前者没后者。
+       */
+      replayResizes?: true }
   | { type: "hello"; protocol?: typeof PROTOCOL_VERSION; instanceId?: string; pid: null; dead: true; cwd: string; cli: CliKind | null; cliId?: CliId | null }
   | { type: "pong"; nonce: number }
   | OutputFrame

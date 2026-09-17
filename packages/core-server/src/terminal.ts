@@ -24,7 +24,7 @@ export function attachTerminal(ws:WebSocket,id:string,daemon:DaemonClient) {
   const wireCli=(cli:string|null)=>cli&&['claude','codex','grok','qwen'].includes(cli)?cli:null;
   // sizeEcho：这个守护进程会按流序回 size 帧，客户端可以把 reflow 推迟到那一点。
   // 报能力不报版本——老守护进程不带这个字段，客户端自己退回就地重排。
-  send(ws,{type:'hello',protocol:PROTOCOL_VERSION,heartbeat:1,instanceId,pid:session.pid,cwd:session.cwd,cli:wireCli(session.cli),cliId:session.cli,sizeEcho:true});
+  send(ws,{type:'hello',protocol:PROTOCOL_VERSION,heartbeat:1,instanceId,pid:session.pid,cwd:session.cwd,cli:wireCli(session.cli),cliId:session.cli,sizeEcho:true,replayResizes:true});
   // Appearance ownership in the business gateway is local to that gateway.
   // Recovery clients must not send automatic color replies or snapshots.
   send(ws,{type:'appearance-owner',owner:false});

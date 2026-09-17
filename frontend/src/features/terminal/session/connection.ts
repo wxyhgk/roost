@@ -33,6 +33,8 @@ export type ConnectionHandle = {
   /** 返回是否真的把一个**新的**尺寸告诉了 PTY——没告诉就意味着不会有 SIGWINCH。 */
   fit(want?: { cols: number; rows: number }): boolean;
   echoesSize(): boolean;
+  /** 重放和增量帧自带几何切换点吗。**决定网格对不上时要不要把缓冲判废。** */
+  carriesReplayGeometry(): boolean;
   restart(): void;
   /** 丢掉本地这一屏，向服务端重取。用在「本地画面已经不可信」的时候。 */
   refresh(): void;
@@ -50,6 +52,7 @@ export function createConnection(options: ConnectionOptions): ConnectionHandle {
 
   let ws: WebSocket | null = null;
   let sizeEcho = false;
+  let replayResizes = false;
   let cancelled = false;
   let dead = false;
   let inputReady = false;
@@ -179,6 +182,7 @@ export function createConnection(options: ConnectionOptions): ConnectionHandle {
         heartbeatSupported = msg.heartbeat === 1;
         // 问能力，不问版本。老守护进程不带这个字段，客户端就退回「请求时就地重排」。
         sizeEcho = msg.sizeEcho === true;
+        replayResizes = msg.replayResizes === true;
         const instanceId = msg.instanceId;
         liveInstance = instanceId;
         const ff = forceFull;
@@ -313,6 +317,11 @@ export function createConnection(options: ConnectionOptions): ConnectionHandle {
     },
     /** 守护进程会不会按流序回尺寸标记。**决定客户端要不要推迟自己的 reflow。** */
     echoesSize: () => sizeEcho,
+    /*
+      重放和增量帧会不会自带几何切换点。**决定网格对不上时要不要把缓冲判废**——
+      自带切换点就不必判废，接上去不会画花，也就不会为此走全量重建丢掉本地那段历史。
+    */
+    carriesReplayGeometry: () => replayResizes,
     /*
       `want` 是「想要的尺寸」，给尺寸回声那条路用：那条路上本地网格**还没改**，
       `getTermSize()` 读到的仍是旧值，不显式传就会发出一个和 PTY 已知相同的尺寸，

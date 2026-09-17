@@ -237,3 +237,23 @@ test('file editing validates fields, byte limits, binary files and symlink conta
   const preflight = await f.request('OPTIONS', '/api/file', undefined, { origin: 'http://localhost:5173' });
   assert.ok(preflight.headers.get('access-control-allow-methods')?.includes('PUT'));
 });
+
+/*
+  hello 必须报出这两个能力位。
+
+  它们是「客户端据此改变行为」的开关，而且**默认关**——不报，客户端就退回老路。尺寸回声
+  那笔（a58fa74）只把能力位接在了 core-server 的 hello 上，主链路这条漏了，于是本地 reflow
+  从来没真的推迟过：功能做完了，在主界面上一天都没生效。这种漏法不报错、不红，只是
+  「看起来没改」。
+*/
+test('终端 hello 报出尺寸回声和重放几何两个能力位', async t => {
+  const f = await fixture(t);
+  f.store.upsertSession({ id: 'caps', cwd: f.dir }); f.runtime.ensureSession('caps', f.dir);
+  const ws = new WebSocket(f.base.replace('http', 'ws') + '/api/pty?id=caps', { origin: 'http://localhost:5173' });
+  f.sockets.add(ws);
+  const [raw] = await once(ws, 'message');
+  const hello = JSON.parse(String(raw));
+  assert.equal(hello.type, 'hello');
+  assert.equal(hello.sizeEcho, true, '不报这个，客户端就不会把本地 reflow 推迟到标记那一刀');
+  assert.equal(hello.replayResizes, true, '不报这个，网格对不上时仍会判废整个缓冲、走全量重建丢历史');
+});

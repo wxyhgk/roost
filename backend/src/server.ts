@@ -1025,6 +1025,9 @@ function deviceLabel(agent: string | undefined): string {
           if (send(ws, event)) sentSeq = event.seq;
           else { behind = true; scheduleResync(); }
         } else {
+          // size 和 output 同一道实例闸：别把另一个实例的几何塞给这个观众。
+          // 刻意不比 sentSeq——size 没有 seq，它的位置就是它在流里的顺序。
+          if (event.type === "size" && event.instanceId !== instanceId) return;
           send(ws, event);
           if (event.type === "exit") ws.close();
         }
@@ -1117,8 +1120,16 @@ function deviceLabel(agent: string | undefined): string {
     if (ws.readyState === ws.OPEN) {
       // 带上 PTY 现在的尺寸：客户端靠它才能判断自己要不要纠正，而不是以为自己上次
       // 发过就还是那样（多个观众时最后一个改的说了算，其余观众并不知情）。
+      /*
+        两个能力位。**原来一个都没报**——`sizeEcho` 那笔只接在 core-server（恢复网关）上，
+        主链路这条 hello 漏了，于是客户端一直走「请求时就地重排」的老路：尺寸回声做了，
+        但在主界面上从来没生效过。
+
+        报能力不报版本：老前端不认这两个字段，行为和以前一模一样。
+      */
       send(ws, { type: "hello", protocol: PROTOCOL_VERSION, heartbeat: 1, instanceId,
         pid: session.pid, cwd: session.cwd, cols: session.cols, rows: session.rows,
+        sizeEcho: true, replayResizes: true,
         cliId: runtime.getSession(id)?.cli ?? null, cli: wireCli(runtime.getSession(id)?.cli ?? null) });
     }
     reportAppearanceOwner();

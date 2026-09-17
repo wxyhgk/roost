@@ -108,7 +108,12 @@ export function createResume(sink: Sink, opts: ResumeOptions = {}) {
     inspect: () => ({ applied, received, queued, pendingWrites, waitingSince,
       behind: Math.max(0, received - applied), behindSince,
       frozen: freezeCount > 0 && !freezeExpired, valid }),
-    prepare(nextInstance: string, cached: ResumeSnapshot | null, forceFull = false, grid?: TerminalGrid) {
+    /**
+     * @param geometryInStream 重放/增量帧会自带几何切换点（守护进程报了 `replayResizes`）。
+     *   有它，缓存的网格和服务端对不上也不必判废——见下面 `compatibleCache` 那段。
+     */
+    prepare(nextInstance: string, cached: ResumeSnapshot | null, forceFull = false, grid?: TerminalGrid,
+      geometryInStream = false) {
       return enqueue(async () => {
         if (disposed) return undefined;
         sourceGrid = terminalGrid(grid);
@@ -119,7 +124,17 @@ export function createResume(sink: Sink, opts: ResumeOptions = {}) {
         applied = received = 0;
         markProgress();
         const cachedGrid = terminalGrid(cached);
-        const compatibleCache = !sourceGrid || (cachedGrid?.cols === sourceGrid.cols && cachedGrid?.rows === sourceGrid.rows);
+        /*
+          网格对不上时**曾经**只能判废：缓存里的画面按旧宽度排，而服务端接着按新宽度发
+          增量，硬接上去会画花。代价是走全量重建——服务端只留 2000 行、浏览器留 20000 行，
+          中间那段只有浏览器有的历史当场消失（实测一次重连丢 2060 行，同一个会话里两次）。
+
+          增量自带几何切换点之后，这个前提不成立了：旧宽度那截仍按旧宽度解析，到标记那一刀
+          才改网格。所以能力在时不再判废。**只在能力在时**——中间那一版守护进程有尺寸回声
+          却没有切换点，对它判废仍然是对的。
+        */
+        const compatibleCache = geometryInStream || !sourceGrid
+          || (cachedGrid?.cols === sourceGrid.cols && cachedGrid?.rows === sourceGrid.rows);
         if (!forceFull && compatibleCache && cached?.instanceId === nextInstance) {
           sink.reset();
           const restoreGrid = terminalGrid(cached) ?? sourceGrid;

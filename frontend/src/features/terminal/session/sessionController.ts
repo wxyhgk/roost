@@ -151,7 +151,7 @@ export function createTerminalSessionController(options: {
         trace.record('grid-mismatch-on-hello', grid.cols * 1000 + grid.rows);
         trace.record('local-grid', term.cols * 1000 + term.rows);
       }
-      return resume.prepare(instanceId, cached, forceFull, grid);
+      return resume.prepare(instanceId, cached, forceFull, grid, conn?.carriesReplayGeometry() ?? false);
     };
 
     const onFrame = (msg: ServerMessage, ready: () => boolean): boolean => {

@@ -18,6 +18,8 @@ function fixture(id: string, wait = Promise.resolve(), reopening = Promise.resol
   let connectionOptions!: ConnectionOptions;
   let focused = true, visible = true, accepting = true;
   let echoesSize = false;
+  // 默认关：没报能力的守护进程仍然走「网格对不上就判废」的老路，已有断言测的就是它。
+  let carriesReplayGeometry = false;
   const resized: boolean[] = [];
   let lastSent: { cols: number; rows: number } | null = null;
   let signal!: AbortSignal;
@@ -71,7 +73,8 @@ function fixture(id: string, wait = Promise.resolve(), reopening = Promise.resol
       },
       // 默认走**退化路径**（就地重排），这样已有的测试仍然在测原来的行为。
       // 尺寸回声那条路由下面它自己的测试覆盖。
-      echoesSize: () => echoesSize, restart() { restarts++; }, refresh() { refreshes++; }, isAlive: () => true, dispose() { stopped++; },
+      echoesSize: () => echoesSize, carriesReplayGeometry: () => carriesReplayGeometry,
+      restart() { restarts++; }, refresh() { refreshes++; }, isAlive: () => true, dispose() { stopped++; },
     }; },
     reopen: () => { reopens++; return reopening; }, loadSnapshot: () => null, saveSnapshot() {},
     observeResize: () => () => {}, windowEvents, documentEvents, isVisible: () => visible, isFocused: () => focused,
@@ -80,6 +83,7 @@ function fixture(id: string, wait = Promise.resolve(), reopening = Promise.resol
   const controller = createTerminalSessionController({sessionId:id, host, active:true, onCwd: value => cwd.push(value), onCli() {}, onState() { stateUpdates++; }}, deps);
   return {controller, term, sent, writes, cwd, windowEvents, documentEvents, resized,
     enableSizeEcho: () => { echoesSize = true; },
+    enableReplayGeometry: () => { carriesReplayGeometry = true; },
     setBufferLines: (n: number) => { bufferLines = n; },
     acceptInput: (value: boolean) => { accepting = value; },
     setGrid: (cols: number, rows: number) => { grid = { cols, rows }; },
@@ -625,3 +629,28 @@ test('replay errors survive wake events and offline retry reconnects without reo
     f.callbacks().onReplayError?.(null); assert.equal(f.controller.snapshot().connectionError, null);
   } finally { f.controller.dispose(); }
 });
+
+/*
+  网格对不上时还要不要把整个缓冲判废，取决于**增量里有没有几何切换点**。
+
+  判废的代价不是一帧，是历史：它走全量重建，而服务端只留 2000 行、浏览器留 20000 行，
+  中间那段只有浏览器有的当场消失（真机实测一次重连丢 2060 行，一个会话里两次）。
+  切换点补上之后这个理由就没了——旧宽度那截仍按旧宽度解析，到标记那一刀才改网格。
+*/
+for (const carries of [false, true]) {
+  test(`hello 的网格和缓存对不上：${carries ? '带切换点就续传' : '没切换点就判废'}`, async () => {
+    const cached = { instanceId: 'inst', seq: 9, data: 'screen', cols: 80, rows: 24 };
+    const f = fixture(`grid-mismatch-${carries}`, undefined, undefined, { loadSnapshot: () => cached });
+    try {
+      await tick();
+      if (carries) f.enableReplayGeometry();
+      // PTY 现在是 100x30，而缓存那一屏是 80x24——断线期间别的观众改了尺寸就是这个形状。
+      const pending = f.callbacks().onHello('inst', false, { cols: 100, rows: 30 });
+      // 恢复缓存要真的写一遍屏；替身的 write 把回调攒着，得替它放行。
+      for (let i = 0; i < 4; i++) { await tick(); while (f.writes.length) f.writes.shift()!(); }
+      const afterSeq = await pending;
+      if (carries) assert.equal(afterSeq, 9, '应该带着游标去要增量');
+      else assert.equal(afterSeq, undefined, '没有切换点时仍然必须判废，否则会画花');
+    } finally { f.controller.dispose(); }
+  });
+}
