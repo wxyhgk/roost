@@ -44,6 +44,12 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
+      # ubuntu runner 镜像里没有 zsh，而这个仓库的 CLI 启动垫片**只在 zsh 下安装**
+      # （`createClaudeLaunch` 对非 zsh 直接返回）。不装的话有五条测试挂在
+      # `spawn /bin/zsh ENOENT` 上——它们测的正是 zsh 下的行为，跳过等于不测。
+      # macOS 自带 zsh，所以本机跑从来碰不到这一条。
+      - name: Install zsh
+        run: sudo apt-get install -y --no-install-recommends zsh
       - name: Install dependencies
         run: npm ci
       # 两个环境前提，缺了会红在和改动毫不相干的地方（见 AGENTS.md 第二节）：
