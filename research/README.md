@@ -17,4 +17,5 @@
 工具渲染与上下文管理：[DeepSeek Harness 工具调用渲染](deepseek-harness-ui.md)。
 - [从 Warp 学到什么](warp-lessons.md) —— 四路调研的合并结论：退掉读屏、外部真相源当脊梁、`--session-id` 自己铸身份
 - [别人怎么做的：happier 的 unified terminal](happier-unified-terminal.md) —— 同品类产品：也是读屏+敲回车+按版本存屏幕 fixture；输入仲裁器 1148 行
+- [Claude Code Mods（function hooks）](claude-code-mods.md) —— 官方要把 hook 换成 TS 函数；我们注入的观察插件以后能省掉「每个事件起一次进程」，但等它发了再动
 - [为什么 roost 的界面「不像现在的前端」](ui-language.md) —— 骨架是对的，皮肤选错了：纯白强调色、只有两档字号、正字距
