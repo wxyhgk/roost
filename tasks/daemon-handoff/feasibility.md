@@ -1,5 +1,12 @@
 # 守护进程原地换二进制（handoff）：可行性实测
 
+> **后续（2026-09-16）**：又跑了四路调研，结论是**不建议走 execve**，详见
+> [../../research/daemon-handoff-findings.md](../../research/daemon-handoff-findings.md)。
+> 这份文档正文保持原样（它是当时的事实），但其中第 4 条待办里的猜测
+> 「监听 fd 同样在没有 CLOEXEC 时活过 execve」**已被实测推翻**——libuv 开的一切都带
+> CLOEXEC，TCP 和 UDS 的监听 fd 都是 EBADF。另外新测出一条当时没想到的：
+> **低号 fd 活不过第二次交接**，而且失败是静默的。
+
 **结论：可行，而且不需要 fork node-pty。** 下面每条都是在这台机器上实测的，不是推断。
 
 ## 为什么要这个
