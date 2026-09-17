@@ -213,7 +213,21 @@ function SessionFiles({ session }: { session: Session }) {
           </div>
         </nav>
       )}
-      <div className="flex shrink-0 items-center gap-1.5 border-b border-border px-2.5 py-1.5">
+      <div className="relative flex shrink-0 items-center gap-1.5 border-b border-border px-2.5 py-1.5">
+        {/*
+          拖放提示盖在**筛选框这一行**上，不盖树。
+
+          它先前是浮在树顶上的一条，于是最上面那个目录被压掉半行——而那一行恰恰可能正是
+          你想拖进去的目标。挪到这里：这一行在拖放期间没用，盖住零成本；高度不变，
+          树也不会被推着走（拖到一半整棵树上下挪动，光标底下的目标就换人了）。
+        */}
+        {dropping && (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center bg-bg-panel px-2.5">
+            <span className="min-w-0 flex-1 truncate rounded-md bg-accent/15 px-2 py-1 text-body text-accent">
+              {dropTargetDir === null ? t.files.upload.dropHintFolder : t.files.upload.dropInto(dropTargetDir || ".")}
+            </span>
+          </div>
+        )}
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -327,13 +341,8 @@ function SessionFiles({ session }: { session: Session }) {
           悬在某个目录上时**说出是哪个目录**，并且把面板这层的框收掉，让那一行的高亮独自
           说话。
         */}
-        {dropping && (
-          <div className="pointer-events-none absolute inset-1 z-10 rounded-lg border-2 border-dashed border-accent">
-            <span className="absolute inset-x-0 top-0 truncate rounded-t-lg bg-accent px-2 py-0.5 text-center text-caption text-bg">
-              {dropTargetDir === null ? t.files.upload.dropHintFolder : t.files.upload.dropInto(dropTargetDir || ".")}
-            </span>
-          </div>
-        )}
+        {/* 树上只留一圈虚线，说明「松手会落在这个面板里」。文字在上面那一行，见那里的说明。 */}
+        {dropping && <div className="pointer-events-none absolute inset-1 z-10 rounded-lg border-2 border-dashed border-accent" />}
         {session ? (
           <Tree
             key={session.id}
