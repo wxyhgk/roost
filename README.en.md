@@ -188,6 +188,57 @@ the applications are `backend/` and `frontend/`. Packages import each other only
 public entry points, and `verify` enforces that. See the
 [terminal daemon notes](packages/terminal-daemon/README.md).
 
+## Whose shoulders this stands on
+
+A fair amount of Roost was learned from other projects. `research/` keeps one note per
+investigation: **what source was read, what was taken from it, and what was deliberately
+left behind.**
+
+**Borrowed:**
+
+- **[tty7](https://github.com/l0ng-ai/tty7)** (a terminal workbench in the same category,
+  written in Rust) — both "size echo" and "replay segmented by the geometry it was recorded
+  at" came from reading its source. The core insight: a resize has to be synchronized
+  **inside the byte stream**, not merely "sent at the same time" — otherwise bytes already
+  in flight, produced at the old width, get parsed at the new one.
+- **Warp** — "guess less; let the other side tell you." Moving AI state detection from
+  screen scraping to each CLI's own hooks and protocol is a direction this confirmed.
+- **mosh** — synchronize *what the screen looks like now* rather than chasing the byte
+  stream. Our replay re-serializes the current screen from a server-side grid, which is the
+  same idea.
+- **tmux** — client/server separation, and "slowing down for the slowest viewer punishes
+  everyone": it implemented producer throttling in 2009, 2015 and 2016, and removed it all
+  three times. That's why we drop frames rather than pause the PTY.
+- **xterm.js**, **node-pty**, **Ketcher** and others make up the terminal, PTY and molecule
+  editing foundations.
+
+The **deliberately-not-copied** list is written down too, because the reasoning is worth
+more than the conclusion: tty7's local line editor (too narrow a set of preconditions — it
+effectively doesn't exist inside agent TUIs), systemd/launchd socket activation (preserves
+only the listening socket, not the process, which is orthogonal to our problem), and
+`process.execve` hot handoff (every failure mode is silent — see
+[`research/daemon-handoff-findings.md`](research/daemon-handoff-findings.md), in Chinese).
+
+**Where we went further:**
+
+- **Local echo prediction that keeps working inside full-screen TUIs.** Comparable
+  approaches only dare take over when a shell prompt marker says it's safe, so they do
+  nothing in vim, htop, or any agent TUI — which is exactly our main case. Ours is an
+  overlay: never enters the parser, never touches the wire, rolls back on disagreement,
+  worst case one wasted frame.
+- **Latency is measured on the link that actually carries keystrokes**, and how stale the
+  reading is gets modelled explicitly. Latency measured on a different channel is not the
+  number you feel while typing.
+- **Replay is a re-serialized current screen, not raw history.** That makes an entire class
+  of "mode compensation" bugs impossible here — alternate-screen state travels with the
+  snapshot, so nothing has to be folded back in.
+- **When pressing Enter on an agent's behalf, we wait for the echo, not for a timer.**
+  Others sleep 200ms and hope; we wait until our own text appears on screen. Wait for
+  evidence, not for time.
+- **One private app-server socket per PTY.** The vendor documentation says a third-party
+  observer can't reliably associate a TUI with a specific session — but a socket with
+  exactly one TUI on it leaves nothing to guess.
+
 ## For AI assistants
 
 Read **[AGENTS.md](AGENTS.md)** first: the things you can't see by reading the code but
