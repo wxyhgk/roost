@@ -7,10 +7,40 @@ import { DatabaseSync } from "node:sqlite";
 
 let transactionSerial = 0;
 
+/**
+ * 开一个事务；已经在事务里就改开 savepoint。返回 savepoint 名字，没开就返回 null。
+ *
+ * **不能只靠 `db.isTransaction`。** 那个属性是 `node:sqlite` 后来才加的，在 Node 22.13
+ * ——也就是我们 `engines` 里声明的下限——上是 `undefined`。falsy 的结果让每一层嵌套都去
+ * `BEGIN IMMEDIATE`，撞出 `cannot start a transaction within a transaction`。
+ *
+ * 开发机跑的是新版本，所以这条一直没显形；CI 第一次在下限版本上跑就红了 28 条
+ * （workspace-store 16 + backend 12，后者是同一个根）。
+ *
+ * 有这个属性就照常问；没有就直接试，撞上了再退回 savepoint——试的代价只在老版本上付。
+ */
+function beginOrNest(db: DatabaseSync): string | null {
+  const next = () => `workspace_tx_${++transactionSerial}`;
+  if (typeof db.isTransaction === "boolean") {
+    const savepoint = db.isTransaction ? next() : null;
+    db.exec(savepoint ? `SAVEPOINT ${savepoint}` : "BEGIN IMMEDIATE");
+    return savepoint;
+  }
+  try {
+    db.exec("BEGIN IMMEDIATE");
+    return null;
+  } catch (error) {
+    // 只认「已经在事务里」这一种。锁冲突之类的要原样抛出去，吞掉会把真故障变成假成功。
+    if (!/within a transaction/i.test(String((error as { message?: string })?.message ?? error))) throw error;
+    const savepoint = next();
+    db.exec(`SAVEPOINT ${savepoint}`);
+    return savepoint;
+  }
+}
+
 export function transaction<T>(db: DatabaseSync, operation: () => T): T {
   // Public store operations can also participate in an outer lifecycle transaction.
-  const savepoint = db.isTransaction ? `workspace_tx_${++transactionSerial}` : null;
-  db.exec(savepoint ? `SAVEPOINT ${savepoint}` : "BEGIN IMMEDIATE");
+  const savepoint = beginOrNest(db);
   try {
     const result = operation();
     db.exec(savepoint ? `RELEASE ${savepoint}` : "COMMIT");

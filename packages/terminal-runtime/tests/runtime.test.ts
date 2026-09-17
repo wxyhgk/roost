@@ -197,9 +197,19 @@ test("dispose flushes history, closes PTYs and listeners, cancels timers and is 
     **用「不多于」而不是「相等」**：让出那一下，别处无关的定时器也可能到期，基线只会
     往下走。这条要守的是「dispose 没留下多出来的东西」，不是「计数纹丝不动」。
   */
-  await new Promise<void>(resolve => setImmediate(resolve));
-  const timersAfter = process.getActiveResourcesInfo().filter((name) => name === "Timeout").length;
-  assert.ok(timersAfter <= timersBefore, `dispose left ${timersAfter - timersBefore} extra timer(s) running`);
+  /*
+    **等它烧完，而不是让出固定的一下。**
+
+    原来是一次 `setImmediate`。那在 Node 26 上够，在 22.13 上不够——CI 第一次在我们
+    声明的下限版本上跑，这条就红了（`dispose left 1 extra timer(s) running`）。
+    「几个 tick 之后那个一次性定时器已经烧掉」不是一个跨版本稳定的数。
+
+    改成轮询到期限：要守的仍然是「dispose 没留下长期运行的东西」——一次性的会在这
+    几十毫秒里自己烧完，真漏掉的不会。
+  */
+  const extraTimers = () => process.getActiveResourcesInfo().filter((name) => name === "Timeout").length - timersBefore;
+  for (let i = 0; i < 50 && extraTimers() > 0; i++) await new Promise<void>(resolve => setTimeout(resolve, 2));
+  assert.ok(extraTimers() <= 0, `dispose left ${extraTimers()} extra timer(s) running`);
   pty.output("ignored");
   assert.equal(events.length, 1);
   runtime.dispose();

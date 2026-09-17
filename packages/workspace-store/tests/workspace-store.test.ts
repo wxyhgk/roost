@@ -15,7 +15,15 @@ function directory(t: TestContext) {
 
 test("importing the package opens no database and ignores environment defaults", (t) => {
   const dir = directory(t);
-  const result = spawnSync(process.execPath, ["--input-type=module", "-e",
+  /*
+    `--import tsx` 不能省：包的入口是 `.ts`，而原生剥类型是 Node 23.6 才默认开的。
+    在我们声明支持的下限（22.13）上，这个子进程会死在 `ERR_UNKNOWN_FILE_EXTENSION` 上，
+    而这条测试想问的是「导入它会不会开数据库」，不是「node 认不认识 .ts」。
+
+    **要传解析好的绝对位置**，不能直接写 `tsx`：子进程的 cwd 是临时目录（测的就是
+    「那里不该出现任何文件」），从那儿解析不到仓库的 node_modules。
+  */
+  const result = spawnSync(process.execPath, ["--import", import.meta.resolve("tsx"), "--input-type=module", "-e",
     `await import(${JSON.stringify(new URL("../src/index.ts", import.meta.url).href)});`,
   ], {
     cwd: dir,
