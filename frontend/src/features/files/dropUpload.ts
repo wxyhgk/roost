@@ -69,8 +69,21 @@ export function collectDropEntries(items: DataTransferItemList | null | undefine
 const readEntriesOnce = (reader: ReturnType<NonNullable<Entry["createReader"]>>) =>
   new Promise<Entry[]>(resolve => reader.readEntries(resolve, () => resolve([])));
 
+/*
+  **不能写成 `entry.file?.(ok, fail) ?? resolve(null)`。**
+
+  `entry.file()` 是个 void 函数，返回 `undefined`，于是 `?? resolve(null)` **每次都会执行**
+  ——而且是同步执行，抢在浏览器那个异步回调之前。Promise 的第一个 resolve 说了算，
+  所以每个文件都会变成 null、被当成读不出来跳过：拖进去有高亮、有目标，但一个字节都不传。
+
+  这个写法在同步的测试替身下是绿的（替身当场就 resolve 了真文件，抢赢了），真浏览器上
+  才翻车。测试替身因此改成异步的，见 tests/drop-upload.test.ts。
+*/
 const fileOf = (entry: Entry) =>
-  new Promise<File | null>(resolve => entry.file?.(resolve, () => resolve(null)) ?? resolve(null));
+  new Promise<File | null>(resolve => {
+    if (!entry.file) { resolve(null); return; }
+    entry.file(resolve, () => resolve(null));
+  });
 
 /** 目录一次读不完——读到返回空为止。**只读一次就是坑 2。** */
 async function readAll(entry: Entry): Promise<Entry[]> {

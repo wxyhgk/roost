@@ -8,10 +8,20 @@ import { collectDropEntries, readDropTree } from '../src/features/files/dropUplo
 
 type FakeEntry = ReturnType<typeof fileEntry> | ReturnType<typeof dirEntry>;
 
+/*
+  **替身必须是异步的。**
+
+  浏览器的 `entry.file()` 和 `readEntries()` 都是「立刻返回、稍后回调」。
+  替身当场同步 resolve 的话，会把真实实现里的竞争全部掩盖掉——第一版就是这么漏掉了
+  `entry.file?.(…) ?? resolve(null)`：那句每次都会同步 resolve(null)，同步替身抢赢了所以
+  测试全绿，而真浏览器上一个文件都传不出去。
+*/
+const later = (run: () => void) => setTimeout(run, 0);
+
 function fileEntry(name: string, size = 1) {
   return {
     name, isFile: true as const, isDirectory: false as const,
-    file(resolve: (file: File) => void) { resolve({ name, size } as File); },
+    file(resolve: (file: File) => void) { later(() => resolve({ name, size } as File)); },
   };
 }
 
@@ -25,7 +35,7 @@ function dirEntry(name: string, children: FakeEntry[], batch = 100) {
         readEntries(resolve: (entries: FakeEntry[]) => void) {
           const slice = children.slice(offset, offset + batch);
           offset += slice.length;
-          resolve(slice);
+          later(() => resolve(slice));
         },
       };
     },
@@ -67,7 +77,7 @@ test('统计字节数和隐藏文件数；隐藏文件照传不漏', async () =>
 
 test('读不出来的条目跳过，不拖垮其余的', async () => {
   const broken = { name: 'broken', isFile: true as const, isDirectory: false as const,
-    file(_ok: unknown, fail: (error: unknown) => void) { fail(new Error('gone')); } };
+    file(_ok: unknown, fail: (error: unknown) => void) { later(() => fail(new Error('gone'))); } };
   const tree = await read([dirEntry('p', [broken, fileEntry('ok.txt')])]);
   assert.deepEqual(tree.files.map(f => f.path), ['p/ok.txt']);
 });
