@@ -62,9 +62,10 @@ jobs:
       # 顺带把 compaudit 的原文打出来，下次再出别的目录一眼看得见。
       - name: Make zsh's fpath pass compaudit
         run: |
-          zsh -c 'autoload -Uz compaudit; compaudit' || true
-          zsh -c 'autoload -Uz compaudit; compaudit' 2>/dev/null | xargs -r sudo chmod -R go-w || true
-          zsh -c 'autoload -Uz compaudit; compaudit' && echo "仍有不安全目录" || echo "compaudit 干净了"
+          # compaudit 把路径写在 stderr 上，所以要 2>&1 再挑出以 / 开头的行——
+          # 上一版写成 2>/dev/null，管子里什么都没有，chmod 一个目录都没改到。
+          zsh -c 'autoload -Uz compaudit; compaudit' 2>&1 | grep '^/' | sort -u | xargs -r sudo chmod -R go-w || true
+          zsh -c 'autoload -Uz compaudit; compaudit' 2>&1 | grep -q '^/' && echo '仍有不安全目录' || echo 'compaudit 干净了'
       - name: Install dependencies
         run: npm ci
       # 两个环境前提，缺了会红在和改动毫不相干的地方（见 AGENTS.md 第二节）：

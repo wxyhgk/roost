@@ -23,6 +23,15 @@ const options = {
   pathEntries: '/usr/bin:/bin',
 };
 
+/*
+  launchd 对坏 plist 的报错很难读懂，所以生成的东西必须先能通过 plutil。
+
+  **而 plutil 只有 macOS 有。** 这几条因此在别的系统上明确跳过——它们校验的是
+  launchd 的 plist，本来就只在 macOS 上有意义；在 Linux 上红只说明那台机器没有
+  这个工具，不说明生成器坏了。其余几条（Caddyfile、后端脚本、PATH 过滤）与平台
+  无关，照跑不误。
+*/
+const macOnly = process.platform === 'darwin' ? undefined : { skip: 'plutil 只有 macOS 有' };
 /** launchd 对坏 plist 的报错很难读懂，所以生成的东西必须先能通过 plutil。 */
 async function parse(text) {
   const dir = await mkdtemp(join(tmpdir(), 'roost-plist-'));
@@ -34,7 +43,7 @@ async function parse(text) {
   } finally { await rm(dir, { recursive: true, force: true }); }
 }
 
-test('每个 plist 都是合法的，并带齐 launchd 需要的键', async () => {
+test('每个 plist 都是合法的，并带齐 launchd 需要的键', macOnly, async () => {
   for (const service of plan(options).services) {
     const parsed = await parse(service.plist);
     assert.equal(parsed.Label, service.label);
@@ -53,7 +62,7 @@ test('每个 plist 都是合法的，并带齐 launchd 需要的键', async () =
   }
 });
 
-test('环境变量把数据目录、端口和来源传下去，node 排在 PATH 最前', async () => {
+test('环境变量把数据目录、端口和来源传下去，node 排在 PATH 最前', macOnly, async () => {
   const { EnvironmentVariables: env } = await parse(plan(options).services[0].plist);
   assert.equal(env.ROOST_DATA_DIR, options.dataDir);
   assert.equal(env.PORT, '8787');
@@ -63,14 +72,14 @@ test('环境变量把数据目录、端口和来源传下去，node 排在 PATH 
   assert.deepEqual(env.PATH.split(':'), ['/opt/node/bin', '/usr/bin', '/bin']);
 });
 
-test('--secure-cookies 时不注入放行明文 HTTP 的变量', async () => {
+test('--secure-cookies 时不注入放行明文 HTTP 的变量', macOnly, async () => {
   const on = await parse(plan(options).services[0].plist);
   assert.equal(on.EnvironmentVariables.ROOST_AUTH_INSECURE_HTTP, '1');
   const off = await parse(plan({ ...options, insecureHttp: false }).services[0].plist);
   assert.equal('ROOST_AUTH_INSECURE_HTTP' in off.EnvironmentVariables, false);
 });
 
-test('plist 里的值转义 XML，含 & 和 < 的路径不会把文件写坏', async () => {
+test('plist 里的值转义 XML，含 & 和 < 的路径不会把文件写坏', macOnly, async () => {
   const parsed = await parse(servicePlist({
     label: 'com.roost.test', args: ['/bin/echo', 'a&b'], workingDirectory: '/a<b>c',
     env: { X: 'y&z' }, logPath: '/tmp/a&b.log',
@@ -112,7 +121,7 @@ test('后端脚本先等终端 owner 就绪再启动', () => {
   带着 `$TMPDIR/roost-cli-launch-XXXX/bin`——会话一结束就没了。照单继承会把这个
   指向空气的路径烤进一个活得比任何 shell 都久的 plist。
 */
-test('服务的 PATH 滤掉临时目录、相对项和重复项，node 仍排最前', async () => {
+test('服务的 PATH 滤掉临时目录、相对项和重复项，node 仍排最前', macOnly, async () => {
   const { servicePath } = await import('../../scripts/install-service.mjs');
   const got = servicePath('/opt/node/bin', [
     '/usr/bin',
@@ -126,7 +135,7 @@ test('服务的 PATH 滤掉临时目录、相对项和重复项，node 仍排最
   assert.deepEqual(got.split(':'), ['/opt/node/bin', '/usr/bin', '/opt/homebrew/bin']);
 });
 
-test('PATH 为空或缺失时也能生成，只剩 node', async () => {
+test('PATH 为空或缺失时也能生成，只剩 node', macOnly, async () => {
   const { servicePath } = await import('../../scripts/install-service.mjs');
   assert.equal(servicePath('/opt/node/bin', undefined), '/opt/node/bin');
   assert.equal(servicePath('/opt/node/bin', ''), '/opt/node/bin');
