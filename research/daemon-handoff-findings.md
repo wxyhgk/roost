@@ -99,8 +99,16 @@ append 的日志文件根本没被创建）。
 - **重新 bind 必须先探活再 unlink**：先 bind，EADDRINUSE 就 connect 探一下——连得上
   说明有健康的守护进程在听，放弃；ECONNREFUSED 才是陈旧文件。无脑 unlink 会把别人的
   路径偷走。重新 bind 之后 **`chmod 0600` 要重做**，新 inode 不继承权限。
-- 空窗：裸 node execve → 重新监听约 30ms，带模块加载约 65ms。**守护进程真实的 init
-  没测**，那才是大头。
+- **execve 的 argv 必须原样带上 `--import tsx`。** 守护进程是这么起的（plist 里的
+  `ProgramArguments`）：`node --import tsx deploy/terminal-owner.mts`。漏掉那两个参数
+  就是新映像根本起不来，而那一刻旧映像已经没了，PTY 全丢。**写死成常量，别从
+  `process.argv` 抄**：execve 之后 argv 会被改写，抄一次漂一次。
+- 空窗：裸 node execve → 重新监听约 30ms，带模块加载约 65ms。**这个数字偏小，别拿它
+  做设计依据。** 同一台机、守护进程那个 v25.9.0，boot 到第一行 JS：裸 node 33–52ms，
+  `node --import tsx` 56–83ms（tsx 本身约 +25ms）。而 tsx 还要在 import 时逐个转译
+  `terminal-owner.mts` 整条依赖树，那部分没测、多半是大头，再加上 SQLite 打开和
+  `ensureCodexRuntime`。**真实空窗按几百 ms 估，不是几十 ms。** 所以「先 bind 再做重活，
+  让客户端连上等着而不是被 ECONNREFUSED 拒掉」这条比原先估计的更值得做。
 - **`node:sqlite` 是干净地死掉**，不是「活着但状态坏了」：未提交的事务正确回滚，
   `integrity_check: ok`，重开就能写。这条是好消息。
 - **被接管的子进程会变僵尸**，而且 Node 没有 `waitpid`：`process.kill(pid, 0)` 对僵尸
