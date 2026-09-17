@@ -98,9 +98,24 @@ function SessionFiles({ session }: { session: Session }) {
   */
   useEffect(() => {
     const clear = () => { setDropping(false); setDropTargetDir(null); };
+    /*
+      `relatedTarget === null` 才是「离开了整个窗口」。
+
+      光标在页面内部从一个元素移到另一个时 `dragleave` 也会来，那时 relatedTarget 是
+      要进入的那个元素；只有真的移出窗口才为 null。不判这一条就会在树里移动时乱清。
+
+      从 Finder 拖进来的外部拖放**不会**在我们窗口里触发 `dragend`（拖动源在 Finder），
+      所以这条 dragleave 是「拖进来又拖走」唯一收得干净的地方。
+    */
+    const leave = (event: DragEvent) => { if (event.relatedTarget === null) clear(); };
     window.addEventListener("dragend", clear);
     window.addEventListener("drop", clear);
-    return () => { window.removeEventListener("dragend", clear); window.removeEventListener("drop", clear); };
+    window.addEventListener("dragleave", leave);
+    return () => {
+      window.removeEventListener("dragend", clear);
+      window.removeEventListener("drop", clear);
+      window.removeEventListener("dragleave", leave);
+    };
   }, []);
   // 拖进来的必须是「文件」。树上的节点自己也可拖（拖去终端），
   // 不加这个判断会把拖动节点误当成上传。
@@ -152,6 +167,19 @@ function SessionFiles({ session }: { session: Session }) {
 
   /** drop 回调里**同步**取 entry，再交给异步遍历——items 在回调返回后就失效了。 */
   const acceptDrop = useCallback((event: ReactDragEvent, directory: string) => {
+    /*
+      **提示的清除放在这儿，因为两条 drop 路径都经过它。**
+
+      先前写在面板那个 `onDrop` 里，而落在目录行上时那个回调根本不会触发——行里
+      `stopPropagation()` 了。于是松手之后虚线框和「松开即上传到 X」一直挂着，
+      文件其实已经传完了。
+
+      挂在 window 上的 `dragend` / `drop` 兜底也救不了这一条：`stopPropagation()`
+      连原生事件一起拦住，而从 Finder 拖进来的外部拖放本来就不会在我们窗口里触发
+      `dragend`（拖动的源头在 Finder）。
+    */
+    setDropping(false);
+    setDropTargetDir(null);
     const entries = collectDropEntries(event.dataTransfer.items);
     const flat = [...event.dataTransfer.files];
     void (async () => {
