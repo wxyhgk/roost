@@ -122,7 +122,7 @@ notLoaded | idle | systemError | active { activeFlags: ("waitingOnApproval" | "w
 另外 `active → idle` 这条边没实测到（401 让它走的是 `active → systemError`）；
 `idle` 是 `thread/read` 在线程静止时返回的值 [实测]，同一个状态源，但严格说这条边是推断。
 
-## 五、工作量
+## 五、工作量（2026-09-16 已实现，见文末）
 
 和 claude / qwen / opencode 同一量级，不是「加个分支」：
 
@@ -140,3 +140,30 @@ notLoaded | idle | systemError | active { activeFlags: ("waitingOnApproval" | "w
 
 不只是动画。codex 会话会和 claude 一样拿到：侧边栏实时状态点、未读提示、
 「在等你批准/回答」的角标、以及会话活动时间线。现在这些对 codex 全是空的。
+
+---
+
+## 七、实现记录（2026-09-16）
+
+按第五节那份清单做完了，但**有一处偏离**，值得记下来。
+
+**观察者最后放在守护进程里，不在启动垫片里。** 原计划照另外三家的样子写：垫片观察、
+把事件推回来。实测挡住了——codex 的 app-server **只认 WebSocket 升级**，往那条 socket 上
+直接发换行分隔的 JSON-RPC，一个字节都不回 [实测]。而垫片是写进临时目录的模板字符串，
+没有模块解析、拿不到 `ws`，手写一个客户端要百来行帧解析塞进模板。
+
+所以分工改成：垫片起私有 app-server、报 socket 路径、用 `--remote` 接上 TUI；
+连接和解析在 `packages/terminal-daemon/src/codex-observation.ts`，那边 `ws` 是一句 import，
+而且能正常单测。
+
+落地的三个文件：
+
+- `codex-observation.ts` —— `ThreadStatus` → agent 事件名；只读，initialize 之后不发任何请求
+- `codex-launch.ts` —— 垫片；只接管裸 TUI 和 `resume`（roost 自己的恢复配方就是它）
+- `owner.ts` 的 `codexObserve` —— 校验照 `qwenEvent`，另外把 socket 路径夹死在守护进程
+  自己那个目录里，只认垫片生成的 12 位十六进制名字
+
+两条工程约束按第四节那条写进了代码注释：路径长度（SUN_LEN）和不能经过符号链接。
+
+**仍然没验的**：端到端要这台机器登录 codex。所有 turn 仍以 401 收场，`active → idle`
+这条边依旧是推断。代码和单测就位，真机验证等登录。

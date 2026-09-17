@@ -1,5 +1,6 @@
 import { installOpenCodeLaunch } from './opencode-launch.ts';
 import { installQwenLaunch } from './qwen-launch.ts';
+import { installCodexLaunch } from './codex-launch.ts';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir, homedir } from 'node:os';
 import { join, basename } from 'node:path';
@@ -23,6 +24,9 @@ export async function createClaudeLaunch(shell: string, env: NodeJS.ProcessEnv) 
     });
     await installOpenCodeLaunch(bin, dir).catch(() => {
       console.error('OpenCode launch integration unavailable; other terminals remain available');
+    });
+    await installCodexLaunch(bin, dir).catch(() => {
+      console.error('Codex launch integration unavailable; other terminals remain available');
     });
     await writeFile(join(plugin, '.claude-plugin/plugin.json'), JSON.stringify({ name: 'roost-terminal-observer', version: '1.0.0' }));
     const command = `${quote(windows ? process.execPath.replaceAll('\\', '/') : process.execPath)} "\${CLAUDE_PLUGIN_ROOT}/observe.mjs"`;
@@ -55,7 +59,7 @@ child.on('exit',(code,signal)=>{process.exitCode=code??(signal==='SIGINT'?130:1)
       const psQuote = (s: string) => "'" + s.replaceAll("'", "''") + "'";
       const init = join(dir, 'init.ps1');
       // Pass function argv as JSON, avoiding PowerShell 5's native argument re-quoting.
-      await writeFile(init, '\ufeff' + Object.entries({claude:'launch.mjs', opencode:'opencode-launch.mjs', qwen:'qwen-launch.mjs'}).map(([name, script]) => `
+      await writeFile(init, '\ufeff' + Object.entries({claude:'launch.mjs', opencode:'opencode-launch.mjs', qwen:'qwen-launch.mjs', codex:'codex-launch.mjs'}).map(([name, script]) => `
 function global:${name} {
   $previous = $env:ROOST_LAUNCH_ARGS
   try {

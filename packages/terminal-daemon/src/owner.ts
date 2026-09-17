@@ -4,6 +4,8 @@ import { relative, isAbsolute } from 'node:path';
 import { protectWindowsPipe } from './windows-security.ts';
 import { createAiCommandOwner } from './ai-command-owner.ts';
 import { createPeerDeliveryOwner } from './peer-delivery.ts';
+import { ensureCodexRuntime } from './codex-launch.ts';
+import { observeCodexThread } from './codex-observation.ts';
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { createClaudeLaunch } from './claude-launch.ts';
@@ -20,15 +22,30 @@ export async function startTerminalOwner(options: {socketPath:string; dataDir:st
     console.error('Claude launch integration unavailable; ordinary terminals remain available');
     return {env: process.env, qwenRuntimeRoot: undefined, dispose: async () => {}};
   });
+  /*
+    codex 的私有 app-server socket 放在守护进程自己的 socket 旁边。
+
+    unix socket 路径有 SUN_LEN 上限（macOS 104 字节），而垫片的临时目录在 $TMPDIR 下面，
+    光前缀就吃掉一半；守护进程自己的 socket 已经 bind 成功，说明它那个目录放得下。
+    建不出来就当这次没有 codex 观察，其余终端照常。
+  */
+  const codexRuntime = await ensureCodexRuntime(options.socketPath).catch(() => {
+    console.error('Codex observer runtime unavailable; other terminals remain available');
+    return undefined;
+  });
   const secret = randomBytes(32);
   const ownerId = randomUUID();
   const hookToken = (id: string, instance: string) => createHmac("sha256", secret).update(id + "\0" + instance).digest("hex");
   const runtime = createTerminalRuntime({...options, env:launch.env, historyStore:store, cliDefinitions:store.cliConfigs.list,
     sessionEnv: (id, instance) => ({ROOST_CLAUDE_SOCKET: options.socketPath, ROOST_CLAUDE_TERMINAL: id, ROOST_CLAUDE_INSTANCE: instance, ROOST_CLAUDE_TOKEN: hookToken(id, instance), ROOST_QWEN_SOCKET: options.socketPath, ROOST_QWEN_TERMINAL: id, ROOST_QWEN_INSTANCE: instance, ROOST_QWEN_TOKEN: hookToken(id, instance), ROOST_OPENCODE_SOCKET: options.socketPath, ROOST_OPENCODE_TERMINAL: id, ROOST_OPENCODE_INSTANCE: instance, ROOST_OPENCODE_TOKEN: hookToken(id, instance),
+      ROOST_CODEX_SOCKET: options.socketPath, ROOST_CODEX_TERMINAL: id, ROOST_CODEX_INSTANCE: instance, ROOST_CODEX_TOKEN: hookToken(id, instance), ...(codexRuntime ? {ROOST_CODEX_RUNTIME: codexRuntime} : {}),
       ROOST_AGENT_SOCKET:options.socketPath,ROOST_AGENT_TERMINAL:id,ROOST_AGENT_INSTANCE:instance,ROOST_AGENT_TOKEN:hookToken(id,instance),
       ROOST_AGENT_MESSAGE_CLI:fileURLToPath(new URL('../../../scripts/agent-message.mjs',import.meta.url)),
     }),
   });
+  /** 每条 PTY 至多一个 codex 观察者，键是终端 id。 */
+  const codexObservers = new Map<string, { instanceId: string; close(): void }>();
+  function stopCodexObserver(id: string) { codexObservers.get(id)?.close(); codexObservers.delete(id); }
   const clients = new Set<Socket>();
   const watching = new Map<string, () => void>();
   const sessions = () => [...watching.keys()].flatMap(id => runtime.getSession(id) ?? []);
@@ -51,6 +68,7 @@ export async function startTerminalOwner(options: {socketPath:string; dataDir:st
         }
       } else broadcast({type:'event',id,event});
       if(event.type==='exit'){
+        stopCodexObserver(id);
         try{store.conversationRuns.endTerminal(id,'terminal_exited');}catch{console.warn('conversation run exit update deferred');}
         watching.get(id)?.();watching.delete(id);
       }
@@ -73,7 +91,7 @@ export async function startTerminalOwner(options: {socketPath:string; dataDir:st
     仍未覆盖：peer* 那几个方法既被网关用、也被一次性的 agent-message CLI 用，
     没法按方法名区分，留着。
   */
-  const ONE_SHOT_METHODS = new Set(['claudeHook','opencodeEvent','qwenEvent']);
+  const ONE_SHOT_METHODS = new Set(['claudeHook','opencodeEvent','qwenEvent','codexObserve']);
   const quarantine = new Set<Socket>();
   const server = createServer(socket => {
     if (process.platform === 'win32' && !ready) {
@@ -158,6 +176,48 @@ export async function startTerminalOwner(options: {socketPath:string; dataDir:st
             result = true; break;
           }
           /*
+            codex 只报「我的私有 app-server 在这条 socket 上」，事件由守护进程自己去连着拿。
+            另外三家是垫片把事件推过来；codex 反过来，因为 app-server 只认 WebSocket 升级，
+            而垫片里没有模块解析（见 codex-launch.ts 顶上的说明）。
+          */
+          case 'codexObserve': {
+            const input = args[0];
+            const live = typeof input?.terminalId === 'string' ? runtime.getSession(input.terminalId) : undefined;
+            if (!live || input.instanceId !== live.instanceId || typeof input.token !== 'string' || !/^[a-f0-9]{64}$/.test(input.token) ||
+                !timingSafeEqual(Buffer.from(input.token), Buffer.from(hookToken(live.id, live.instanceId)))) throw new Error('invalid hook instance');
+            /*
+              **只认我们自己那个目录里的 socket。** 这个参数说的是「去连这条 unix socket」，
+              不夹住就等于把守护进程借给调用方去连任意本机端点。形状也钉死：只有垫片
+              生成的 12 位十六进制名字算数。
+            */
+            if (!codexRuntime || typeof input.socketPath !== 'string' || input.socketPath.length > 104) throw new Error('invalid Codex socket');
+            let inside: string;
+            try { inside = relative(realpathSync(codexRuntime), realpathSync(input.socketPath)).replaceAll('\\', '/'); }
+            catch { throw new Error('invalid Codex socket'); }
+            if (!/^[a-f0-9]{12}\.sock$/.test(inside)) throw new Error('invalid Codex socket');
+            const terminalId = live.id, instanceId = live.instanceId;
+            stopCodexObserver(terminalId);
+            let lastThread = '';
+            const record = (event: string, sessionId: string) => {
+              // 换了实例就不是同一个终端了；这条观察者连着的那个 PTY 已经没了。
+              if (runtime.getSession(terminalId)?.instanceId !== instanceId) { stopCodexObserver(terminalId); return; }
+              try {
+                const saved = store.agentJournal.append(terminalId, instanceId, {event, agent: 'codex', sessionId});
+                broadcast({type: 'event', id: terminalId, event: {type: 'agent', ...saved}});
+              } catch { console.error('agent journal write failed'); }
+            };
+            const entry: { instanceId: string; close(): void } = { instanceId, close: () => {} };
+            const observer = observeCodexThread({
+              socketPath: input.socketPath,
+              onEvent: ({event, threadId}) => { lastThread = threadId; record(event, threadId); },
+              // socket 断了就是这条 codex 结束了——垫片退出时会杀掉 app-server。
+              onClosed: () => { if (codexObservers.get(terminalId) === entry) codexObservers.delete(terminalId); if (lastThread) record('session_end', lastThread); },
+            });
+            entry.close = observer.close;
+            codexObservers.set(terminalId, entry);
+            result = true; break;
+          }
+          /*
             args[2] 是「用这条命令启动」。这里只查形状，不查内容——能连上这个 socket 的
             调用方本来就能 writeSession 往 shell 里打任意字符，拦命令名不会多挡住谁。
             真正的白名单在 backend：只认内置 CLI 的恢复配方 + 合法会话 ID。
@@ -167,7 +227,7 @@ export async function startTerminalOwner(options: {socketPath:string; dataDir:st
               &&args[2].every((a:unknown)=>typeof a==='string'&&a.length>0&&a.length<=512&&!a.includes('\0'))?args[2] as string[]:undefined;
             watch(id); result=runtime.ensureSession(id,args[1],command); commands.ensure(result as any); state(); break;
           }
-          case 'killSession': result=runtime.killSession(id); watching.get(id)?.(); watching.delete(id); state(); break;
+          case 'killSession': stopCodexObserver(id); result=runtime.killSession(id); watching.get(id)?.(); watching.delete(id); state(); break;
           case 'readAgentEvents': result=store.agentJournal.read(id,args[1],args[2]); break;
           case 'resume': {
             const budget = replayResultByteBudget(requestId, socket.writableLength);
