@@ -35,11 +35,18 @@ type Gesture = {
   liveSize?: { w: number; h: number };
 };
 
-export function useDraggablePanel({ minWidth, minHeight, keepVisible = 120, fallbackSize }: {
+export function useDraggablePanel({ minWidth, minHeight, keepVisible = 120, fallbackSize, initialOffset }: {
   minWidth: number;
   minHeight: number;
   /** 拖出屏幕时至少保留这么多像素可见，避免面板「丢失」。 */
   keepVisible?: number;
+  /**
+   * 开局就相对居中位置挪开这么多。给「同时开好几个面板」用：全都精确居中的话，
+   * 后开的会把先开的完全盖住，看上去就像前一个没了。
+   *
+   * 双击复位回到的是这个偏移，不是死正中——复位的意思是「回到它该在的地方」。
+   */
+  initialOffset?: { x: number; y: number };
   /**
    * 还没量到真实尺寸时按这个算。
    *
@@ -50,9 +57,12 @@ export function useDraggablePanel({ minWidth, minHeight, keepVisible = 120, fall
   fallbackSize: { w: number; h: number };
 }) {
   // null 表示没动过：走面板自己 CSS 的默认居中 / 默认尺寸。
-  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(initialOffset ?? null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
+  // 复位的目标。每次渲染都会拿到一个新的对象字面量，所以存最新的值而不是闭包捕获。
+  const home = useRef(initialOffset);
+  home.current = initialOffset;
   const gestureRef = useRef<Gesture | null>(null);
   // 拖动/缩放到外面松开会产生一次 click；记录截止时间避免误当点击，
   // 用时间戳而不用布尔值，防止残留导致下一次正常点击被吞。
@@ -129,7 +139,7 @@ export function useDraggablePanel({ minWidth, minHeight, keepVisible = 120, fall
   }
 
   function reset() {
-    setPos(null);
+    setPos(home.current ?? null);
     setSize(null);
   }
 

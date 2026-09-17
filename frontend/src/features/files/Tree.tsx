@@ -8,6 +8,7 @@ import type { FolderActions, PendingCreate } from "./types";
 import { NewEntryRow } from "./NewEntryRow";
 import { Menu, MenuItem, MenuSeparator } from "./Menu";
 import { useFileViewer } from "./useFileViewer";
+import { cascadeOffset, usePreviewPanes } from "./usePreviewPanes";
 import { createCoalescedLoad } from "./coalescedLoad";
 
 /**
@@ -78,6 +79,18 @@ export function Tree({
   });
   const { selected } = viewer;
 
+  /*
+    预览窗现在可以有好几个：钉住一个就把它从「当前选中」上摘下来，那个位置空出来
+    接着开下一个。这里只管有哪几个、谁压着谁；每个窗口自己读自己的内容。
+  */
+  const panes = usePreviewPanes({
+    selected,
+    root: viewer.root,
+    skip: viewer.handledExternally,
+    open: viewer.open,
+    close: viewer.close,
+  });
+
   useEffect(() => {
     if (pendingSelect) {
       viewer.open(pendingSelect);
@@ -87,6 +100,7 @@ export function Tree({
 
   function handleRenamed(oldPath: string, newPath: string) {
     viewer.rename(oldPath, newPath);
+    panes.rename(oldPath, newPath);
     onMutated();
   }
 
@@ -94,6 +108,7 @@ export function Tree({
     // 删掉的正是打开着的那个（或者它的上级目录）：关掉，否则预览里留着一份
     // 已经不存在的内容，保存还会把它写回去。
     if (selected === path || (isDir && selected?.startsWith(`${path}/`))) viewer.close();
+    panes.drop(path, isDir);
     onMutated();
   }
   const q = query.trim().toLowerCase();
@@ -233,19 +248,30 @@ export function Tree({
         </Menu>
       )}
       {/* 归外部编辑器管的文件交给 Shell 上那个长命的宿主，这里只渲染轻量的文本预览。 */}
-      {selected && !viewer.handledExternally && (
+      {panes.panes.map((pane, i) => (
         <FilePreviewModal
-          key={selected}
-          preview={viewer.preview}
-          previewError={viewer.previewError}
-          selected={selected}
-          cwd={viewer.root}
-          onClose={viewer.close}
-          onDirtyChange={viewer.notePreviewDirty}
-          initialLine={viewer.linkRequest?.path === selected ? viewer.linkRequest.line ?? null : null}
+          key={pane.path}
+          selected={pane.path}
+          cwd={pane.root}
+          pinned={pane.pinned}
+          onTogglePin={() => panes.togglePin(pane.path)}
+          onClose={() => panes.closePane(pane.path)}
+          onRaise={() => panes.raise(pane.path)}
+          /* 只有「孤零零一个、还没钉住」时才画遮罩：旁边已经钉着东西的时候再压一层灰，
+             等于把人特意留下的那几个又糊掉了。 */
+          backdrop={panes.panes.length === 1 && !pane.pinned}
+          /* 键盘归最上面那个。不挡住的话，一次 Cmd+S 会让所有开着的窗口一起存。 */
+          active={i === panes.panes.length - 1}
+          /* 封顶：再往上就压住 Toast(110) 和会话目录(120) 了。同号时 DOM 顺序说了算，
+             而 DOM 顺序正是层叠顺序，所以封顶不会把层次弄反。 */
+          zIndex={100 + Math.min(i, 8)}
+          offset={cascadeOffset(pane.slot)}
+          /* 脏标记只有没钉住的那个报：切文件只会顶掉它，钉住的几个不受影响。 */
+          onDirtyChange={pane.pinned ? undefined : viewer.notePreviewDirty}
+          initialLine={viewer.linkRequest?.path === pane.path ? viewer.linkRequest.line ?? null : null}
           onInitialLineConsumed={viewer.consumeLinkLine}
         />
-      )}
+      ))}
     </>
   );
 }

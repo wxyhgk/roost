@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { writeFile, FileWriteError, type FilePreview, type FileWriteConflict } from "../../shared/api";
+import { writeFile, FileWriteError, type FileWriteConflict } from "../../shared/api";
 import { IconClose, IconPin } from "../../shared/icons";
 import { detectLang } from "../../shared/code-highlight";
 import { createEditor, matchPlugin, type EditorHandle } from "../../shared/editor";
@@ -8,6 +8,7 @@ import { NoticeBar } from "../../shared/ui/NoticeBar";
 import { t } from "@roost/i18n";
 import { FileIcon, HighlightedCode } from "./FileGlyphs";
 import { useDraggablePanel } from "./useDraggablePanel";
+import { useFilePreview } from "./useFilePreview";
 
 
 /*
@@ -21,24 +22,47 @@ const MODAL_MIN_H = 320;
 const MODAL_FALLBACK = { w: 760, h: 420 };
 
 export function FilePreviewModal({
-  preview,
-  previewError,
   selected,
   cwd,
   onClose,
   onDirtyChange,
   initialLine,
   onInitialLineConsumed,
+  pinned,
+  onTogglePin,
+  backdrop,
+  active,
+  offset,
+  zIndex,
+  onRaise,
 }: {
-  preview: FilePreview | null;
-  previewError: string | null;
   selected: string;
   cwd: string;
   onClose: () => void;
   onDirtyChange?: (dirty: boolean) => void;
   initialLine?: number | null;
   onInitialLineConsumed?: () => void;
+  /** 钉住的窗口不吃 Esc、不因为点到外面而关闭；只有 X 和取消钉住能关它。 */
+  pinned: boolean;
+  onTogglePin: () => void;
+  /** 画不画那层半透明遮罩。只有「屏幕上就这一个、且没钉住」时才画。 */
+  backdrop: boolean;
+  /** 在最上面那个。键盘（Esc、Cmd+S）只归它，否则几个窗口会一起响应同一次按键。 */
+  active: boolean;
+  /** 相对居中位置的初始偏移，用来级联排开。 */
+  offset?: { x: number; y: number };
+  zIndex: number;
+  /** 点一下就置顶。 */
+  onRaise?: () => void;
 }) {
+  /*
+    内容自己读。
+
+    原来是上面那层读好了当 prop 传进来的——那会儿屏幕上只可能有一个预览，所以
+    「正在看的那个文件」和「它的内容」放在一起没问题。现在可以同时开好几个，
+    每个窗口盯着各自的路径，内容只能各读各的。
+  */
+  const { preview, error: previewError } = useFilePreview(cwd, selected);
   const [editing, setEditing] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -47,8 +71,6 @@ export function FilePreviewModal({
   const [savedMtime, setSavedMtime] = useState<number | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [editorError, setEditorError] = useState<string | null>(null);
-  // 钉住后点遮罩 / 按 Esc 不关闭, 只能点 X 或取消钉住。
-  const [pinned, setPinned] = useState(false);
   const editorRef = useRef<EditorHandle | null>(null);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const prevSelected = useRef(selected);
@@ -56,6 +78,7 @@ export function FilePreviewModal({
     minWidth: MODAL_MIN_W,
     minHeight: MODAL_MIN_H,
     fallbackSize: MODAL_FALLBACK,
+    initialOffset: offset,
   });
 
   const canEdit = !!preview && !preview.binary && !preview.truncated;
@@ -75,7 +98,6 @@ export function FilePreviewModal({
       setConflict(null);
       setSaveError(null);
       setSavedMtime(null);
-      setPinned(false);
       setEditorError(null);
     }
   }, [selected]);
@@ -87,8 +109,14 @@ export function FilePreviewModal({
     }
   }, [preview, plugin]);
 
+  /*
+    脏标记要能**收回去**。这个值是给「切文件前问一句」用的，而只有没钉住的那个窗口
+    参与切换——钉住之后上面那层就不再传 `onDirtyChange` 了。清理函数把它归零，
+    否则钉住那一刻的 true 会赖在上层，之后每次点别的文件都白弹一次确认框。
+  */
   useEffect(() => {
     onDirtyChange?.(dirty);
+    return () => onDirtyChange?.(false);
   }, [dirty, onDirtyChange]);
 
   /*
@@ -181,6 +209,7 @@ export function FilePreviewModal({
 
   // Esc closes (unless pinned); Cmd/Ctrl+S saves.
   useEffect(() => {
+    if (!active) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
         if (pinned) return;
@@ -197,7 +226,7 @@ export function FilePreviewModal({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [editing, dirty, onClose, savedMtime, preview, persist, pinned]);
+  }, [editing, dirty, onClose, savedMtime, preview, persist, pinned, active]);
 
   function enterEdit() {
     setEditing(true);
@@ -227,19 +256,22 @@ export function FilePreviewModal({
 
   return (
     <div
-      // 钉住后变成悬浮窗: 去掉遮罩, 事件点透, 终端可正常操作, 面板保持可拖动/缩放。
+      // 没有遮罩时就是个悬浮窗: 事件点透, 终端可正常操作, 面板保持可拖动/缩放。
+      // 钉住的窗口从不画遮罩; 临时的那个只在**独自一个**的时候画——旁边已经钉着东西的
+      // 时候再压一层灰上去, 等于把人刚钉住的那几个又糊掉了, 而钉住就是为了同时看见。
       //
       // **不要把 backdrop-blur 加回来。** 全视口的 backdrop-filter 会让合成器一直维持一份
       // 模糊副本，遮罩上方只要有东西在逐帧变，就容易从「只合成脏区」退化成整屏合成。
       // 原来只在拖动面板时临时关掉它（panel.gesturing），可那个标志覆盖不到弹窗**内部**
       // 逐帧更新的东西——3D 分子预览转起来时它全程开着，弱 GPU 上就是转一下涩一下。
       // 半透明黑本身已经足以把弹窗和背景分开，模糊是纯装饰，不值这个价。
-      className={`fixed inset-0 z-[100] flex items-center justify-center ${
-        pinned ? "pointer-events-none bg-transparent" : "bg-black/50"
+      className={`fixed inset-0 flex items-center justify-center ${
+        backdrop ? "bg-black/50" : "pointer-events-none bg-transparent"
       }`}
+      style={{ zIndex }}
       onClick={() => {
         if (panel.isGestureClick()) return;
-        if (pinned) return;
+        if (!backdrop) return;
         onClose();
       }}
     >
@@ -252,6 +284,9 @@ export function FilePreviewModal({
         className="pointer-events-auto relative flex min-h-[420px] max-h-[80vh] w-[min(760px,92vw)] flex-col overflow-hidden rounded-xl border border-border bg-bg-panel shadow-modal"
         style={panel.style}
         onClick={(e) => e.stopPropagation()}
+        // 捕获阶段: 标题栏的 onPointerDown 会 preventDefault(连带吃掉 mousedown),
+        // 冒泡到这儿就晚了。点哪个窗口哪个上来, 拖动也算点。
+        onPointerDownCapture={() => onRaise?.()}
       >
         {/* 文件名是这个模态的**主体身份**，不是说明——和 embeds/molecule 的文件名头栏同档(13)。
             （旁边的编辑/完成按钮是 11，那是控件；头栏里 13 标题配更小的动作，和 PanelHeader 同形。） */}
@@ -285,7 +320,7 @@ export function FilePreviewModal({
               pinned ? "bg-bg-hover text-text" : "text-text-dim hover:text-text"
             }`}
             title={pinned ? t.files.preview.unpin : t.files.preview.pin}
-            onClick={() => setPinned((v) => !v)}
+            onClick={onTogglePin}
           >
             <IconPin active={pinned} />
           </button>

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useOpenFile } from "./useOpenFile";
 import { useExternalOpen } from "./useExternalOpen";
-import { useFilePreview } from "./useFilePreview";
 import { EXTERNAL_EDITORS } from "../../plugins/external";
 import { closeExternalEditors, handledExternally, useExternalEditor } from "../../shared/editor";
 
@@ -55,24 +54,24 @@ export function useFileViewer({ cwd, sessionId, initialFile, onFileChange, onSav
     顺序。
 
     「归不归外部编辑器管」只是拿注册表对路径做一次匹配，和那些编辑器的状态无关——所以
-    在这里先算出来，不问它们。这一下把依赖捋直了：匹配 → 预览（归外部管的让给它读）→
-    `close` → 通知外部编辑器。
+    在这里先算出来，不问它们。这一下把依赖捋直了：匹配 → `close` → 通知外部编辑器。
 
     原来是反过来的：那个答案从桥的返回值拿，于是桥必须先建，而桥又要 `close` 做参数，
     `close` 又要等预览——一个真实的环，当时是拿一层 `useRef<() => void>` 把调用推迟过去
     绕开的。同理 `closeExternalEditors` 是模块级函数而不是 hook 的返回值。
+
+    文件内容也不在这里读了：屏幕上可以同时开着好几个预览窗，每个盯着各自的路径，
+    内容归各自的窗口读（见 `FilePreviewModal`）。这里只剩「树上高亮哪一行」。
   */
   const external = handledExternally(EXTERNAL_EDITORS, selected);
-  const { preview, error: previewError, clear: clearPreview } = useFilePreview(root, selected, external);
 
   const close = useCallback(() => {
     closeSelection();
-    clearPreview();
     // 行号跟着这次打开作废：否则之后用点击重新打开同一个文件，会莫名其妙跳到上次
     // 从终端链接进来时的那一行。
     consumeLinkLine();
     closeExternalEditors(EXTERNAL_EDITORS);
-  }, [closeSelection, clearPreview, consumeLinkLine]);
+  }, [closeSelection, consumeLinkLine]);
 
   const { dirty: externalDirty } = useExternalEditor(EXTERNAL_EDITORS, {
     sessionId,
@@ -97,9 +96,6 @@ export function useFileViewer({ cwd, sessionId, initialFile, onFileChange, onSav
     /** 终端链接指到根目录外面了。给人看的提示，不是异常。 */
     linkError,
     dismissLinkError,
-    /** 渲染文本预览要的那几样。 */
-    preview,
-    previewError,
     /** 这次打开带着行号（从终端链接进来的），预览跳过去之后要 consume 掉。 */
     linkRequest,
     consumeLinkLine,
