@@ -1,0 +1,60 @@
+name: Verify
+
+# 往 main 推和开 PR 时跑完整验证。
+#
+# 在这之前仓库里**只有 `desktop.yml`**，而它 `on: push: tags: ['v*']`——只在打标签时
+# 触发。也就是说日常往 main 推的每一笔都没有任何 CI，`npm run verify` 从来只在开发者
+# 本机跑过。那不是保证，是习惯。
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Node ${{ matrix.node }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        # 守两头：`engines` 声明的下限，和当前最新。中间那些同一大版本内出事的概率低，
+        # 而这两个各自守着一类问题——下限守「我们承诺支持的最老环境还能不能跑」，
+        # 最新守「新版本有没有改掉我们依赖的行为」。
+        #
+        # 下限钉死到补丁号：它是 `node:sqlite` 无标志可用的那一版，含义明确，
+        # 不该随便漂。最新只写大版本，让它跟着走——那正是我们想被提前告知的变化。
+        node: ['22.13.0', '26']
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      # 这里**可以**开 npm 缓存，而 desktop.yml 里不行——那边的键必然未命中，因为
+      # `npm run version:set` 每次发版都会改 lock 里的版本号。这个工作流按提交跑，
+      # 两次提交之间 lock 通常没变，所以命中率高。理由不同，结论也就不同。
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      # 两个环境前提，缺了会红在和改动毫不相干的地方（见 AGENTS.md 第二节）：
+      #
+      # - `umask 022`：`backend/tests/auth-config.test.ts` 校验写出来的文件权限位，
+      #   在 umask 077 下那些位对不上。
+      # - `env -u ROOST_CLAUDE_OBSERVING`：在 Roost 自己的终端里跑时这个变量会被继承，
+      #   而 `claude-launch.test.ts` 正是在测「继承到它的时候要退化」。CI 上本来就没有
+      #   它，显式清掉是为了让这份文件自己说清依赖，而不是靠环境碰巧干净。
+      #
+      # verify 自己是 `typecheck --workspaces && test --workspaces && build frontend
+      # && check-boundaries`，任一步失败即非零退出。
+      - name: Verify
+        run: umask 022 && env -u ROOST_CLAUDE_OBSERVING npm run verify
