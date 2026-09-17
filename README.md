@@ -2,6 +2,8 @@
 
 # Roost
 
+**中文** · [English](README.en.md)
+
 **在浏览器里管理 shell 会话的本机工作台。关掉标签页，里面跑着的东西也不会停。**
 
 ![Roost 的三栏界面：左侧会话列表、中间终端、右侧文件树](docs/roost.png)
