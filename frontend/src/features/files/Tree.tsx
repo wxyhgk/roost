@@ -34,6 +34,7 @@ export function Tree({
   folder,
   pending,
   onDropFiles,
+  onDropTargetChange,
 }: {
   cwd: string;
   directory: string;
@@ -52,6 +53,8 @@ export function Tree({
   pending: PendingCreate | null;
   /** 拖到某个目录节点上时落到那个目录；不接就冒泡到面板，落当前目录。 */
   onDropFiles?: (event: ReactDragEvent, directory: string) => void;
+  /** 光标进出某个目录行时报一声，面板那层据此收掉自己的提示。 */
+  onDropTargetChange?: (directory: string | null) => void;
 }) {
   const loadedDirectory = useRef(directory);
   const [loading, setLoading] = useState(true);
@@ -211,6 +214,7 @@ export function Tree({
               folder={folder}
               pending={pending}
               onDropFiles={onDropFiles}
+              onDropTargetChange={onDropTargetChange}
             />
           ))}
         </ul>}

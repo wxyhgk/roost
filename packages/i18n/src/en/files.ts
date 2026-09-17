@@ -48,6 +48,7 @@ export const files = {
       confirmCancel: "Cancel",
       creatingDirs: "Creating folders…",
       dropHintFolder: "Drop to upload — folders keep their structure",
+      dropInto: (dir: string) => `Drop to upload into ${dir}`,
     },
     molecule: {
       dialogLabel: "Molecule editor",

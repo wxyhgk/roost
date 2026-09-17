@@ -47,6 +47,7 @@ export function TreeNode({
   folder,
   pending,
   onDropFiles,
+  onDropTargetChange,
 }: {
   cwd: string;
   onNavigate?: (path: string) => void;
@@ -69,6 +70,8 @@ export function TreeNode({
    * 「拖到一个文件上」本来就没有明确含义，猜一个不如让它走默认。
    */
   onDropFiles?: (event: ReactDragEvent, directory: string) => void;
+  /** 光标进出这一行时报给面板，让它把自己那圈提示收掉。 */
+  onDropTargetChange?: (directory: string | null) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [children, setChildren] = useState<FileNode[] | null>(null);
@@ -204,13 +207,15 @@ export function TreeNode({
           e.stopPropagation();
           e.dataTransfer.dropEffect = "copy";
           setDropTarget(true);
+          onDropTargetChange?.(node.path);
         }}
-        onDragLeave={(e) => { if (e.currentTarget === e.target) setDropTarget(false); }}
+        onDragLeave={(e) => { if (e.currentTarget === e.target) { setDropTarget(false); onDropTargetChange?.(null); } }}
         onDrop={(e) => {
           if (!isDir || !onDropFiles || !e.dataTransfer.types.includes("Files")) return;
           e.preventDefault();
           e.stopPropagation();
           setDropTarget(false);
+          onDropTargetChange?.(null);
           onDropFiles(e, node.path);
         }}
         onContextMenu={(e) => {
@@ -287,6 +292,7 @@ export function TreeNode({
               depth={depth + 1}
               pending={pending}
               onDropFiles={onDropFiles}
+              onDropTargetChange={onDropTargetChange}
               selected={selected}
               onSelect={onSelect}
               query={query}

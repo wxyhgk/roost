@@ -82,6 +82,8 @@ function SessionFiles({ session }: { session: Session }) {
     },
   }).current;
   const [dropping, setDropping] = useState(false);
+  /** 光标正悬在树上的哪个目录。null = 不在任何目录上，落当前浏览目录。 */
+  const [dropTargetDir, setDropTargetDir] = useState<string | null>(null);
   // 拖进来的必须是「文件」。树上的节点自己也可拖（拖去终端），
   // 不加这个判断会把拖动节点误当成上传。
   /*
@@ -288,17 +290,30 @@ function SessionFiles({ session }: { session: Session }) {
         </div>
       )}
       <div className="relative flex flex-1 flex-col overflow-auto bg-bg-panel"
-        onDragOver={event => { if (!isFileDrag(event)) return; event.preventDefault(); event.dataTransfer.dropEffect = "copy"; setDropping(true); }}
-        onDragLeave={event => { if (event.currentTarget === event.target) setDropping(false); }}
+        /* 节点接住时会 stopPropagation，所以这里还能收到就说明不在任何目录行上。 */
+        onDragOver={event => { if (!isFileDrag(event)) return; event.preventDefault(); event.dataTransfer.dropEffect = "copy"; setDropping(true); setDropTargetDir(null); }}
+        onDragLeave={event => { if (event.currentTarget === event.target) { setDropping(false); setDropTargetDir(null); } }}
         onDrop={event => {
           if (!isFileDrag(event)) return;
           event.preventDefault();
           setDropping(false);
+          setDropTargetDir(null);
           acceptDrop(event, directory);
         }}>
+        {/*
+          拖放时的提示。**不能是一块盖住整棵树的半透明布**——原来是 `bg-bg-panel/80`
+          铺满整个面板，于是拖进来之后你根本看不见自己悬在哪个目录上，目录那圈高亮也被
+          压在它底下。看上去就像「没有目标，八成会落到当前目录」。
+
+          所以：只描一圈虚线边框，不铺底；提示语贴在顶上而不是正中央（正中央正好压住树）；
+          悬在某个目录上时**说出是哪个目录**，并且把面板这层的框收掉，让那一行的高亮独自
+          说话。
+        */}
         {dropping && (
-          <div className="pointer-events-none absolute inset-1 z-10 grid place-items-center rounded-lg border-2 border-dashed border-accent bg-bg-panel/80 text-caption text-text">
-            {t.files.upload.dropHintFolder}
+          <div className="pointer-events-none absolute inset-1 z-10 rounded-lg border-2 border-dashed border-accent">
+            <span className="absolute inset-x-0 top-0 truncate rounded-t-lg bg-accent px-2 py-0.5 text-center text-caption text-bg">
+              {dropTargetDir === null ? t.files.upload.dropHintFolder : t.files.upload.dropInto(dropTargetDir || ".")}
+            </span>
           </div>
         )}
         {session ? (
@@ -316,6 +331,7 @@ function SessionFiles({ session }: { session: Session }) {
             pendingSelect={pendingSelect}
             onPendingSelectConsumed={() => setPendingSelect(null)}
             onDropFiles={acceptDrop}
+            onDropTargetChange={setDropTargetDir}
             onMutated={() => setRev((r) => r + 1)}
             folder={folder}
             pending={pending}

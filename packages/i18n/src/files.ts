@@ -53,6 +53,8 @@ export const files = {
       confirmCancel: "不传了",
       creatingDirs: "正在创建目录…",
       dropHintFolder: "松开即上传，文件夹连同结构一起传",
+      /** 悬在某个目录上时要说出**是哪个**——不然用户没法确认自己会传到哪儿。 */
+      dropInto: (dir: string) => `松开即上传到 ${dir}`,
     },
     molecule: {
       dialogLabel: "化学分子编辑器",
