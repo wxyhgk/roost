@@ -8,7 +8,17 @@ import { createClaudeLaunch } from '../src/claude-launch.ts';
 import { createServer } from 'node:net';
 
 const quote=(s:string)=>"'"+s.replaceAll("'","'\\''")+"'";
-async function until(check:()=>boolean){for(let i=0;i<160;i++){if(check())return;await new Promise(r=>setTimeout(r,25));}assert.fail('PTY condition timed out');}
+/*
+  超时的时候**要把看到的东西打出来**。
+
+  原来只 `assert.fail('PTY condition timed out')`——在本机永远是绿的，所以没人发现它
+  什么都不说；等到它在别的环境里红了（CI 第一次在 Linux 上跑），日志里只有那一句，
+  既看不出 shell 起没起来、也看不出那条命令有没有被 shell 收到。
+*/
+async function until(check:()=>boolean,describe?:()=>string){
+ for(let i=0;i<160;i++){if(check())return;await new Promise(r=>setTimeout(r,25));}
+ assert.fail('PTY condition timed out'+(describe?`\n--- 终端里实际看到的 ---\n${describe()}`:''));
+}
 
 test('ordinary zsh claude loads scoped plugin, preserves arguments and original startup files', {timeout:15000}, async t=>{
  const dir=await mkdtemp(join(tmpdir(),'claude-launch-test-')),bin=join(dir,'bin');await mkdir(bin);
@@ -39,13 +49,14 @@ console.log('FAKE_CLAUDE_FINISHED');
  t.after(()=>terminal.kill());
  let output='';terminal.onData(s=>{output+=s;});
  terminal.write("claude 'argument with spaces' --model test\r");
- await until(()=>events.length===3 && output.includes('FAKE_CLAUDE_FINISHED'));
+ await until(()=>events.length===3 && output.includes('FAKE_CLAUDE_FINISHED'),()=>`events=${events.length}
+${output}`);
  assert.deepEqual(events.map(e=>e.event),['SessionStart','UserPromptSubmit','Stop']);
  assert.ok(events.every(e=>e.terminalId==='terminal' && e.instanceId==='instance' && e.sessionId==='native-test' && e.transcriptPath==='/tmp/explicit-test.jsonl'));
  assert.ok(output.includes('"argument with spaces","--model","test"'));
  assert.ok(output.includes('RC=loaded'));
  assert.equal(await readFile(join(dir,'.zshrc'),'utf8'),original);
- terminal.write('claude --version\r');await until(()=>output.includes('ARGS=["--version"]'));
+ terminal.write('claude --version\r');await until(()=>output.includes('ARGS=["--version"]'),()=>output);
  assert.equal(events.length,3,'version does not load observer');
  await launch.dispose();await assert.rejects(stat(launch.env.ZDOTDIR!),{code:'ENOENT'});
 });
