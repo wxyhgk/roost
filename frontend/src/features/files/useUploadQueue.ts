@@ -132,8 +132,14 @@ export function useUploadQueue(root: string, onUploaded: () => void) {
     return () => { created.dispose(); queue.current = null; };
   }, [root]);
 
-  const enqueue = useCallback((files: File[], directory: string) => {
-    queue.current?.enqueue(files.map(file => ({ file: { name: file.name, size: file.size }, body: file, directory })));
+  /*
+    每个条目自带它要落的目录——文件夹拖进来之后，同一批里的文件分属不同子目录。
+
+    队列核心不用改：它本来就是 `directory + name` 拼路径，把 directory 换成
+    「落点 + 相对路径的父目录」就够了。
+  */
+  const enqueue = useCallback((items: { file: File; directory: string }[]) => {
+    queue.current?.enqueue(items.map(({ file, directory }) => ({ file: { name: file.name, size: file.size }, body: file, directory })));
   }, []);
   const resolve = useCallback((choice: UploadChoice) => queue.current?.resolve(choice), []);
   const cancel = useCallback(() => queue.current?.cancel(), []);

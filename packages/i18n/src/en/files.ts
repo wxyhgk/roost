@@ -41,6 +41,13 @@ export const files = {
       skip: "Skip",
       failed: (count: number) => (count === 1 ? "1 file failed to upload" : `${count} files failed to upload`),
       dismiss: "Dismiss",
+      confirmTitle: (files: number, size: string) => `Upload ${files} files (${size})?`,
+      confirmHidden: (count: number) => `${count} of them are hidden files`,
+      confirmTruncated: "Too many entries — the list was cut short, only part of it will be uploaded",
+      confirmStart: "Upload",
+      confirmCancel: "Cancel",
+      creatingDirs: "Creating folders…",
+      dropHintFolder: "Drop to upload — folders keep their structure",
     },
     molecule: {
       dialogLabel: "Molecule editor",

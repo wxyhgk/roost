@@ -40,6 +40,19 @@ export const files = {
       skip: "跳过",
       failed: (count: number) => (count === 1 ? "1 个文件上传失败" : `${count} 个文件上传失败`),
       dismiss: "知道了",
+      /*
+        文件夹拖进来之后的确认。**在遍历阶段问，不是传到一半才发现。**
+
+        闸门按「要花多久」设，不按带宽：队列是串行的，一个文件一条请求，误拖一个
+        node_modules 就是上万次顺序往返，本机也要几分钟。
+      */
+      confirmTitle: (files: number, size: string) => `要上传 ${files} 个文件（${size}）`,
+      confirmHidden: (count: number) => `其中 ${count} 个是隐藏文件`,
+      confirmTruncated: "内容太多，清单已截断，只会传其中一部分",
+      confirmStart: "开始上传",
+      confirmCancel: "不传了",
+      creatingDirs: "正在创建目录…",
+      dropHintFolder: "松开即上传，文件夹连同结构一起传",
     },
     molecule: {
       dialogLabel: "化学分子编辑器",

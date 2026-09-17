@@ -8,6 +8,7 @@ import { IconButton } from "../../shared/ui/IconButton";
 import { Empty } from "../../shared/ui/Empty";
 import { watchFiles } from "../../shared/api/fileWatch";
 import { useUploadQueue } from "./useUploadQueue";
+import { collectDropEntries, formatBytes, readDropTree, type DropTree } from "./dropUpload";
 import { t } from "@roost/i18n";
 import { useBrowseLocation } from "./useBrowseLocation";
 import { Tree } from "./Tree";
@@ -97,6 +98,52 @@ function SessionFiles({ session }: { session: Session }) {
   );
 
   const isFileDrag = (event: ReactDragEvent) => event.dataTransfer.types.includes("Files");
+  /*
+    拖进来的一批东西，展开之后先停在这儿等确认。
+
+    **闸门是按「要花多久」设的，不是按带宽。** 上传队列是串行的，一个文件一条 HTTP
+    请求；误拖一个 node_modules 就是上万次顺序往返，即使全在本机也要几分钟，而且你得
+    先意识到出事了才会去点取消。所以超过阈值就先问一句——**在遍历阶段问，不是传到一半
+    才发现**。
+  */
+  const [plan, setPlan] = useState<{ tree: DropTree; directory: string } | null>(null);
+  const [planError, setPlanError] = useState<string | null>(null);
+  const CONFIRM_FILES = 500, CONFIRM_BYTES = 200 * 1024 * 1024;
+
+  /** 先把目录逐级建出来，再把文件排进队列。后端的 mkdir 不是递归的，所以要一层层来。 */
+  const startUpload = useCallback(async (tree: DropTree, directory: string) => {
+    setPlan(null);
+    setPlanError(null);
+    const root = session?.cwd;
+    if (!root) return;
+    const join = (dir: string, rest: string) => (dir ? `${dir}/${rest}` : rest);
+    for (const relative of tree.directories) {
+      // 已经存在是正常的（拖第二次、或者目标里本来就有同名目录），不算失败。
+      try { await createPath(root, join(directory, relative), "dir"); }
+      catch (error) {
+        const status = (error as { status?: number })?.status;
+        if (status !== 409) { setPlanError((error as { message?: string })?.message ?? String(error)); return; }
+      }
+    }
+    upload.enqueue(
+      tree.files.map(item => ({ file: item.file, directory: join(directory, item.path.split("/").slice(0, -1).join("/")) })),
+    );
+  }, [session?.cwd, upload]);
+
+  /** drop 回调里**同步**取 entry，再交给异步遍历——items 在回调返回后就失效了。 */
+  const acceptDrop = useCallback((event: ReactDragEvent, directory: string) => {
+    const entries = collectDropEntries(event.dataTransfer.items);
+    const flat = [...event.dataTransfer.files];
+    void (async () => {
+      const tree = entries.length
+        ? await readDropTree(entries)
+        // 老浏览器没有 webkitGetAsEntry：退回平铺的文件列表，文件夹传不了但文件照传。
+        : { files: flat.map(file => ({ path: file.name, file })), directories: [], totalBytes: flat.reduce((n, f) => n + f.size, 0), hidden: 0, stopped: false };
+      if (!tree.files.length) return;
+      if (tree.stopped || tree.files.length > CONFIRM_FILES || tree.totalBytes > CONFIRM_BYTES) setPlan({ tree, directory });
+      else void startUpload(tree, directory);
+    })();
+  }, [startUpload]);
   const [pendingSelect, setPendingSelect] = useState<string | null>(null);
 
   async function commitCreate(raw: string) {
@@ -157,7 +204,7 @@ function SessionFiles({ session }: { session: Session }) {
         <input ref={fileInput} type="file" multiple className="hidden" onChange={event => {
           const picked = [...(event.target.files ?? [])];
           event.target.value = "";
-          upload.enqueue(picked, uploadDir.current);
+          upload.enqueue(picked.map(file => ({ file, directory: uploadDir.current })));
         }} />
         <IconButton title={t.files.upload.button} onClick={() => folder.upload(directory)}>
           <IconUpload />
@@ -210,6 +257,27 @@ function SessionFiles({ session }: { session: Session }) {
           <button className="shrink-0 rounded px-1.5 py-0.5 hover:bg-bg-hover" onClick={upload.cancel}>{t.files.upload.cancel}</button>
         </div>
       )}
+      {plan && (
+        <div role="alert" className="flex shrink-0 flex-col gap-1 border-b border-border bg-bg-raised px-2.5 py-1.5 text-caption text-text">
+          <div className="flex items-center gap-2">
+            <span className="min-w-0 flex-1 truncate">
+              {t.files.upload.confirmTitle(plan.tree.files.length, formatBytes(plan.tree.totalBytes))}
+              {plan.tree.hidden > 0 && ` · ${t.files.upload.confirmHidden(plan.tree.hidden)}`}
+            </span>
+            <button className="shrink-0 rounded px-2 py-0.5 text-accent hover:bg-bg-hover"
+              onClick={() => void startUpload(plan.tree, plan.directory)}>{t.files.upload.confirmStart}</button>
+            <button className="shrink-0 rounded px-2 py-0.5 text-text-dim hover:bg-bg-hover"
+              onClick={() => setPlan(null)}>{t.files.upload.confirmCancel}</button>
+          </div>
+          {plan.tree.stopped && <div className="text-warning">{t.files.upload.confirmTruncated}</div>}
+        </div>
+      )}
+      {planError && (
+        <div role="alert" className="flex shrink-0 items-center gap-2 border-b border-border bg-danger-soft px-2.5 py-1.5 text-caption text-danger">
+          <span className="min-w-0 flex-1 truncate">{planError}</span>
+          <button className="shrink-0 rounded px-1.5 py-0.5 hover:bg-bg-hover" onClick={() => setPlanError(null)}>{t.files.upload.dismiss}</button>
+        </div>
+      )}
       {upload.state.failures.length > 0 && (
         <div role="alert" className="flex shrink-0 flex-col gap-0.5 border-b border-border bg-danger-soft px-2.5 py-1.5 text-caption text-danger">
           <div className="flex items-center gap-2">
@@ -226,11 +294,11 @@ function SessionFiles({ session }: { session: Session }) {
           if (!isFileDrag(event)) return;
           event.preventDefault();
           setDropping(false);
-          upload.enqueue([...event.dataTransfer.files], directory);
+          acceptDrop(event, directory);
         }}>
         {dropping && (
           <div className="pointer-events-none absolute inset-1 z-10 grid place-items-center rounded-lg border-2 border-dashed border-accent bg-bg-panel/80 text-caption text-text">
-            {t.files.upload.dropHint}
+            {t.files.upload.dropHintFolder}
           </div>
         )}
         {session ? (
