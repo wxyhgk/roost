@@ -154,7 +154,11 @@ restart just because you changed some code:
 Restart `backend` and `web` as often as you like; terminals are unaffected. **Restarting
 `terminal` ends every session.** Logs are in `~/.roost/logs/`.
 
-systemd on Linux works the same way. For Synology NAS, see [`deploy/README.md`](deploy/README.md).
+systemd on Linux works the same way, but read
+[the Linux/systemd notes](deploy/linux-systemd.md) before writing a unit — five common
+hardening directives break Roost in ways that are hard to trace (`sudo` stops working,
+the backend can never find the daemon, …). The notes are in Chinese.
+For Synology NAS, see [`deploy/README.md`](deploy/README.md).
 
 After changing the frontend, publish with
 `npm run build --workspace frontend && npm run publish` — **assets first, shell second**.

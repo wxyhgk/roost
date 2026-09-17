@@ -128,7 +128,10 @@ npm run service:install     # 入口 http://localhost:8080
 `backend` 和 `web` 随便重启，终端不受影响；**重启 `terminal` 会结束所有会话**。
 日志在 `~/.roost/logs/`。
 
-Linux 用 systemd 同理。群晖 NAS 见 [`deploy/README.md`](deploy/README.md)。
+Linux 用 systemd 同理，但自己写 unit 前先看一眼
+[Linux / systemd 的坑](deploy/linux-systemd.md)——加固选项里有五条会把 Roost 咬得很难查
+（`sudo` 失效、backend 找不到守护进程……）。群晖 NAS 见 [`deploy/README.md`](deploy/README.md)。
+
 改完前端发布：`npm run build --workspace frontend && npm run publish`（资产先、外壳后，
 反过来会白屏）。
 
@@ -171,7 +174,7 @@ Roost 里不少东西是从别的项目学来的。`research/` 里一份一份�
 - **tmux** —— 客户端／服务端分离，以及「为最慢的观众降速是在惩罚所有人」：它在 2009、
   2015、2016 三次实现「因客户端慢而限制生产者」，三次都删掉了。我们因此选择丢帧而不是
   暂停 PTY。
-- **xterm.js**、**node-pty**、**Ketcher** 等等,构成了终端、PTY 和分子编辑的底座。
+- **xterm.js**、**node-pty**、**Ketcher** 等等，构成了终端、PTY 和分子编辑的底座。
 
 **看完决定不抄的**也记了，因为理由比结论有用：tty7 的本地行编辑器（生效条件太窄，
 在 agent TUI 里等于不存在）、systemd／launchd 的 socket activation（只保监听 socket，
