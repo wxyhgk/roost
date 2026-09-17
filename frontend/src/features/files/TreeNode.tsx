@@ -47,6 +47,7 @@ export function TreeNode({
   folder,
   pending,
   onDropFiles,
+  dropTargetDir,
   onDropTargetChange,
 }: {
   cwd: string;
@@ -70,7 +71,9 @@ export function TreeNode({
    * 「拖到一个文件上」本来就没有明确含义，猜一个不如让它走默认。
    */
   onDropFiles?: (event: ReactDragEvent, directory: string) => void;
-  /** 光标进出这一行时报给面板，让它把自己那圈提示收掉。 */
+  /** 面板那边记着的唯一目标。等于自己的路径就点亮。 */
+  dropTargetDir?: string | null;
+  /** 光标进到这一行时报给面板。**离开不报**——移到别处时那边自己会被覆盖或清掉。 */
   onDropTargetChange?: (directory: string | null) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -78,9 +81,18 @@ export function TreeNode({
   const [loading, setLoading] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
-  /** 系统文件正悬在这一行上。只对目录有意义。 */
-  const [dropTarget, setDropTarget] = useState(false);
+
   const isDir = node.kind === "dir";
+  /*
+    这一行是不是拖放目标，**由父级那一份 `dropTargetDir` 推出来，不自己存**。
+
+    自己存过一版，用 dragenter/dragleave 维护，结果是鼠标扫过的每个目录都留着高亮：
+    `dragleave` 在光标移到**子元素**上时也会触发，那时 `e.target` 是子元素而不是这一行，
+    于是「离开了吗」永远判假、永远不熄。真正离开这一行时同样判假。
+
+    改成推导之后，「最多只有一个目录被点亮」是结构性的——不靠 enter/leave 配平来维持。
+  */
+  const dropTarget = isDir && dropTargetDir != null && dropTargetDir === node.path;
   const active = selected === node.path;
   const q = query.trim().toLowerCase();
   const filteredOut = !!q && !isDir && !node.name.toLowerCase().includes(q);
@@ -206,15 +218,12 @@ export function TreeNode({
           e.preventDefault();
           e.stopPropagation();
           e.dataTransfer.dropEffect = "copy";
-          setDropTarget(true);
           onDropTargetChange?.(node.path);
         }}
-        onDragLeave={(e) => { if (e.currentTarget === e.target) { setDropTarget(false); onDropTargetChange?.(null); } }}
         onDrop={(e) => {
           if (!isDir || !onDropFiles || !e.dataTransfer.types.includes("Files")) return;
           e.preventDefault();
           e.stopPropagation();
-          setDropTarget(false);
           onDropTargetChange?.(null);
           onDropFiles(e, node.path);
         }}
@@ -292,6 +301,7 @@ export function TreeNode({
               depth={depth + 1}
               pending={pending}
               onDropFiles={onDropFiles}
+              dropTargetDir={dropTargetDir}
               onDropTargetChange={onDropTargetChange}
               selected={selected}
               onSelect={onSelect}

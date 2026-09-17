@@ -82,8 +82,26 @@ function SessionFiles({ session }: { session: Session }) {
     },
   }).current;
   const [dropping, setDropping] = useState(false);
-  /** 光标正悬在树上的哪个目录。null = 不在任何目录上，落当前浏览目录。 */
+  /**
+   * 光标正悬在树上的哪个目录。null = 不在任何目录上，落当前浏览目录。
+   *
+   * **唯一的一份真相**：每一行是不是高亮，由它推出来（见 TreeNode）。自己在每行存一份
+   * 就得靠 dragenter/dragleave 配平，而 `dragleave` 在移到子元素时也会触发，配不平。
+   */
   const [dropTargetDir, setDropTargetDir] = useState<string | null>(null);
+  /*
+    拖出窗口、或者在别处松手时的兜底。
+
+    那种情况下面板的 `dragleave` 同样判不出「真的离开了」（`target` 往往是树里的某一行），
+    于是虚线框和目录高亮会一直挂着，直到你再拖一次才消。`dragend` / `drop` 挂在 window 上
+    才收得干净——它们无论在哪里结束都会来。
+  */
+  useEffect(() => {
+    const clear = () => { setDropping(false); setDropTargetDir(null); };
+    window.addEventListener("dragend", clear);
+    window.addEventListener("drop", clear);
+    return () => { window.removeEventListener("dragend", clear); window.removeEventListener("drop", clear); };
+  }, []);
   // 拖进来的必须是「文件」。树上的节点自己也可拖（拖去终端），
   // 不加这个判断会把拖动节点误当成上传。
   /*
@@ -331,6 +349,7 @@ function SessionFiles({ session }: { session: Session }) {
             pendingSelect={pendingSelect}
             onPendingSelectConsumed={() => setPendingSelect(null)}
             onDropFiles={acceptDrop}
+            dropTargetDir={dropTargetDir}
             onDropTargetChange={setDropTargetDir}
             onMutated={() => setRev((r) => r + 1)}
             folder={folder}
