@@ -4,9 +4,13 @@ export type Activity = 'active' | 'quiet' | 'exited' | 'closed' | 'unavailable';
  * PTY 恰恰是安静的（quiet）。两者必须能同时表达。
  */
 export type AgentState = 'idle' | 'working' | 'blocked' | 'done' | 'failed';
+export type AgentTaskStatus = 'pending' | 'in_progress' | 'completed';
+export type AgentTask = { text: string; status: AgentTaskStatus };
 export type SessionAgent = { state: AgentState; name: string | null; agentSessionId: string | null; since: number; waitingFor: 'permission' | 'question' | null;
   /** 只在 blocked 期间有值：拦住你的那件事的整句描述、工具名、以及入参里可展示的那一项。 */
-  summary: string | null; toolName: string | null; toolInputPreview: string | null };
+  summary: string | null; toolName: string | null; toolInputPreview: string | null;
+  /** agent 自报的任务清单，和 state 正交，跨状态存活。老后端不发这一项。 */
+  tasks: AgentTask[] | null };
 export type StatusEntry = { id: string; instanceId: string | null; cliId: string | null; state: Activity; lastOutputAt: number | null; outputSeq: number | null; agent: SessionAgent | null };
 export type StatusFrame = { type: 'session-status'; monitorId: string; revision: number; quietAfterMs: number; sessions: StatusEntry[] };
 type Cursor = { monitorId: string; instanceId: string | null; outputSeq: number };
@@ -24,11 +28,38 @@ function sameAgent(a: SessionAgent | null, b: SessionAgent | null): boolean {
   if (a === b) return true;
   if (!a || !b) return false;
   return a.state === b.state && a.waitingFor === b.waitingFor && a.name === b.name && a.agentSessionId === b.agentSessionId && a.since === b.since
-    && a.summary === b.summary && a.toolName === b.toolName && a.toolInputPreview === b.toolInputPreview;
+    && a.summary === b.summary && a.toolName === b.toolName && a.toolInputPreview === b.toolInputPreview
+    && sameTasks(a.tasks, b.tasks);
+}
+
+/** 清单每次都是新数组，引用比不了；逐条比而不是 JSON.stringify，省掉每帧一次序列化。 */
+function sameTasks(a: AgentTask[] | null | undefined, b: AgentTask[] | null | undefined): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  return a.every((task, i) => task.text === b[i].text && task.status === b[i].status);
 }
 const optionalText = (value: unknown) => value === null || value === undefined || typeof value === 'string';
 const AGENT_STATES = ['idle', 'working', 'blocked', 'done', 'failed'];
 const WAITING_FOR = ['permission', 'question'];
+const TASK_STATUSES = ['pending', 'in_progress', 'completed'];
+
+/**
+ * 清单的校验，规矩和 validAgent 一样：**没有**和**坏了**是两回事。
+ *
+ * 老后端根本不发这一项，所以缺省合法。认不出的状态值就地降级成 pending——后端以后
+ * 加一档（比如 blocked），不该让整帧作废、把所有会话的徽标一起冻住。
+ */
+function validTasks(value: unknown): boolean {
+  if (value === null || value === undefined) return true;
+  if (!Array.isArray(value)) return false;
+  for (const item of value) {
+    if (!item || typeof item !== 'object') return false;
+    const task = item as AgentTask;
+    if (typeof task.text !== 'string') return false;
+    if (!TASK_STATUSES.includes(task.status)) task.status = 'pending';
+  }
+  return true;
+}
 
 /**
  * 校验并**就地降级**一个 agent。返回 false 表示这一条结构坏了，不是「版本比我新」。
@@ -52,8 +83,9 @@ function validAgent(value: unknown): boolean {
   return (a.name === null || typeof a.name === 'string')
     && (a.agentSessionId === null || typeof a.agentSessionId === 'string')
     && seq(a.since)
-    // 这三项是后加的：老后端根本不发，缺省必须当合法，否则一升级前端就整帧作废。
-    && optionalText(a.summary) && optionalText(a.toolName) && optionalText(a.toolInputPreview);
+    // 这几项是后加的：老后端根本不发，缺省必须当合法，否则一升级前端就整帧作废。
+    && optionalText(a.summary) && optionalText(a.toolName) && optionalText(a.toolInputPreview)
+    && validTasks(a.tasks);
 }
 
 const KNOWN_STATES = ['active', 'quiet', 'exited', 'closed', 'unavailable'];

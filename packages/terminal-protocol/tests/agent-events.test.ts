@@ -119,3 +119,35 @@ test("transcript_path is preserved as a string without coercing invalid values",
   assert.equal(scanner.push(wrap("/tmp/native.jsonl"))[0].transcriptPath,"/tmp/native.jsonl");
   assert.equal(scanner.push(wrap({path:"not a string"}))[0].transcriptPath,undefined);
 });
+
+/*
+  任务清单。它是这套协议里**唯一**一个非标量载荷，所以信任边界要单独钉：
+  清单来自被观察进程的任意工具入参，原样收下就等于让它决定我们这条消息多大。
+*/
+test("任务清单截断而不是拒收：坏条目跳过，认不出的状态降级成 pending", () => {
+  const s = createAgentEventScanner();
+  const of = (tasks: unknown) =>
+    s.push(seq(JSON.stringify({ event: "tasks_updated", tasks })))[0].tasks;
+
+  assert.deepEqual(of([{ content: "写测试", status: "in_progress" }]), [{ text: "写测试", status: "in_progress" }]);
+  // text 是本协议的名字，content 是 Claude Code 的 TodoWrite 用的名字，两个都认。
+  assert.deepEqual(of([{ text: "同一件事", status: "completed" }]), [{ text: "同一件事", status: "completed" }]);
+
+  assert.deepEqual(
+    of([{ content: "好的" }, null, 42, { status: "pending" }, { content: 7 }, { content: "也好", status: "谁知道" }]),
+    [{ text: "好的", status: "pending" }, { text: "也好", status: "pending" }],
+    "一个坏条目不该把整份清单拖垮，认不出的状态按 pending 而不是丢掉这一条",
+  );
+
+  assert.equal(of("not an array"), undefined);
+  assert.equal(of(undefined), undefined);
+});
+
+test("清单的条数和每条长度都有上限——这头是别的进程说了算的", () => {
+  const s = createAgentEventScanner();
+  const many = Array.from({ length: 200 }, (_, i) => ({ content: `t${i}`, status: "pending" }));
+  const capped = s.push(seq(JSON.stringify({ event: "tasks_updated", tasks: many })))[0].tasks!;
+  assert.equal(capped.length, 64);
+  const long = s.push(seq(JSON.stringify({ event: "tasks_updated", tasks: [{ content: "x".repeat(5000) }] })))[0].tasks!;
+  assert.equal(long[0].text.length, 200);
+});

@@ -38,4 +38,4 @@ export type Lens = "tui" | "gui";
  * `titles[view]`、`view: RightView`。`Kind` 多一个成员，记录字面量就少一个键；
  * `RightView` 多一个成员，取值就索引不到。两个方向都是 tsc 当场报错。
  */
-export type RightView = "files" | "server" | "notes" | "snippets" | "processes";
+export type RightView = "files" | "server" | "notes" | "snippets" | "processes" | "tasks";

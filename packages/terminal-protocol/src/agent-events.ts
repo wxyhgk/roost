@@ -22,7 +22,41 @@ export type AgentEventType =
   | "session_start" | "prompt_submit" | "tool_complete"
   | "stop" | "stop_failure"
   | "permission_request" | "permission_replied" | "question_asked"
-  | "idle_prompt";
+  | "idle_prompt"
+  /** agent 改了自己的任务清单。**不是状态变化**，别拿它推进 idle/working。 */
+  | "tasks_updated";
+
+export type AgentTaskStatus = "pending" | "in_progress" | "completed";
+export type AgentTask = { text: string; status: AgentTaskStatus };
+
+/**
+ * 一次清单最多带这么多条，每条最长这么多字。
+ *
+ * 这是**信任边界**：清单是 agent 那边任意长的工具入参，原样收下就等于让被观察的进程
+ * 决定我们这条消息多大。截断而不是拒收——清单少几条还能看，整条丢掉就什么都没有。
+ */
+const MAX_TASKS = 64;
+const MAX_TASK_TEXT = 200;
+const TASK_STATUSES: AgentTaskStatus[] = ["pending", "in_progress", "completed"];
+
+/** 清洗成可以放心广播/入库的形状。认不出来的整条丢掉，状态认不出的按 pending。 */
+export function sanitizeAgentTasks(value: unknown): AgentTask[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const tasks: AgentTask[] = [];
+  for (const item of value) {
+    if (tasks.length >= MAX_TASKS) break;
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    // content 是 Claude Code 的 TodoWrite 用的名字，text 是本协议自己的。
+    const raw = typeof row.text === "string" ? row.text : typeof row.content === "string" ? row.content : null;
+    if (!raw) continue;
+    const text = raw.slice(0, MAX_TASK_TEXT);
+    if (!text) continue;
+    const status = TASK_STATUSES.includes(row.status as AgentTaskStatus) ? (row.status as AgentTaskStatus) : "pending";
+    tasks.push({ text, status });
+  }
+  return tasks;
+}
 
 export type AgentEvent = {
   /** 未知事件保留原字符串：协议会加新事件，旧宿主不该把它们丢掉。 */
@@ -43,6 +77,8 @@ export type AgentEvent = {
   toolInputPreview?: string;
   /** stop_failure 的失败分类。 */
   errorType?: string;
+  /** tasks_updated 带的整份清单。**是快照不是增量**——少一条就是那条没了。 */
+  tasks?: AgentTask[];
 };
 
 /** 单条序列的体积上限。超过即放弃缓冲，避免坏程序把内存撑爆。 */
@@ -84,6 +120,7 @@ function toEvent(json: string): AgentEvent | null {
     toolName: text("tool_name"),
     toolInputPreview: previewOf("command") ?? previewOf("file_path"),
     errorType: text("error_type"),
+    tasks: sanitizeAgentTasks(value.tasks),
   };
 }
 

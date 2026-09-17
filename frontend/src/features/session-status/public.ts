@@ -25,3 +25,5 @@ export { useSessionActivity } from './useSessionActivity';
 export type { ActivityView } from './store';
 export { useGroupActivity } from './useGroupActivity';
 export { useQuietFor } from './useQuietFor';
+/** agent 自报的任务清单那一栏，挂在右侧面板上。 */
+export { TasksView } from './TasksView';

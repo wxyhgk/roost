@@ -8,6 +8,7 @@ import { PanelHeader } from "../shared/ui/PanelHeader";
 import { IconClose } from "../shared/icons";
 import { IconButton } from "../shared/ui/IconButton";
 import { t } from "@roost/i18n";
+import { TasksView } from "../features/session-status/public";
 
 import type { MonitorTarget } from '../features/server-monitor/navigation';
 
@@ -38,7 +39,7 @@ export function RightPanel({ view, onChangeView, visible = true, monitorTarget }
     把 shared/view.ts 里的 RightView 和 features/library 的 Kind 钉成同一个集合。
     理由写在 shared/view.ts 的 RightView 上面。
   */
-  const titles: Record<"files" | "server" | "processes" | NotesTab, string> = { server: t.serverMonitor.title, processes: t.terminal.processes.title, files: t.misc.rightPanel.titles.files, notes: t.misc.rightPanel.titles.notes, snippets: t.misc.rightPanel.titles.snippets };
+  const titles: Record<"files" | "server" | "processes" | "tasks" | NotesTab, string> = { server: t.serverMonitor.title, processes: t.terminal.processes.title, tasks: t.misc.rightPanel.titles.tasks, files: t.misc.rightPanel.titles.files, notes: t.misc.rightPanel.titles.notes, snippets: t.misc.rightPanel.titles.snippets };
   const { sessions, selectedId } = useWorkspace("sessions", "selectedId");
   const session = sessions.find(s => s.id === selectedId && !s.closed);
   // 文件和 AI 两个视图都是终端自己的内容，不走「资料库」那套弹出布局。
@@ -51,6 +52,8 @@ export function RightPanel({ view, onChangeView, visible = true, monitorTarget }
     {view === "files" ? <div key="files" className="flex min-h-0 flex-1 flex-col"><Suspense fallback={panelFallback}><FilesView /></Suspense></div>
       : view === "server" ? <Suspense fallback={<p className="p-3 text-caption text-text-dim">{t.serverMonitor.loading}</p>}><ServerMonitorView active={visible} target={monitorTarget} /></Suspense>
       : view === "processes" ? <Suspense fallback={panelFallback}><TerminalProcesses sessionId={session?.id ?? null} active={visible} /></Suspense>
+      /* 不 lazy：它只有一个列表和 Empty，依赖全在首屏那一份里，单独切一个 chunk 只多一次往返。 */
+      : view === "tasks" ? <TasksView sessionId={session?.id ?? null} />
       : <div key="library" ref={sideSlot} className="flex min-h-0 flex-1 flex-col" />}
     <dialog ref={dialog} aria-label={t.misc.rightPanel.library} onCancel={e => { e.preventDefault(); setExpanded(false); }} onClose={() => setExpanded(false)}
       onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && ["k", "b", "j"].includes(e.key.toLowerCase())) e.stopPropagation(); }}

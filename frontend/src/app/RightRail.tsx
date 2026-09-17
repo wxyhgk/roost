@@ -1,4 +1,4 @@
-import { CodeBracketIcon, FolderIcon, DocumentTextIcon, ServerIcon, ServerStackIcon } from "@heroicons/react/24/outline";
+import { CodeBracketIcon, FolderIcon, DocumentTextIcon, ListBulletIcon, ServerIcon, ServerStackIcon } from "@heroicons/react/24/outline";
 import type { RightView } from "../shared/view";
 import { t } from "@roost/i18n";
 
@@ -16,6 +16,8 @@ export function RightRail({
     { id: "files" as const, title: t.misc.rightRail.titles.files, Icon: FolderIcon },
     { id: "notes" as const, title: t.misc.rightRail.titles.notes, Icon: DocumentTextIcon, ServerIcon },
     { id: "snippets" as const, title: t.misc.rightRail.titles.snippets, Icon: CodeBracketIcon },
+    // agent 自己列的任务清单。终端里那份会滚走，这一栏不会。
+    { id: "tasks" as const, title: t.misc.rightRail.titles.tasks, Icon: ListBulletIcon },
     // 「这个终端里在跑什么」。和服务器监控是两回事：那个说整机，这个说这一条终端。
     { id: "processes" as const, title: t.terminal.processes.title, Icon: ServerStackIcon },
     { id: "server" as const, title: t.serverMonitor.title, Icon: ServerIcon },

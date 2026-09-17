@@ -13,6 +13,7 @@ import { createServer, type Socket } from 'node:net';
 import { chmod } from 'node:fs/promises';
 import { createTerminalRuntime } from '@roost/terminal-runtime';
 import { createWorkspaceStore } from '@roost/workspace-store';
+import { sanitizeAgentTasks } from '@roost/terminal-protocol';
 import { send, read, replayResultByteBudget } from './wire.ts';
 
 /** Only this process owns PTYs and replay timers. Gateway disconnects do not kill them. */
@@ -138,11 +139,18 @@ export async function startTerminalOwner(options: {socketPath:string; dataDir:st
             const live = typeof input?.terminalId === 'string' ? runtime.getSession(input.terminalId) : undefined;
             if (!live || input.instanceId !== live.instanceId || typeof input.token !== 'string' || !/^[a-f0-9]{64}$/.test(input.token) ||
                 !timingSafeEqual(Buffer.from(input.token), Buffer.from(hookToken(live.id, live.instanceId)))) throw new Error('invalid hook instance');
-            const names: Record<string, string> = {SessionStart:'session_start',UserPromptSubmit:'prompt_submit',Stop:'stop'};
+            // PostToolUse 只在 TodoWrite 上注册（见 claude-launch.ts 里的 matcher），所以到这儿的就是清单。
+            const names: Record<string, string> = {SessionStart:'session_start',UserPromptSubmit:'prompt_submit',Stop:'stop',PostToolUse:'tasks_updated'};
             if (!Object.hasOwn(names, input.event) || typeof input.sessionId !== 'string' || !/^[a-zA-Z0-9_-]{1,512}$/.test(input.sessionId) ||
                 typeof input.transcriptPath !== 'string' || !isAbsolute(input.transcriptPath) || input.transcriptPath.length > 4096) throw new Error('invalid hook event');
-            const saved = store.agentJournal.append(live.id, live.instanceId, {event:names[input.event], agent:'claude', sessionId:input.sessionId, transcriptPath:input.transcriptPath});
-            commands.hook(live.id,{event:input.event,sessionId:input.sessionId,prompt:typeof input.prompt==='string'&&Buffer.byteLength(input.prompt)<=16384?input.prompt:undefined,version:typeof input.version==='string'?input.version:undefined},saved.sourceSeq);
+            const tasks = input.event === 'PostToolUse' ? sanitizeAgentTasks(input.tasks) : undefined;
+            const saved = store.agentJournal.append(live.id, live.instanceId, {event:names[input.event], agent:'claude', sessionId:input.sessionId, transcriptPath:input.transcriptPath, tasks});
+            /*
+              任务清单不是生命周期事件。喂给 commands.hook 会把 dialog 清掉、把 hookSeq 推上去，
+              而 agent 改一次清单并不说明它不在等你批准，也不说明输入进度往前走了一步。
+            */
+            if (input.event !== 'PostToolUse')
+              commands.hook(live.id,{event:input.event,sessionId:input.sessionId,prompt:typeof input.prompt==='string'&&Buffer.byteLength(input.prompt)<=16384?input.prompt:undefined,version:typeof input.version==='string'?input.version:undefined},saved.sourceSeq);
             broadcast({type:'event',id:live.id,event:{type:'agent',...saved}});
             result = true; break;
           }

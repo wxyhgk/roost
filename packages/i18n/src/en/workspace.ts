@@ -124,6 +124,20 @@ export const workspace = {
       blockedWithDetail: (kind: string, detail: string) => `${kind}: ${detail}`,
     },
 
+    /** agent 自报的任务清单。右侧面板那一栏。 */
+    tasks: {
+      noSession: "No terminal selected",
+      noSessionHint: "Open a terminal and its agent's task list shows up here.",
+      empty: "No task list yet",
+      emptyHint: "Once the agent lays out its tasks in this session they appear here, and they do not scroll away with the terminal.",
+      progress: (done: number, total: number) => `${done} / ${total} done`,
+      status: {
+        pending: "To do",
+        in_progress: "In progress",
+        completed: "Done",
+      },
+    },
+
     /** 终端活动状态。键与 session-status 的 ActivityView.state 一一对应。 */
     activity: {
       active: "Terminal has output",

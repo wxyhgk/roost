@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { WebSocket } from 'ws';
 import type { WorkspaceStore } from '@roost/workspace-store';
 import type { TerminalService } from '@roost/terminal-runtime';
-import { QUIET_STATE_AFTER_MS } from '@roost/terminal-protocol';
+import { QUIET_STATE_AFTER_MS, type AgentTask } from '@roost/terminal-protocol';
 
 /**
  * agent 自报的状态。与 SessionActivity.state 正交——后者描述 PTY 有没有在出字节，
@@ -28,6 +28,13 @@ export type SessionAgent = {
   summary: string | null;
   toolName: string | null;
   toolInputPreview: string | null;
+  /**
+   * agent 自己维护的任务清单，**和 state 正交**。
+   *
+   * 它跨状态存活：一轮跑完（done）之后那份清单依然是这一轮做了什么的说明，清掉就等于
+   * 「跑完了就看不见做过什么」。只有新会话（session_start）才重新开始。
+   */
+  tasks: AgentTask[] | null;
 };
 
 export type SessionActivity = {
@@ -108,6 +115,18 @@ export function createSessionStatus(store: WorkspaceStore, runtime: TerminalServ
         }
         if (event.type === 'agent') {
           const previous = agents.get(record.id);
+          /*
+            任务清单不走状态机：agent 改一次清单，既不说明它开始干活，也不说明它停了。
+            所以在 agentStateFor 之前单独处理，并且**原样保留**此刻的状态。
+
+            没有 previous 就丢掉：那说明这一条 agent 的生命周期我们从头就没看见（后端刚
+            重启之类），凭一次 TodoWrite 现造一个 agent 记录是在猜它的状态。
+          */
+          if (event.agent.event === 'tasks_updated') {
+            if (!previous || !event.agent.tasks) return;
+            agents.set(record.id, { ...previous, tasks: event.agent.tasks });
+            return;
+          }
           const next = agentStateFor(event.agent.event, previous?.state);
           if (!next) return;
           const blocked = next.state === 'blocked';
@@ -120,6 +139,8 @@ export function createSessionStatus(store: WorkspaceStore, runtime: TerminalServ
             summary: blocked ? event.agent.summary ?? null : null,
             toolName: blocked ? event.agent.toolName ?? null : null,
             toolInputPreview: blocked ? event.agent.toolInputPreview ?? null : null,
+            // 换会话才重开一份清单；同一条会话里的状态流转一概保留。
+            tasks: event.agent.event === 'session_start' ? null : previous?.tasks ?? null,
             instanceId: runtime.getSession(record.id)?.instanceId ?? null,
           });
         }
@@ -144,7 +165,7 @@ export function createSessionStatus(store: WorkspaceStore, runtime: TerminalServ
         agent: agentRecord
           ? { state: agentRecord.state, name: agentRecord.name, agentSessionId: agentRecord.agentSessionId,
               since: agentRecord.since, waitingFor: agentRecord.waitingFor, summary: agentRecord.summary,
-              toolName: agentRecord.toolName, toolInputPreview: agentRecord.toolInputPreview }
+              toolName: agentRecord.toolName, toolInputPreview: agentRecord.toolInputPreview, tasks: agentRecord.tasks }
           : null };
     });
     const content = JSON.stringify(next);

@@ -125,3 +125,45 @@ test('结构损坏仍然整帧拒绝', () => {
   assert.equal(parseStatusFrame(frame(1, [{ ...entry(), agent: broken } as unknown as StatusEntry])), null);
   assert.equal(parseStatusFrame(frame(1, [{ ...entry(), id: 42 } as unknown as StatusEntry])), null);
 });
+
+/*
+  任务清单。它是 agent 上第一个非标量字段，所以两条规矩都要单独钉一遍：
+  老后端不发它是常态（缺省合法），认不出的状态值就地降级（不能废掉整帧）。
+*/
+test('任务清单缺省合法，认不出的状态降级成 pending', () => {
+  const base = { state: 'working', name: null, agentSessionId: null, since: 1, waitingFor: null };
+  // 老后端根本没有这一项。
+  assert.ok(parseStatusFrame(frame(1, [{ ...entry(), agent: base } as unknown as StatusEntry])), '老后端不发就不该作废');
+
+  const agent = { ...base, tasks: [{ text: '写完', status: 'completed' }, { text: '新档位', status: 'blocked' }] };
+  const parsed = parseStatusFrame(frame(1, [{ ...entry(), agent } as unknown as StatusEntry]));
+  assert.ok(parsed, '后端以后给任务加一档，不该让所有徽标一起冻住');
+  assert.deepEqual(parsed!.sessions[0].agent!.tasks, [
+    { text: '写完', status: 'completed' },
+    { text: '新档位', status: 'pending' },
+  ]);
+});
+
+test('任务清单结构坏了仍然整帧拒绝', () => {
+  const broken = (tasks: unknown) => ({ state: 'working', name: null, agentSessionId: null, since: 1, waitingFor: null, tasks });
+  for (const tasks of ['not an array', [null], [{ status: 'pending' }], [{ text: 42, status: 'pending' }]]) {
+    assert.equal(parseStatusFrame(frame(1, [{ ...entry(), agent: broken(tasks) } as unknown as StatusEntry])), null, JSON.stringify(tasks));
+  }
+});
+
+/* 清单每次都是新数组：引用比不出相等，不逐条比就是每帧重渲染一次整栏。 */
+test('清单内容没变就不通知订阅者', () => {
+  const store = createSessionStatusStore();
+  let renders = 0;
+  store.subscribe('s', () => { renders++; });
+  const withTasks = (texts: string[]) => frame(1, [{ ...entry(), agent: {
+    state: 'working', name: null, agentSessionId: null, since: 1, waitingFor: null,
+    tasks: texts.map(text => ({ text, status: 'pending' })),
+  } } as unknown as StatusEntry]);
+  store.accept(parseStatusFrame(withTasks(['一', '二']))!);
+  const afterFirst = renders;
+  store.accept({ ...parseStatusFrame(withTasks(['一', '二']))!, revision: 2 });
+  assert.equal(renders, afterFirst, '同样的清单换一个数组，不该重渲染');
+  store.accept({ ...parseStatusFrame(withTasks(['一', '三']))!, revision: 3 });
+  assert.equal(renders, afterFirst + 1, '改了一条要通知');
+});

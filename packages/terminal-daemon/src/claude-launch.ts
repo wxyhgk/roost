@@ -30,9 +30,15 @@ export async function createClaudeLaunch(shell: string, env: NodeJS.ProcessEnv) 
     });
     await writeFile(join(plugin, '.claude-plugin/plugin.json'), JSON.stringify({ name: 'roost-terminal-observer', version: '1.0.0' }));
     const command = `${quote(windows ? process.execPath.replaceAll('\\', '/') : process.execPath)} "\${CLAUDE_PLUGIN_ROOT}/observe.mjs"`;
-    await writeFile(join(plugin, 'hooks/hooks.json'), JSON.stringify({ hooks: Object.fromEntries(
-      ['SessionStart', 'UserPromptSubmit', 'Stop'].map(name => [name, [{ hooks: [{ type: 'command', command, timeout: 2 }] }]]),
-    ) }));
+    const entry = { hooks: [{ type: 'command', command, timeout: 2 }] };
+    await writeFile(join(plugin, 'hooks/hooks.json'), JSON.stringify({ hooks: {
+      ...Object.fromEntries(['SessionStart', 'UserPromptSubmit', 'Stop'].map(name => [name, [entry]])),
+      /*
+        任务清单。**matcher 是必需的，不是优化**：PostToolUse 每次工具调用都触发，不筛
+        的话每读一个文件、每跑一条命令都要起一个 node 进程，而我们只想要 TodoWrite 那一次。
+      */
+      PostToolUse: [{ matcher: 'TodoWrite', ...entry }],
+    } }));
     await writeFile(join(plugin, 'observe.mjs'), CLAUDE_OBSERVER_SCRIPT);
     await writeFile(join(dir, 'launch.mjs'), `import {spawn,spawnSync} from 'node:child_process';
 import {accessSync,constants,realpathSync,readFileSync} from 'node:fs';
@@ -91,14 +97,23 @@ let size=0;const chunks=[];
 try{
  for await(const c of process.stdin){size+=c.length;if(size>1048576)process.exit(0);chunks.push(c)}
  const b=JSON.parse(Buffer.concat(chunks).toString('utf8'));
- if(b.agent_type || !['SessionStart','UserPromptSubmit','Stop'].includes(b.hook_event_name) || typeof b.session_id!=='string' || !/^[a-zA-Z0-9_-]{1,512}$/.test(b.session_id) || typeof b.transcript_path!=='string' || !isAbsolute(b.transcript_path) || b.transcript_path.length>4096)process.exit(0);
+ if(b.agent_type || !['SessionStart','UserPromptSubmit','Stop','PostToolUse'].includes(b.hook_event_name) || typeof b.session_id!=='string' || !/^[a-zA-Z0-9_-]{1,512}$/.test(b.session_id) || typeof b.transcript_path!=='string' || !isAbsolute(b.transcript_path) || b.transcript_path.length>4096)process.exit(0);
+ // PostToolUse 每个工具都会来一次；我们只要 TodoWrite 那一份清单，别的当场退出。
+ // 截断在这里先做一次：这一头是 agent 的任意入参，越早收窄越好。
+ let tasks;
+ if(b.hook_event_name==='PostToolUse'){
+  if(b.tool_name!=='TodoWrite')process.exit(0);
+  const list=b.tool_input&&b.tool_input.todos;
+  if(!Array.isArray(list))process.exit(0);
+  tasks=list.slice(0,64).filter(t=>t&&typeof t==='object'&&typeof t.content==='string').map(t=>({text:t.content.slice(0,200),status:typeof t.status==='string'?t.status:'pending'}));
+ }
  const e=process.env;
  if(!e.ROOST_CLAUDE_SOCKET||!e.ROOST_CLAUDE_TOKEN||!e.ROOST_CLAUDE_INSTANCE||!e.ROOST_CLAUDE_TERMINAL)process.exit(0);
  await new Promise(resolve=>{
   const socket=createConnection(e.ROOST_CLAUDE_SOCKET);let pending='';
   const timer=setTimeout(()=>socket.destroy(),1200);
   socket.on('error',()=>{});socket.on('close',()=>{clearTimeout(timer);resolve()});
-  socket.on('connect',()=>socket.write(JSON.stringify({requestId:'claude-hook',method:'claudeHook',args:[{terminalId:e.ROOST_CLAUDE_TERMINAL,instanceId:e.ROOST_CLAUDE_INSTANCE,token:e.ROOST_CLAUDE_TOKEN,event:b.hook_event_name,sessionId:b.session_id,transcriptPath:b.transcript_path,version:e.ROOST_CLAUDE_VERSION,prompt:typeof b.prompt==='string'&&Buffer.byteLength(b.prompt)<=16384?b.prompt:undefined}]})+'\\n'));
+  socket.on('connect',()=>socket.write(JSON.stringify({requestId:'claude-hook',method:'claudeHook',args:[{terminalId:e.ROOST_CLAUDE_TERMINAL,instanceId:e.ROOST_CLAUDE_INSTANCE,token:e.ROOST_CLAUDE_TOKEN,event:b.hook_event_name,sessionId:b.session_id,transcriptPath:b.transcript_path,version:e.ROOST_CLAUDE_VERSION,prompt:typeof b.prompt==='string'&&Buffer.byteLength(b.prompt)<=16384?b.prompt:undefined,tasks}]})+'\\n'));
   socket.on('data',chunk=>{pending+=chunk;if(pending.length>1048576){socket.destroy();return}let i;while((i=pending.indexOf('\\n'))>=0){const line=pending.slice(0,i);pending=pending.slice(i+1);try{const m=JSON.parse(line);if(m.type==='reply'&&m.requestId==='claude-hook')socket.destroy()}catch{socket.destroy()}}});
  });
 }catch{}

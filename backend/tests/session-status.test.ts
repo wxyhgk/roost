@@ -217,3 +217,49 @@ test('权限态的展示字段只在 blocked 期间存在，放行后必须清�
   emit({ event: 'stop' });
   assert.equal(agentOf()?.summary, null, '收工也算离开 blocked');
 });
+
+/*
+  任务清单和 agent 状态是**两条轴**，和「agent 状态 vs PTY 活动」那一对同理。
+
+  agent 改一次清单，既不说明它开始干活，也不说明它停了——这一点要是没守住，一轮跑完
+  之后 agent 顺手勾掉一项，界面上「已完成」就会翻回「正在工作」。
+*/
+test('任务清单不动状态，跨状态存活，只有换会话才重开一份', async t => {
+  const { dir, store, runtime } = fixture(t);
+  let time = 10000;
+  const record = store.upsertSession({ cwd: dir });
+  const tracker = createSessionStatus(store, runtime, () => time);
+  t.after(() => tracker.dispose());
+  await runtime.ensureSession(record.id, dir);
+  const pty = latestPty();
+  const agentOf = () => { tracker.refresh(); return tracker.snapshot().sessions[0].agent; };
+  const emit = (payload: Record<string, unknown>) =>
+    pty.emitData(`\x1b]777;notify;warp://cli-agent;${JSON.stringify({ v: 1, agent: 'claude', ...payload })}\x07`);
+  const list = (...texts: string[]) => texts.map(text => ({ text, status: 'pending' }));
+
+  emit({ event: 'tasks_updated', session_id: 'a1', tasks: list('太早了') });
+  assert.equal(agentOf(), null, '这条 agent 的生命周期没看见过，不能凭一份清单现造一个状态出来');
+
+  emit({ event: 'session_start', session_id: 'a1' });
+  emit({ event: 'prompt_submit', session_id: 'a1' });
+  emit({ event: 'tasks_updated', session_id: 'a1', tasks: list('一', '二') });
+  assert.equal(agentOf()?.state, 'working', '改清单不是状态变化');
+  assert.deepEqual(agentOf()?.tasks?.map(task => task.text), ['一', '二']);
+
+  emit({ event: 'stop', session_id: 'a1' });
+  assert.equal(agentOf()?.state, 'done');
+  assert.deepEqual(agentOf()?.tasks?.map(task => task.text), ['一', '二'],
+    '跑完了那份清单依然是「这一轮做了什么」的说明，清掉就等于跑完就看不见做过什么');
+
+  emit({ event: 'tasks_updated', session_id: 'a1', tasks: list('三') });
+  assert.equal(agentOf()?.state, 'done', '勾掉一项不该把已经到达的 done 翻回 working');
+  assert.deepEqual(agentOf()?.tasks?.map(task => task.text), ['三']);
+
+  emit({ event: 'session_start', session_id: 'a2' });
+  assert.equal(agentOf()?.tasks, null, '换会话才重开一份');
+
+  // 清单是快照不是增量：少一条就是那条没了。
+  emit({ event: 'tasks_updated', session_id: 'a2', tasks: list('甲', '乙') });
+  emit({ event: 'tasks_updated', session_id: 'a2', tasks: list('甲') });
+  assert.deepEqual(agentOf()?.tasks?.map(task => task.text), ['甲']);
+});

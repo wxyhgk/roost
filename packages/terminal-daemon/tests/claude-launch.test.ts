@@ -4,7 +4,8 @@ import { mkdtemp, mkdir, writeFile, readFile, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawn } from 'node-pty';
-import { createClaudeLaunch } from '../src/claude-launch.ts';
+import { createClaudeLaunch, CLAUDE_OBSERVER_SCRIPT } from '../src/claude-launch.ts';
+import { spawn as spawnProcess } from 'node:child_process';
 import { createServer } from 'node:net';
 
 const quote=(s:string)=>"'"+s.replaceAll("'","'\\''")+"'";
@@ -15,6 +16,12 @@ const quote=(s:string)=>"'"+s.replaceAll("'","'\\''")+"'";
   什么都不说；等到它在别的环境里红了（CI 第一次在 Linux 上跑），日志里只有那一句，
   既看不出 shell 起没起来、也看不出那条命令有没有被 shell 收到。
 */
+/** 直接跑垫片：它是个独立脚本，读 stdin、写 socket，不需要 shell 也不需要 PTY。 */
+const spawnNode=(script:string,socketPath:string)=>spawnProcess(process.execPath,[script],{
+ stdio:['pipe','ignore','ignore'],
+ env:{...process.env,ROOST_CLAUDE_SOCKET:socketPath,ROOST_CLAUDE_TOKEN:'test',ROOST_CLAUDE_INSTANCE:'instance',ROOST_CLAUDE_TERMINAL:'terminal'},
+});
+
 async function until(check:()=>boolean,describe?:()=>string){
  for(let i=0;i<160;i++){if(check())return;await new Promise(r=>setTimeout(r,25));}
  assert.fail('PTY condition timed out'+(describe?`\n--- 终端里实际看到的 ---\n${describe()}`:''));
@@ -127,4 +134,79 @@ if(process.argv.includes('--version'))console.log('2.1.266');
    assert.equal(env.CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION,suggestion);assert.equal(launch.env.CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION,suggestion);
   }
  }
+});
+
+/*
+  任务清单那条路。
+
+  和上面那个整条链路的用例分开，是因为要钉的两件事都在链路的两端，中间那段 zsh + PTY
+  和它们无关：
+  **matcher 不是优化，是必需的。** PostToolUse 每次工具调用都触发——读一个文件、跑一条
+  命令，全都会来。不筛就是每次工具调用起一个 node 进程，在一条正常的 agent 会话里
+  那是几百次。
+*/
+test('TodoWrite 的钩子带 matcher，而且垫片自己也只放 TodoWrite 过去', {timeout:15000}, async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'claude-tasks-test-'));
+  t.after(() => rm(dir, {recursive: true, force: true}));
+
+  const launch = await createClaudeLaunch('/bin/zsh', {...process.env, HOME: dir, ZDOTDIR: dir});
+  t.after(() => launch.dispose());
+  const root = join(launch.env.ZDOTDIR!, '..');
+  const config = JSON.parse(await readFile(join(root, 'plugin/hooks/hooks.json'), 'utf8'));
+  assert.equal(config.hooks.PostToolUse[0].matcher, 'TodoWrite',
+    '没有 matcher 就是每次工具调用起一个 node 进程');
+  for (const name of ['SessionStart', 'UserPromptSubmit', 'Stop']) {
+    assert.equal(config.hooks[name][0].matcher, undefined, '生命周期事件不该被 matcher 筛掉');
+  }
+
+  // 垫片单独跑一遍：matcher 要是哪天被忽略了，这一层还得挡住。
+  const script = join(dir, 'observe.mjs');
+  await writeFile(script, CLAUDE_OBSERVER_SCRIPT);
+  const received: any[] = [];
+  const socketPath = join(dir, 'tasks.sock');
+  const receiver = createServer(socket => {
+    let buf = '';
+    socket.on('data', chunk => {
+      buf += chunk;
+      const i = buf.indexOf('\n');
+      if (i < 0) return;
+      const message = JSON.parse(buf.slice(0, i));
+      received.push(message.args[0]);
+      socket.end(JSON.stringify({type: 'reply', requestId: message.requestId, result: true}) + '\n');
+    });
+  });
+  await new Promise<void>(r => receiver.listen(socketPath, r));
+  t.after(() => new Promise<void>(r => receiver.close(() => r())));
+
+  const run = (body: Record<string, unknown>) => new Promise<void>(resolve => {
+    const child = spawnNode(script, socketPath);
+    child.stdin!.end(JSON.stringify({session_id: 'native-test', transcript_path: '/tmp/t.jsonl', ...body}));
+    child.on('close', () => resolve());
+  });
+
+  await run({hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: {command: 'ls'}});
+  assert.deepEqual(received, [], '别的工具一个字节都不该发出去');
+
+  await run({hook_event_name: 'PostToolUse', tool_name: 'TodoWrite', tool_input: {todos: [
+    {content: '第一件', status: 'completed'},
+    {content: '第二件', status: 'in_progress'},
+  ]}});
+  assert.equal(received.length, 1);
+  assert.equal(received[0].event, 'PostToolUse');
+  assert.deepEqual(received[0].tasks, [
+    {text: '第一件', status: 'completed'},
+    {text: '第二件', status: 'in_progress'},
+  ]);
+
+  // 截断在垫片这一头就做一次：这里是 agent 的任意入参进来的地方。
+  received.length = 0;
+  await run({hook_event_name: 'PostToolUse', tool_name: 'TodoWrite', tool_input: {todos:
+    Array.from({length: 200}, (_, i) => ({content: 'x'.repeat(500), status: 'pending', i}))}});
+  assert.equal(received[0].tasks.length, 64);
+  assert.equal(received[0].tasks[0].text.length, 200);
+
+  // todos 不是数组（版本变了之类）就当没这回事，而不是发一条空清单把界面上那份清空。
+  received.length = 0;
+  await run({hook_event_name: 'PostToolUse', tool_name: 'TodoWrite', tool_input: {todos: 'nope'}});
+  assert.deepEqual(received, []);
 });

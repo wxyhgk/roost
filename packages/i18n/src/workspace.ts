@@ -123,6 +123,20 @@ export const workspace = {
       blockedWithDetail: (kind: string, detail: string) => `${kind}：${detail}`,
     },
 
+    /** agent 自报的任务清单。右侧面板那一栏。 */
+    tasks: {
+      noSession: "没有选中的终端",
+      noSessionHint: "先进一个终端，这里显示它里面 agent 的任务清单。",
+      empty: "还没有任务清单",
+      emptyHint: "agent 在这个会话里列出任务之后，会出现在这里，而且不会随终端滚走。",
+      progress: (done: number, total: number) => `${done} / ${total} 已完成`,
+      status: {
+        pending: "待办",
+        in_progress: "进行中",
+        completed: "已完成",
+      },
+    },
+
     /** 终端活动状态。键与 session-status 的 ActivityView.state 一一对应。 */
     activity: {
       active: "终端有输出",

@@ -348,6 +348,7 @@ export const misc = {
       files: "文件",
       notes: "笔记",
       snippets: "代码片段",
+      tasks: "任务",
     },
     /* 面板模块自己还在下载时的占位。首次打开某个面板才会看到，之后模块已在内存里。 */
     loading: "正在打开…",
@@ -374,6 +375,7 @@ export const misc = {
       files: "文件",
       notes: "笔记",
       snippets: "代码片段",
+      tasks: "任务清单",
     },
     view: "右侧视图",
   },
