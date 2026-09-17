@@ -155,3 +155,22 @@ append 的日志文件根本没被创建）。
 
 代价：每会话多一个进程；字节多一跳；holder 的协议必须**小到能真正冻住**（它的升级答案
 是「不升级」，旧 holder 带着旧会话自然消亡）；孤儿 holder 要回收。
+
+---
+
+## 九、已经写过又删掉的那块
+
+`adoptPty`（`packages/terminal-runtime/src/adopted-pty.ts` 及其测试）在这轮调研之前就写完
+并提交了，commit `bbfd3dc`。它拿一个裸 fd 加一个 pid 拼出 runtime 用到的那一小块
+`IPty`，用 `native.open()` 开真 PTY 对测过，六条全绿。
+
+**调研之后删掉了**，两个理由：
+
+1. 方向没定，而它只服务于 execve 那条路。留着是死代码。
+2. **它本身就是坏的。** 它靠 master 的 EOF 判断子进程退出，而 node-pty 会漏一个 slave fd
+   出去（第五节）；那个 fd 开着的话 **EOF 永远不会来**，会话退出了也报不出来。当时的
+   测试测不到这一点——`native.open()` 开的是干净的一对，没有多余的 slave 引用。
+
+所以要重做的话，别从 `bbfd3dc` 直接捡回来：形状可以抄（三个原生调用都验过好使），
+但「怎么知道子进程没了」必须换一条路——而 Node 没有 `waitpid`，`process.kill(pid,0)`
+对僵尸答 alive，这条是真的没有现成答案。
