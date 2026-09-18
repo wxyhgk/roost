@@ -1,5 +1,5 @@
 /** Pure CLI compatibility rules. No filesystem, process, network or terminal access. */
-export type CliKind = "claude" | "codex" | "grok" | "qwen" | "opencode";
+export type CliKind = "claude" | "codex" | "grok" | "qwen" | "opencode" | "omp";
 export type CliAdapter = Readonly<{
   id: CliKind;
   name: string;
@@ -13,6 +13,16 @@ const adapters: readonly CliAdapter[] = Object.freeze([
   { id: "codex", name: "Codex", imageStrategy: "bracketed-path", verifiedVersions: Object.freeze([]) },
   { id: "grok", name: "Grok", imageStrategy: "bracketed-path", verifiedVersions: Object.freeze([]) },
   { id: "opencode", name: "OpenCode", imageStrategy: "bracketed-path", verifiedVersions: Object.freeze([]) },
+  /*
+    omp 一直在 registry 里（它原生就发 OSC 777 那套事件），但**不在这张表里**，于是
+    贴图走到 `getCliAdapter` 就是 unknown-cli：图片传上去了，插入那一步直接报「认不出
+    这个 CLI」。
+
+    它吃的就是同一份括号粘贴。18.1.18 的 `extractBracketedImagePastePaths` 要求整段以
+    `ESC[200~` 开头、`ESC[201~` 结尾，路径要以 `/`、`~/`、`file://`、UNC 或盘符开头，
+    扩展名匹配 `/\.(?:png|jpe?g|gif|webp)$/i`——和我们发出去的那一串逐条对得上。
+  */
+  { id: "omp", name: "Oh My Pi", imageStrategy: "bracketed-path", verifiedVersions: Object.freeze(["18.1.18"]) },
 ].map(adapter => Object.freeze(adapter)) as CliAdapter[]);
 
 export function listCliAdapters(): readonly CliAdapter[] { return adapters; }

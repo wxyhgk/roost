@@ -127,7 +127,9 @@ test('adapter discovery exposes candidates honestly and respects the access guar
   const response = await fetch(f.base + '/api/cli-adapters');
   assert.equal(response.status, 200);
   const { adapters } = await response.json();
-  assert.equal(adapters.length, 5);
+  // 列 id 而不是数个数：以后多一个少一个，失败信息直接说是谁，而不是「6 !== 5」。
+  assert.deepEqual(adapters.map((a: {id: string}) => a.id).sort(),
+    ['claude', 'codex', 'grok', 'omp', 'opencode', 'qwen']);
   assert.deepEqual(adapters.find((a: {id: string}) => a.id === 'qwen').verifiedVersions, ['0.21.14']);
   assert.deepEqual(adapters.find((a: {id: string}) => a.id === 'opencode').verifiedVersions, []);
   assert.equal((await fetch(f.base + '/api/cli-adapters', { headers: { origin: 'https://evil.test' } })).status, 403);

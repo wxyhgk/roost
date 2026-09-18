@@ -65,3 +65,21 @@ test('Codex paths round-trip through shell tokenization without splitting or los
     assert.equal(plan.requiresConfirmation, false);
   }
 });
+
+/*
+  omp 一直在 registry 里（会话识别、恢复都认它），却不在这张适配表里，于是贴图走到
+  `getCliAdapter` 直接是 unknown-cli——图片传上去了，插入那一步报「认不出这个 CLI」。
+
+  「在 registry 里」和「能贴图」是两张表，谁也不保证谁。这条用例把它钉死。
+*/
+test('omp 能贴图：registry 认得它，适配表也得认得它', () => {
+  assert.equal(detectCli('/Users/u/.local/bin/omp'), 'omp');
+  const adapter = getCliAdapter('omp');
+  assert.ok(adapter, 'registry 里有、这里没有，就是「传上去了但插不进去」');
+  const plan = planImageInsertion({ cli: 'omp', path: '/tmp/shot.png' });
+  assert.equal(plan.kind, 'paste');
+  if (plan.kind !== 'paste') throw new Error('missing paste');
+  // omp 18.1.18 的 extractBracketedImagePastePaths 要的就是这一串：整段带括号，
+  // 路径以 / 开头，扩展名在 png|jpe?g|gif|webp 里。不加引号——那是 codex 独有的。
+  assert.equal(plan.data, '\x1b[200~/tmp/shot.png\x1b[201~');
+});
