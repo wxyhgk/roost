@@ -83,3 +83,18 @@ test('omp 能贴图：registry 认得它，适配表也得认得它', () => {
   // 路径以 / 开头，扩展名在 png|jpe?g|gif|webp 里。不加引号——那是 codex 独有的。
   assert.equal(plan.data, '\x1b[200~/tmp/shot.png\x1b[201~');
 });
+
+/*
+  「运行中的第一下 Ctrl+C 先清空输入」这条只在**量过清空键**的 CLI 上生效。
+
+  没量过就留空，宿主原样发 Ctrl+C。猜一个键的代价不对称：猜对了省一次误打断，猜错了
+  是往一个正在跑的 agent 里塞一个谁也不知道会触发什么的控制字符。
+*/
+test('只有实测过的 CLI 才带清空键，而且必须是 Ctrl+U', () => {
+  const withKey = listCliAdapters().filter(a => a.clearInputKey);
+  assert.deepEqual(withKey.map(a => a.id).sort(), ['claude', 'omp', 'opencode'],
+    '加一家之前先在真 PTY 里量一遍，别照着别人抄');
+  for (const adapter of withKey) assert.equal(adapter.clearInputKey, '\x15', adapter.id);
+  // codex 是整屏重绘，用「打字→按键→再打字」那个法子量不出来；qwen/grok 手上没有。
+  assert.deepEqual(listCliAdapters().filter(a => !a.clearInputKey).map(a => a.id).sort(), ['codex', 'grok', 'qwen']);
+});

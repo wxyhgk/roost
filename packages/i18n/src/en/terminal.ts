@@ -99,6 +99,8 @@ export const terminal = {
     othersWatching: (labels: string) => `Also watched by ${labels}`,
     resume: (cli: string) => `Resume ${cli} conversation`,
     resumeHint: (command: string) => `Restart and run ${command}`,
+    /** 运行中的第一下 Ctrl+C 被当成「清空输入」吃掉了，告诉人怎么才是真打断。 */
+    interruptArmed: "Input cleared · press Ctrl+C again to interrupt",
     pendingImageAlt: "Image pending send",
     insertImage: "Insert image",
     cancel: "Cancel",

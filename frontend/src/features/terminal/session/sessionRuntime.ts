@@ -8,6 +8,7 @@ import { emitFileLink } from '../fileLinks';
 import type { SessionDependencies } from './sessionController';
 import { stableRuntime } from '../../../shared/runtime';
 import { sessionStatus } from '../../session-status/public';
+import { getCliAdapter } from '@roost/cli-adapters';
 /*
   屏幕快照只在**本次页面加载内**有效。
 
@@ -48,5 +49,17 @@ export function sessionDependencies(sessionId: string): SessionDependencies {
       return () => cancelAnimationFrame(id);
     },
     reportPresented: (instanceId, seq) => sessionStatus.presented(sessionId, instanceId, seq),
+    /*
+      两个条件都来自别处，所以在这里取而不是在控制器里存：agent 在不在跑是会话状态那
+      条流说的，清空键是 CLI 适配表说的。**每次按键现取**——这两样都会在一条会话的
+      生命周期里变（换个 CLI、跑完一轮），存下来就会拿着过期的答案拦人。
+    */
+    interruptContext() {
+      const view = sessionStatus.read(sessionId);
+      return {
+        clearInputKey: getCliAdapter(view.cliId)?.clearInputKey ?? null,
+        working: view.agent?.state === 'working',
+      };
+    },
   };
 }

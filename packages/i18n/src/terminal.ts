@@ -102,6 +102,8 @@ export const terminal = {
     othersWatching: (labels: string) => `另有 ${labels} 在看同一个终端`,
     resume: (cli: string) => `恢复 ${cli} 对话`,
     resumeHint: (command: string) => `重新启动并执行 ${command}`,
+    /** 运行中的第一下 Ctrl+C 被当成「清空输入」吃掉了，告诉人怎么才是真打断。 */
+    interruptArmed: "已清空输入 · 再按一次 Ctrl+C 打断模型",
     pendingImageAlt: "待发送图片",
     insertImage: "插入图片",
     cancel: "取消",

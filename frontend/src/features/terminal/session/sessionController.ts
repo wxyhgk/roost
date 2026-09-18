@@ -5,13 +5,16 @@ import { claimTerminalSession } from "../handles";
 import { createResume, type ResumeFrame, type ResumeSnapshot } from "./resume";
 import type { ConnectionHandle, ConnectionOptions } from "./connection";
 import { createImagePaste, type ImagePasteState } from "../imagePaste";
+import { createInterruptGuard, INTERRUPT_WINDOW_MS } from "../interruptGuard";
 import { createDiagnosticTrace, stalledParser } from './diagnostics';
 import { t } from "@roost/i18n";
 import { ApiError } from '../../../shared/api/errors';
 import { resumeError } from '../resumeMessages';
 
-export type SessionViewState = { status: TermStatus; historyTruncated: boolean; atBottom: boolean; viewers: { label: string }[]; restarting: boolean; restartError: string | null; resumePlanRevision: number; imagePaste: ImagePasteState; viewIssue: string | null; inputNotice: boolean; connectionError: string | null };
-export const initialSessionState: SessionViewState = { status: "reconnecting", historyTruncated: false, atBottom: true, viewers: [], restarting: false, restartError: null, resumePlanRevision: 0, imagePaste: null, viewIssue: null, inputNotice: false, connectionError: null };
+export type SessionViewState = { status: TermStatus; historyTruncated: boolean; atBottom: boolean; viewers: { label: string }[]; restarting: boolean; restartError: string | null; resumePlanRevision: number; imagePaste: ImagePasteState; viewIssue: string | null; inputNotice: boolean; connectionError: string | null;
+  /** 刚把一下 Ctrl+C 当成「清空输入」吃掉了，正等着看你要不要再按一次。 */
+  interruptArmed: boolean };
+export const initialSessionState: SessionViewState = { status: "reconnecting", historyTruncated: false, atBottom: true, viewers: [], restarting: false, restartError: null, resumePlanRevision: 0, imagePaste: null, viewIssue: null, inputNotice: false, connectionError: null, interruptArmed: false };
 export type SessionDependencies = {
   deliberateResize?: boolean;
   url: string;
@@ -30,6 +33,11 @@ export type SessionDependencies = {
   isPresented?(): boolean;
   afterPaint?(callback: () => void): () => void;
   reportPresented?(instanceId: string, seq: number): void;
+  /**
+   * 这一刻拦不拦 Ctrl+C：agent 在跑吗、这家 CLI 的清空键是什么。
+   * 不给就完全不拦，Ctrl+C 原样发下去（普通 shell 会话正是这条路）。
+   */
+  interruptContext?(): { clearInputKey: string | null; working: boolean };
 };
 export function createTerminalSessionController(options: {
   sessionId: string; host: HTMLElement; active: boolean;
@@ -60,6 +68,9 @@ export function createTerminalSessionController(options: {
   deps.windowEvents.addEventListener('blur', disengage);
   let liveInstance: string | null = null;
   let state = { ...initialSessionState };
+  const interrupts = createInterruptGuard();
+  /** 举起来之后要自己落下：`armed` 是看时间的，没人按键就不会再有人来问它。 */
+  let interruptTimer: ReturnType<typeof setTimeout> | undefined;
   const trace = createDiagnosticTrace();
   trace.record('waiting-for-layout');
   let phase = 'layout', lastFrameAt: number | null = null;
@@ -214,9 +225,20 @@ export function createTerminalSessionController(options: {
       if (active) term.focus();
       resume = createResume(term);
 
-      dataSub = term.onData((data) => {
+      dataSub = term.onData((input) => {
+        /*
+          运行中的第一下 Ctrl+C 改成「先清空输入框」。为什么见 interruptGuard.ts；
+          这里只负责把它替换掉，并让界面知道现在举着「再按一次就打断」。
+        */
+        const decision = interrupts.press(input, deps.interruptContext?.() ?? { clearInputKey: null, working: false });
+        const data = decision.kind === 'clear' ? decision.data : input;
         const result = send(data);
-        if (result === 'sent' && active && inputReady && !dead) term?.previewInput?.(data);
+        clearTimeout(interruptTimer);
+        update({ interruptArmed: interrupts.armed() });
+        if (interrupts.armed()) interruptTimer = setTimeout(() => update({ interruptArmed: false }), INTERRUPT_WINDOW_MS);
+        // 预测的是**真发出去的那一串**。替换成清空键之后再去预测用户按的 Ctrl+C，
+        // 本地回显会画出一个永远等不到回声的东西。
+        if (result === 'sent' && active && inputReady && !dead && decision.kind !== 'clear') term?.previewInput?.(data);
         else term?.clearLocalEcho?.();
       });
       appearanceSub = term.onAppearanceResponse(data => { if (valid()) conn?.sendAppearanceResponse(data); });
@@ -376,6 +398,7 @@ export function createTerminalSessionController(options: {
       stopFonts?.();
       clearTimeout(resizeTimer);
       clearInterval(watchdog);
+      clearTimeout(interruptTimer);
       conn?.dispose();
       lease.dispose();
       term?.dispose();

@@ -48,7 +48,7 @@ export function TermView({ sessionId, active, onCwd, onCli }: Props) {
     imagePaste,
     insertImage,
     cancelImage,
-    diagnostics, repaint, reloadView, viewIssue, viewers, inputNotice, dismissInputNotice, connectionError,
+    diagnostics, repaint, reloadView, viewIssue, viewers, inputNotice, dismissInputNotice, connectionError, interruptArmed,
   } = useTerminal(sessionId, active, onCwd, onCli);
   const { saveBar, savedTick, readSelection, saveNote, saveToFile } = useTerminalSelection(sessionId);
 
@@ -151,6 +151,12 @@ export function TermView({ sessionId, active, onCwd, onCli }: Props) {
       {active && status === "dead" && (
         <TerminalRecovery sessionId={sessionId} restarting={restarting} restartError={restartError}
           revision={resumePlanRevision} restart={restart} />
+      )}
+      {/* 居中而不是靠角落：它说的是「你刚按的那个键去哪了」，得落在视线上。 */}
+      {active && interruptArmed && (
+        <div role="status" className="pointer-events-none absolute bottom-3 left-1/2 z-[7] -translate-x-1/2 whitespace-nowrap rounded-full border border-border bg-bg-raised px-3 py-1.5 text-caption text-text shadow-pop">
+          {t.terminal.view.interruptArmed}
+        </div>
       )}
       {active && imagePaste && (
         <div className="absolute bottom-3 right-3 z-[7] flex max-w-[calc(100%-24px)] items-center gap-3 rounded-lg border border-border bg-bg-raised p-3 text-caption text-text shadow-lg" role={imagePaste.phase === "error" ? "alert" : "status"}>
