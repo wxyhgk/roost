@@ -23,7 +23,8 @@
     "@roost/workspace-store": "0.0.0",
     "@xmldom/xmldom": "^0.9.12",
     "sharp": "^0.35.4",
-    "ws": "^8.21.3"
+    "ws": "^8.21.3",
+    "@roost/auth-challenge": "*"
   },
   "devDependencies": {
     "@types/node": "^26.4.1",

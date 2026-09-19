@@ -55,7 +55,8 @@
     "react-dom": "^19.1.0",
     "react-resizable-panels": "^3.0.0",
     "shiki": "^4.4.3",
-    "tailwindcss": "^4.3.3"
+    "tailwindcss": "^4.3.3",
+    "@roost/auth-challenge": "*"
   },
   "devDependencies": {
     "@types/compression": "^1.8.1",

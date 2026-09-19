@@ -4,18 +4,18 @@ import { fileURLToPath } from 'node:url';
 import { builtinModules } from 'node:module';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const owners = ['packages/subscriptions', 'packages/server-monitor', 'packages/agent-messaging', 'packages/ai-transcript', 'backend', 'frontend', 'stable-workbench', 'packages/terminal-protocol', 'packages/terminal-runtime', 'packages/workspace-store', 'packages/cli-adapters', 'packages/terminal-daemon', 'packages/attachment-store', 'packages/core-server', 'packages/ai-session-bridge', 'packages/i18n'];
+const owners = ['packages/subscriptions', 'packages/server-monitor', 'packages/agent-messaging', 'packages/ai-transcript', 'backend', 'frontend', 'stable-workbench', 'packages/terminal-protocol', 'packages/terminal-runtime', 'packages/workspace-store', 'packages/cli-adapters', 'packages/auth-challenge', 'packages/terminal-daemon', 'packages/attachment-store', 'packages/core-server', 'packages/ai-session-bridge', 'packages/i18n'];
 const allowed = {
   'packages/subscriptions': [],
   'packages/server-monitor': ['systeminformation', 'tsx/esm/api'],
   'packages/agent-messaging': ['@modelcontextprotocol/sdk/server/index.js', '@modelcontextprotocol/sdk/server/stdio.js', '@modelcontextprotocol/sdk/types.js', 'zod'],
   'packages/ai-transcript': [],
   'packages/core-server': ['@roost/terminal-daemon/client', '@roost/terminal-protocol', 'ws'],
-  backend: ['@roost/subscriptions', '@roost/server-monitor', '@roost/ai-transcript', '@roost/ai-session-bridge', '@roost/attachment-store', '@roost/terminal-daemon', '@roost/cli-adapters', '@roost/terminal-protocol', '@roost/terminal-runtime', '@roost/workspace-store', 'ws'],
+  backend: ['@roost/auth-challenge', '@roost/subscriptions', '@roost/server-monitor', '@roost/ai-transcript', '@roost/ai-session-bridge', '@roost/attachment-store', '@roost/terminal-daemon', '@roost/cli-adapters', '@roost/terminal-protocol', '@roost/terminal-runtime', '@roost/workspace-store', 'ws'],
   // @roost/workspace-store/types 是纯类型子入口（packages/workspace-store/src/public-types.ts）。
   // 主入口 import node:sqlite，永远不该进浏览器；但只立禁令不给路径的后果是前端手抄了一份，
   // 而手抄不会响。开这条子路径正是为了让「改了后端前端编译不过」重新成立。
-  frontend: ['@roost/subscriptions', '@roost/server-monitor/types', '@roost/terminal-protocol', '@roost/cli-adapters', '@roost/i18n', '@roost/workspace-store/types'],
+  frontend: ['@roost/auth-challenge', '@roost/subscriptions', '@roost/server-monitor/types', '@roost/terminal-protocol', '@roost/cli-adapters', '@roost/i18n', '@roost/workspace-store/types'],
   'stable-workbench': [],
   'packages/ai-session-bridge': ['@roost/ai-transcript'],
   'packages/i18n': [],
@@ -24,6 +24,8 @@ const allowed = {
   // 这份名单是手工维护的，新增外部依赖必须显式登记——这正是这道检查的意义。
   'packages/terminal-daemon': ['@roost/terminal-runtime', '@roost/terminal-protocol', '@roost/workspace-store', '@xterm/headless', 'ws'],
   'packages/cli-adapters': [],
+  // 纯计算，不许有任何依赖：它同时跑在 Node 和浏览器里，而浏览器那边连 WebCrypto 都没有。
+  'packages/auth-challenge': [],
   'packages/terminal-protocol': [],
   // @xterm/headless + addon-serialize：screen.ts 在服务端持有每个会话解析好的屏幕，
   // 重连时序列化出来一帧还原，而不是把原始历史重放给用户看。

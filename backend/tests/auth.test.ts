@@ -6,6 +6,7 @@ import { PassThrough } from "node:stream";
 import test from "node:test";
 import type WebSocket from "ws";
 import { AUTH_COOKIE_NAME, createAuthentication, type AuthOptions } from "../src/auth.ts";
+import { solveChallenge, MIN_ITERATIONS } from '@roost/auth-challenge';
 
 const PASSWORD = "unit-test-password-only";
 const request = (cookie?: string) => ({ headers: cookie ? { cookie } : {}, socket: { remoteAddress: "127.0.0.1" } }) as IncomingMessage;
@@ -265,4 +266,94 @@ test('password route fails closed without a session or a persistence provider an
   }
   const blocked = await f.login(); assert.equal(blocked.status, 429);
   assert.equal(f.auth.isAuthorized(request(cookie)), true);
+});
+
+/*
+  挑战-响应登录：明文 HTTP 上，密码不该出现在线上。
+
+  这条链路的每一步都单独钉，因为它的失效方式都是**安静的**——密码照样能登进去，
+  只是保护没了，界面上看不出任何区别。
+*/
+async function solve(base: string, password = PASSWORD) {
+  const challenge = await (await fetch(`${base}/api/auth/challenge`)).json();
+  return { challenge, proof: solveChallenge(password, challenge) };
+}
+const postLogin = (base: string, body: unknown) =>
+  fetch(`${base}/api/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+
+test('挑战-响应能登进去，而且请求体里不含密码', async t => {
+  const f = await fixture({ password: PASSWORD, secureCookie: false }); t.after(f.close);
+  const { challenge, proof } = await solve(f.base);
+  assert.ok(challenge.iterations >= MIN_ITERATIONS, '迭代次数不能低于客户端愿意接受的下限');
+  const payload = JSON.stringify({ nonce: challenge.nonce, proof });
+  assert.ok(!payload.includes(PASSWORD), '整条协议的意义就在这一行：线上没有密码');
+
+  const response = await postLogin(f.base, { nonce: challenge.nonce, proof });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).authenticated, true);
+  const cookie = responseCookie(response);
+  assert.equal((await fetch(f.base + '/api/workspace', { headers: { cookie } })).status, 200);
+});
+
+/* 随机数一次性是这条协议的全部意义：留着让人重试，它就退化成一个静态口令。 */
+test('同一个应答不能用第二次', async t => {
+  const f = await fixture({ password: PASSWORD, secureCookie: false }); t.after(f.close);
+  const { challenge, proof } = await solve(f.base);
+  assert.equal((await postLogin(f.base, { nonce: challenge.nonce, proof })).status, 200);
+  assert.equal((await postLogin(f.base, { nonce: challenge.nonce, proof })).status, 401, '重放必须失败');
+});
+
+test('答错了那个挑战也当场作废，不能拿着同一个随机数慢慢试', async t => {
+  const f = await fixture({ password: PASSWORD, secureCookie: false }); t.after(f.close);
+  const { challenge } = await solve(f.base);
+  const wrong = solveChallenge('not the password', challenge);
+  assert.equal((await postLogin(f.base, { nonce: challenge.nonce, proof: wrong })).status, 401);
+  // 挑战已经用掉了：哪怕现在算对了也进不去，必须重新领一个。
+  const right = solveChallenge(PASSWORD, challenge);
+  assert.equal((await postLogin(f.base, { nonce: challenge.nonce, proof: right })).status, 401);
+  const fresh = await solve(f.base);
+  assert.equal((await postLogin(f.base, { nonce: fresh.challenge.nonce, proof: fresh.proof })).status, 200);
+});
+
+test('别人的随机数、瞎编的随机数都不认', async t => {
+  const f = await fixture({ password: PASSWORD, secureCookie: false }); t.after(f.close);
+  const { challenge, proof } = await solve(f.base);
+  assert.equal((await postLogin(f.base, { nonce: 'made-up-nonce', proof })).status, 401);
+  assert.equal((await postLogin(f.base, { nonce: challenge.nonce, proof: 'x' })).status, 401);
+  assert.equal((await postLogin(f.base, { nonce: 42, proof })).status, 401, '类型不对不该崩，只该拒绝');
+});
+
+/*
+  明文那条路留着，是为了不被锁在门外（缓存里一份旧前端、或者一个 curl）。
+  它挡不住主动的中间人——但纯 HTTP 上那种人可以直接往页面里注 JS，换协议也拦不住。
+*/
+test('明文密码那条路还在，两条路都通', async t => {
+  const f = await fixture({ password: PASSWORD, secureCookie: false }); t.after(f.close);
+  assert.equal((await f.login()).status, 200);
+  const { challenge, proof } = await solve(f.base);
+  assert.equal((await postLogin(f.base, { nonce: challenge.nonce, proof })).status, 200);
+});
+
+test('改密之后，旧密码派生的应答立刻失效', async t => {
+  const f = await fixture({ password: PASSWORD, secureCookie: false, savePassword: async () => {} }); t.after(f.close);
+  const cookie = responseCookie(await f.login());
+  // 先领一个挑战再改密：这一份必须跟着作废，否则改密之后旧密码还能进来一次。
+  const stale = await solve(f.base);
+  const changed = await fetch(f.base + '/api/auth/password', {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie },
+    body: JSON.stringify({ currentPassword: PASSWORD, newPassword: 'brand-new-password' }),
+  });
+  assert.equal(changed.status, 200);
+  assert.equal((await postLogin(f.base, { nonce: stale.challenge.nonce, proof: stale.proof })).status, 401);
+  const next = await solve(f.base, 'brand-new-password');
+  assert.equal((await postLogin(f.base, { nonce: next.challenge.nonce, proof: next.proof })).status, 200, '新密码要能登进去');
+});
+
+test('没配认证 / 桌面会话时不发挑战，方法也限死 GET', async t => {
+  const f = await fixture({ desktopSession: 'a'.repeat(43), secureCookie: false }); t.after(f.close);
+  assert.equal((await fetch(f.base + '/api/auth/challenge')).status, 409);
+  const g = await fixture({ password: PASSWORD, secureCookie: false }); t.after(g.close);
+  const wrongMethod = await fetch(g.base + '/api/auth/challenge', { method: 'POST' });
+  assert.equal(wrongMethod.status, 405);
+  assert.equal(wrongMethod.headers.get('allow'), 'GET');
 });

@@ -1,4 +1,5 @@
 import { acceptAuthenticatedSession, request } from "./request";
+import { solveChallenge, type LoginChallenge } from "@roost/auth-challenge";
 
 /**
  * 登录。
@@ -26,11 +27,26 @@ export function fetchAuthSession(signal?: AbortSignal) {
   return request<AuthSession>("/api/auth/session", { signal, cache: "no-store" });
 }
 
-export async function login(password: string) {
+/*
+  登录**不发密码**。
+
+  先问服务端要一个一次性随机数，本地用密码派生出密钥，发上去的是
+  `HMAC(密钥, 随机数)`。这样明文 HTTP 上抓包的人拿不到密码本身。
+  完整的取舍（它解决什么、不解决什么）写在 `@roost/auth-challenge` 顶上。
+
+  派生要跑二十万次 PBKDF2，在手机上可能一两秒——所以 `onProgress` 让界面能说一句
+  「正在校验」，不然那段时间看起来就像点了没反应。
+*/
+export async function login(password: string, onProgress?: () => void) {
+  const challenge = await request<LoginChallenge>("/api/auth/challenge", { cache: "no-store" });
+  onProgress?.();
+  // 让出一帧再开始算：PBKDF2 是同步的，会把主线程占住，不先渲染一次就看不到那句提示。
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const proof = solveChallenge(password, challenge);
   const session = await request<AuthSession>("/api/auth/login", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ password }),
+    body: JSON.stringify({ nonce: challenge.nonce, proof }),
   });
   if (session.authenticated) acceptAuthenticatedSession();
   return session;

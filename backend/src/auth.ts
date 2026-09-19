@@ -1,4 +1,5 @@
-import { randomBytes, scrypt, scryptSync, timingSafeEqual } from "node:crypto";
+import { createHmac, pbkdf2, randomBytes, scrypt, scryptSync, timingSafeEqual } from "node:crypto";
+import { CHALLENGE_ITERATIONS, CHALLENGE_TTL_MS } from "@roost/auth-challenge";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type WebSocket from "ws";
 
@@ -80,6 +81,14 @@ export function createAuthentication(options?: false | AuthOptions) {
   if (!Number.isSafeInteger(ttlMs) || ttlMs < 1 || ttlMs > 2_147_483_647) throw new Error("authentication ttlMs must be between 1 and 2147483647");
   const salt = randomBytes(32);
   let passwordHash: Buffer | null = options && !desktop ? scryptSync(options.password!, salt, 64) : null;
+  /*
+    挑战-响应要的密钥必须从**当前**密码派生，而 `options.password` 在改密之后就过期了。
+    所以单独跟一份。它和 `options.password` 一样是内存里的明文——这个模块本来就拿着它，
+    没有多暴露什么；真正的变化是它不再需要从网络上来一遍。
+  */
+  let livePassword: string | null = options && !desktop ? options.password! : null;
+  /** 发出去还没被用掉的挑战。一次性，到期作废。 */
+  const challenges = new Map<string, number>();
   let passwordRevision = 0;
   let changingPassword = false;
   const sessions = new Map<string, AuthSession>();
@@ -138,6 +147,35 @@ export function createAuthentication(options?: false | AuthOptions) {
     return true;
   }
   const hashPassword = (password: string) => new Promise<Buffer>((resolve, reject) => scrypt(password, salt, 64, (error, value) => error ? reject(error) : resolve(value)));
+  const deriveKey = (password: string, iterations: number) => new Promise<Buffer>((resolve, reject) =>
+    pbkdf2(Buffer.from(password, "utf8"), salt, iterations, 32, "sha256", (error, value) => error ? reject(error) : resolve(value)));
+
+  /** 同时能挂着的挑战数。够正常使用，又不至于让没登录的人把内存撑起来。 */
+  const MAX_CHALLENGES = 64;
+  function issueChallenge() {
+    const now = Date.now();
+    for (const [value, expiresAt] of challenges) if (expiresAt <= now) challenges.delete(value);
+    // 满了就丢最老的那个：拒绝发新挑战等于让任何人都登不进来，比丢一个没人用的挑战糟。
+    while (challenges.size >= MAX_CHALLENGES) challenges.delete(challenges.keys().next().value!);
+    const nonce = randomBytes(32).toString("base64url");
+    challenges.set(nonce, now + CHALLENGE_TTL_MS);
+    return { nonce, salt: salt.toString("base64url"), iterations: CHALLENGE_ITERATIONS };
+  }
+  /**
+   * 核对一次应答。**无论对错都先把挑战删掉**——随机数一次性正是这条协议的全部意义，
+   * 留着让人重试就等于把它变成了一个可以慢慢试的静态口令。
+   */
+  async function verifyChallenge(nonce: unknown, proof: unknown): Promise<boolean> {
+    if (typeof nonce !== "string" || typeof proof !== "string" || nonce.length > 64 || proof.length > 64) return false;
+    const expiresAt = challenges.get(nonce);
+    challenges.delete(nonce);
+    if (expiresAt === undefined || expiresAt <= Date.now() || livePassword === null) return false;
+    const key = await deriveKey(livePassword, CHALLENGE_ITERATIONS);
+    const expected = createHmac("sha256", key).update(Buffer.from(nonce, "base64url")).digest();
+    key.fill(0);
+    const given = Buffer.from(proof, "base64url");
+    return given.length === expected.length && timingSafeEqual(given, expected);
+  }
   async function changePassword(req: IncomingMessage, res: ServerResponse) {
     const decision = authorize(req);
     if (!decision.allowed) { fail(res, decision.status, decision.code, decision.message); req.resume(); return; }
@@ -161,7 +199,9 @@ export function createAuthentication(options?: false | AuthOptions) {
       // Publish only after durable storage succeeds. Existing sockets owned by
       // this browser keep their cookie; other sessions lose access to the PTY.
       await options.savePassword(body.newPassword);
-      passwordHash?.fill(0); passwordHash = nextHash; nextHash = undefined; passwordRevision++;
+      passwordHash?.fill(0); passwordHash = nextHash; nextHash = undefined; livePassword = body.newPassword; passwordRevision++;
+      // 旧密码派生出来的应答不该还能用；挑战本来就是一次性的，这里连未用的也一并作废。
+      challenges.clear();
       for (const token of sessions.keys()) if (token !== decision.token) revoke(token);
       if (disposed) { passwordHash?.fill(0); fail(res, 503, "auth_unconfigured", "authentication is unavailable"); return; }
       if (!active(decision.token)) { fail(res, 401, "authentication_required", "password updated; login required"); return; }
@@ -173,11 +213,18 @@ export function createAuthentication(options?: false | AuthOptions) {
   }
   async function handle(req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean> {
     const path = url.pathname;
-    if (!["/api/auth/session", "/api/auth/login", "/api/auth/logout", "/api/auth/password"].includes(path)) return false;
-    const method = path === "/api/auth/session" ? "GET" : "POST";
+    if (!["/api/auth/session", "/api/auth/challenge", "/api/auth/login", "/api/auth/logout", "/api/auth/password"].includes(path)) return false;
+    const method = path === "/api/auth/session" || path === "/api/auth/challenge" ? "GET" : "POST";
     if (req.method !== method) { res.setHeader("allow", method); fail(res, 405, "method_not_allowed", "method not allowed"); return true; }
     if (path === "/api/auth/session") { json(res, 200, state(req)); return true; }
     if (!configured || disposed) { fail(res, 503, "auth_unconfigured", "authentication is unavailable"); return true; }
+    if (path === "/api/auth/challenge") {
+      // 领挑战也算一次尝试：不然它就是一个不限速的入口，能被用来刷随机数。
+      if (desktop || disabled || livePassword === null) { fail(res, 409, "challenge_unavailable", "challenge login is unavailable"); return true; }
+      if (!allowAttempt(req)) { res.setHeader("retry-after", "900"); fail(res, 429, "rate_limited", "too many login attempts"); return true; }
+      json(res, 200, issueChallenge());
+      return true;
+    }
     if (desktop) { req.resume(); fail(res, 403, 'desktop_session_managed', 'The desktop application manages this local session'); return true; }
     if (path === "/api/auth/password") { await changePassword(req, res); return true; }
     if (path === "/api/auth/logout") {
@@ -191,9 +238,22 @@ export function createAuthentication(options?: false | AuthOptions) {
     const revision = passwordRevision;
     try {
       const body = await loginBody(req);
-      if (typeof body.password !== "string" || Buffer.byteLength(body.password) > 4096) throw new LoginInputError(400, "invalid_request", "password must be a string of at most 4096 UTF-8 bytes");
-      const hash = await hashPassword(body.password);
-      const valid = revision === passwordRevision && timingSafeEqual(hash, passwordHash!); hash.fill(0);
+      /*
+        两种登录都收：挑战-响应（密码不上网），和原来的明文密码。
+
+        **留着明文那条不是懒。** 它挡不住主动的中间人，但本来也挡不住——纯 HTTP 上能改
+        流量的人可以直接往页面里注 JS，换一条登录协议拦不住他。而它挡得住的那个（被动
+        嗅探）永远不会走这条路，因为前端一律走挑战。留着它换的是「不会被锁在门外」：
+        缓存里一份旧前端、或者一个 curl，仍然进得来。
+      */
+      let valid: boolean;
+      if (body.nonce !== undefined || body.proof !== undefined) {
+        valid = revision === passwordRevision && await verifyChallenge(body.nonce, body.proof);
+      } else {
+        if (typeof body.password !== "string" || Buffer.byteLength(body.password) > 4096) throw new LoginInputError(400, "invalid_request", "password must be a string of at most 4096 UTF-8 bytes");
+        const hash = await hashPassword(body.password);
+        valid = revision === passwordRevision && timingSafeEqual(hash, passwordHash!); hash.fill(0);
+      }
       if (disposed) { fail(res, 503, "auth_unconfigured", "authentication is unavailable"); return true; }
       if (!valid) { fail(res, 401, "authentication_required", "invalid credentials"); return true; }
       for (const [token, session] of sessions) if (session.expiresAt <= Date.now()) revoke(token);
@@ -262,7 +322,7 @@ export function createAuthentication(options?: false | AuthOptions) {
           catch { clearTimeout(timer); ws.terminate(); }
         }
       }
-      sockets.clear(); attempts.clear(); passwordHash?.fill(0); salt.fill(0);
+      sockets.clear(); attempts.clear(); challenges.clear(); livePassword = null; passwordHash?.fill(0); salt.fill(0);
     },
   };
 }
