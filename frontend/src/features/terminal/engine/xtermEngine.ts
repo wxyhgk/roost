@@ -5,6 +5,8 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { fitSize } from "./fit";
 import { TERMINAL_FONT_FAMILY, TERMINAL_FONT_SIZE } from "./font";
+// 中文标点的连写压缩必须关掉，否则 xterm 量出来的字宽是半宽，整行会漂。见文件里的推导。
+import "./cjk-spacing.css";
 import { Terminal } from "@xterm/xterm";
 import type { TermHandle, TermTheme, Cell } from "../types";
 import { bufferFileLinks } from "./fileLinkBuffer";

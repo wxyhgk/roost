@@ -1,0 +1,75 @@
+<!doctype html><meta charset="utf-8"><title>中文标点导致行尾被裁</title>
+<!--
+  这一页复现并验证 cjk-spacing.css 修的那个 bug，说明见那个文件顶上。
+
+  一句话：xterm 的 DOM 渲染器靠字距把字形凑到格子上，而它量字宽的办法是「把字符连写 32 遍
+  除以 32」——相邻的中文标点会被 Chrome 成对压成半宽，于是标点量出来只有实际的一半，
+  字距算大了，整行往右漂，漂出行宽的部分被 `overflow:hidden` 裁掉，**行尾的字直接消失**。
+
+  **合成内容里只有汉字是复现不出来的**（汉字连写不压缩），必须有中文标点。
+  上游同一个 issue：https://github.com/xtermjs/xterm.js/issues/6058
+-->
+<style>
+  body { font: 13px/1.6 ui-monospace, monospace; margin: 16px; background: #fff; color: #111; }
+  #host { width: 925px; height: 300px; outline: 1px solid #c00; }
+  pre { white-space: pre-wrap; background: #f6f6f6; padding: 12px; border-radius: 6px; user-select: all; }
+  button { font: inherit; padding: 6px 12px; margin-bottom: 10px; }
+  .bad { color: #b00; font-weight: bold; }
+  .good { color: #060; font-weight: bold; }
+</style>
+<button id="run">量一遍</button>
+<pre id="result">点上面那个按钮。</pre>
+<div id="host"></div>
+<script type="module">
+import { Terminal } from '@xterm/xterm';
+import '@xterm/xterm/css/xterm.css';
+import { TERMINAL_FONT_FAMILY, TERMINAL_FONT_SIZE } from '/src/features/terminal/engine/font.ts';
+// 被验的就是它。注释掉这一行，下面的断言应该变红——那是这一页存在的意义。
+import '/src/features/terminal/engine/cjk-spacing.css';
+
+const out = document.querySelector('#result');
+const host = document.querySelector('#host');
+const COLS = 117;
+
+document.querySelector('#run').onclick = async () => {
+  host.replaceChildren();
+  const term = new Terminal({
+    allowProposedApi: true, fontFamily: TERMINAL_FONT_FAMILY, fontSize: TERMINAL_FONT_SIZE,
+    theme: { background: '#ffffff', foreground: '#000000' },
+  });
+  term.open(host);
+  await document.fonts.ready;
+  term.resize(COLS, 12);
+  await new Promise(r => requestAnimationFrame(r));
+
+  // 正好铺满 117 列，中间夹六个中文标点——真实的中文输出就长这样。
+  const line = '本地还有几个提交没推（多窗口钉住、任务清单、挑战响应登录、这两批终端修复，加上前面那些记录）。要推的话说一声';
+  await new Promise(r => term.write(`\x1b[2J\x1b[H${line}`, r));
+  await new Promise(r => requestAnimationFrame(r));
+  await new Promise(r => requestAnimationFrame(r));
+
+  const cell = term._core?._renderService?.dimensions?.css?.cell;
+  const screen = host.querySelector('.xterm-screen');
+  const row = host.querySelector('.xterm-rows')?.children?.[0];
+  const spans = [...(row?.children ?? [])];
+  const last = spans.at(-1);
+  const drift = (last?.getBoundingClientRect().right ?? 0) - (screen?.getBoundingClientRect().right ?? 0);
+
+  // 照 WidthCache._measure 的原样量：连写 32 遍取平均。压缩没关掉的话标点会明显偏小。
+  const el = host.querySelector('.xterm-char-measure-element');
+  const like = ch => { if (!el) return NaN; const b = el.textContent; el.textContent = ch.repeat(32); const w = el.offsetWidth / 32; el.textContent = b; return w; };
+  const han = like('满'), comma = like('，');
+
+  const ok = Math.abs(drift) < 1 && Math.abs(comma - han) < 0.5;
+  out.innerHTML = [
+    `格宽 ${cell?.width.toFixed(4)}　两格 ${((cell?.width ?? 0) * 2).toFixed(4)}`,
+    `行宽 ${screen?.getBoundingClientRect().width.toFixed(2)}　最后一个 span 溢出 ${drift.toFixed(2)}px`,
+    '',
+    `xterm 量法（连写 32 遍取平均）：汉 ${han.toFixed(3)}　标点 ${comma.toFixed(3)}`,
+    `标点应当和汉字一样宽；差得越多，行漂得越厉害。`,
+    '',
+    ok ? '<span class="good">通过：标点量准了，整行没有溢出。</span>'
+       : `<span class="bad">失败：溢出 ${drift.toFixed(2)}px，标点比汉字窄 ${(han - comma).toFixed(3)}px——行尾会被裁掉。</span>`,
+  ].join('\n');
+};
+</script>

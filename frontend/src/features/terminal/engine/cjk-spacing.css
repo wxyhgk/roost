@@ -1,0 +1,85 @@
+/*
+  关掉 Chrome 对相邻中文标点的压缩。**这不是排版偏好，是在修字被吃掉。**
+
+  ## 症状
+
+  整行铺满时，行尾的中文字直接消失——不是截断，是整个不见。实测一行 117 列、六个中文
+  标点，屏幕上少掉四五个字；同一行在 xterm 的缓冲模型里是完整的，DOM 的 textContent 也
+  是完整的，只有画出来的位置溢出了。
+
+  ## 机制
+
+  xterm 的 DOM 渲染器不给字符 span 设宽度，而是靠 CSS 字距把字形凑到格子上：
+
+      span 宽度     = Σ字形宽 + 字符数 × letterSpacing
+      letterSpacing = 应有宽度 − WidthCache 缓存的字形宽
+
+  而 `WidthCache._measure` 是这么量的（`@xterm/xterm` 6.0.0）：
+
+      el.textContent = char.repeat(32);   // 连写 32 遍
+      return el.offsetWidth / 32;         // 除以 32 当作单字宽
+
+  **相邻的 CJK 全角标点会被 Chrome 成对压成半宽**（CSS Text 4 的 fullwidth punctuation
+  collapsing，Chrome 123 起默认开启）。于是连写量出来是
+
+      (13 + 31×6.5) / 32 = 6.703125      ← 第一个保持全宽，后面 31 个被压
+
+  而真正排版时标点夹在汉字之间并不相邻，画出来是 13.0px。汉字连写不压缩，所以量得准
+  ——**这就是为什么只有标点出问题**。误差于是落在字距上：
+
+      letterSpacing = 15.658 − 6.71 = 8.95
+      实际 span     = 13.0 + 8.95  = 21.95        （应有 15.658，差 +6.29）
+
+  一行有几个标点就漂几个 6.29px。行元素是 `width: cols×格宽; overflow: hidden`，漂出去的
+  部分被直接裁掉，裁的是行尾。实测六个标点漂 37.57px ≈ 4.8 格，和屏幕上少掉的字数吻合。
+
+  ## 为什么是这一条，而且只有这一条
+
+  在真 Chrome 上把候选写法全测了一遍，只有 `text-spacing-trim: space-all` 有效（6.70 → 13.00）。
+  下面这些**一个都没用**，数字纹丝不动，别再加回来：
+  `font-feature-settings` 的 "chws"/"halt"/"palt"/"fwid"、`font-variant-east-asian: full-width`、
+  `font-kerning: none`、`text-autospace`、`letter-spacing: 0`。
+  其中 `font-variant-east-asian: proportional-width` 还会把标点压到 3.12px，更糟。
+
+  底层原因是 Blink 按 `text-spacing-trim` 的计算值决定开不开 OpenType 的 `chws`
+  （`font_features.cc` 里的 `ShouldTrimAdjacent`），`font-kerning` 只管 `kern`，够不着它。
+
+  ## 为什么挂在 `.xterm` 上
+
+  这个属性是**继承**的，而 `.xterm` 同时罩住行容器和那个隐藏的度量容器
+  （`xterm-helpers` → `xterm-screen` → `.xterm`）。**量和画必须一起关**：只关测量那边，
+  画出来的相邻标点仍然被压，格子和字照样对不上，只是误差换了个方向。
+
+  顺带这也让渲染更对：终端是固定格子，全角标点本来就该占满两格，压缩是比例排版的习惯，
+  在格子里没有意义。
+
+  Firefox 和 Safari 不支持这个属性，但它们本来也不做这种压缩，所以不需要回退。
+
+  ## 上游
+
+  xterm.js 有同一个 issue：https://github.com/xtermjs/xterm.js/issues/6058
+  （2026-07-19 开，环境和数字都和我们一致）。**开着没人回，也没有 PR 在做**，master 的
+  `css/xterm.css` 里没有任何相关规则。所以这条不是临时绕路，是在可预见的将来唯一的修法。
+
+  **不要为了这个升到 6.1.0-beta。** 那边 PR #5549 把 WidthCache 换成了 canvas 单字测量，
+  顺带会盖住这个 bug——但它自带 emoji 回归（#5893，未修），而且 WidthCache 的原作者在那条
+  issue 里明确说 canvas 测量跨浏览器差异太大、这条路走不通、应该撤回。押在升级上会两头空。
+
+  另外三个项目（fileterm / puppyone / cleancode）独立收敛到同一写法，其中 fileterm 有实测：
+  修复前最大误差约 35px，修复后 <0.13px。
+
+  ## 残留
+
+  做不到严格为零：DOM 渲染器下每个宽字符 span 的字距也作用在**最后一个字形之后**，会把
+  后面的 inline 内容右推约 2.7px。中英混排行仍可能有亚格级漂移。按格子画的渲染器没这问题，
+  但我们刻意删掉了 WebGL（见 e71f1db 的论证），不为这个走回头路。
+*/
+.xterm {
+  /* Chrome/Edge 123+。Firefox/Safari 不支持，但那边本来就不压，属性是无害的空转。 */
+  text-spacing-trim: space-all;
+  /*
+    另一条相邻的漂移来源：CJK 与拉丁混排时的自动间距。Chrome 默认 `normal` 会加，
+    Safari 默认就是不加。同样必须量和画一起关。Chrome/Edge 140+、FF 145+、Safari 18.4+。
+  */
+  text-autospace: no-autospace;
+}
