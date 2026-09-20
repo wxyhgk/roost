@@ -102,8 +102,9 @@ function linkModifier(ev: MouseEvent) {
  * 和终端的 Ctrl 天然分开，所以整段只对非 Mac 生效。
  *
  * 裁决规则和 GNOME Terminal / Windows Terminal 一致：
- * - 有选区时 Ctrl+C 复制并清掉选区，于是「再按一次」就是中断，两个意图都留得住。
- * - 没有选区时原样放行成 SIGINT。
+ * - 有**非空白**选区时 Ctrl+C 复制并清掉选区，于是下一次按就是中断，两个意图都留得住。
+ *   （agent 在跑的话，那一次还会先被 interruptGuard 换成「清空输入」，见它的说明。）
+ * - 没有选区、或者选区全是空白时，原样放行成 SIGINT。
  * - Ctrl+V 交还给浏览器原生粘贴，而不是自己去读剪贴板：
  *   navigator.clipboard 在非 https 下不存在，读不到；原生 paste 事件则一直可用，
  *   xterm 自己就监听着它（CoreBrowserTerminal 在 textarea 与 element 上都注册了）。
@@ -114,9 +115,20 @@ function attachCopyPaste(term: Terminal) {
   term.attachCustomKeyEventHandler(ev => {
     if (ev.type !== "keydown" || !ev.ctrlKey || ev.altKey || ev.metaKey) return true;
     if (ev.code === "KeyC") {
+      /*
+        **只有非空白的选区才算「有东西可复制」。**
+
+        在空白处手滑拖出三五个像素，xterm 就会给出一段全是空格的选区。原来那一行拿它
+        当真值，于是走复制分支：preventDefault、清选区、**不发 SIGINT**——用户看到的是
+        「按了 Ctrl+C 完全没反应」，而且重现不了，因为那次手滑没人记得。
+      */
       const selection = term.getSelection();
-      if (!selection) return ev.shiftKey ? false : true;
-      // Ctrl+Shift+C 在 Chrome 里是「检查元素」，必须挡掉才轮得到我们复制。
+      if (!selection.trim()) {
+        // Ctrl+Shift+C 在 Chrome 里是「检查元素」。没有选区时原来直接漏给浏览器，于是
+        // 反射性地连按两下就把 DevTools 开出来盖住整个界面。挡掉，但也不送进终端。
+        if (ev.shiftKey) { ev.preventDefault(); return false; }
+        return true;
+      }
       ev.preventDefault();
       void writeClipboard(selection);
       term.clearSelection();

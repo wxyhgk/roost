@@ -1,6 +1,15 @@
 import { t } from '@roost/i18n';
 import { ApiError } from '../../shared/api/errors';
 
+/**
+ * 再查也不会变的结论。
+ *
+ * 和 `resumePlanQuery.ts` 里的 `transient` 是互补的两半：那边决定「要不要自动重试」，
+ * 这边决定「要不要给人一个『重新检查』按钮」。一句永远不会变的话旁边挂着可点的按钮，
+ * 是在请人做一件注定没有结果的事。
+ */
+export const PERMANENT_RESUME_REASONS = new Set(['unsupported_cli', 'unusable_session_id']);
+
 export function resumeReason(reason: string): string {
   const messages = t.terminal.recovery;
   switch (reason) {

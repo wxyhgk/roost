@@ -176,6 +176,7 @@ export function Shell() {
         rightCollapsed={rightCollapsed}
         onToggleLeft={toggleLeft}
         onToggleRight={toggleRight}
+        onOpenPalette={() => setPaletteOpen(true)}
       />
       <div className="flex min-h-0 flex-1">
         <LeftRail collapsed={leftCollapsed} onToggle={toggleLeft} onSettings={() => { setPaletteOpen(false); setSettingsOpen(true); }} />

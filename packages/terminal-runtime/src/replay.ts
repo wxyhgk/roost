@@ -163,7 +163,7 @@ export function createReplayStore(
    * 服务端那份解析好的屏幕。给了它，重连时就用「当前画面」还原，而不是把原始历史
    * 重放给用户看。不给（或它这次拿不出来）就退回旧路径——两条并存，好逐步切换。
    */
-  screen?: { snapshot(id: string): ScreenSnapshot | null },
+  screen?: { snapshot(id: string): ScreenSnapshot | null; altScreen?(id: string): boolean | null },
 ) {
   const states = new Map<string, ReplayState>();
   const flushTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -272,6 +272,8 @@ export function createReplayStore(
     return true;
   }
 
+  const ALT_SCREEN = /\x1b\[\?(?:1049|1047|47)[hl]/;
+
   function full(state: ReplayState, id?: string) {
     /*
       优先用服务端网格的当前画面。
@@ -294,6 +296,21 @@ export function createReplayStore(
       // 用网格还原时**不算截断**：画面是完整的，少的只是更早的回滚，而那本来就在归档里。
       truncated: state.historyTruncated || (!best && state.floor > 0),
     };
+  }
+
+  /**
+   * 降级到原始重放时，把「现在在备用屏」这件事补回去。
+   *
+   * 快照那条路不需要：序列化出来的形状自带 `?1049h`（实测）。只有退回发原始 chunk 时，
+   * 进备用屏的那一条可能早就被挤出环外了，客户端于是在 normal buffer 里画整屏。
+   *
+   * **环里已经带着就不补。** 补重了会在客户端多清一次 alt buffer，正是 tty7 记下的那个坑。
+   * 这段扫描只在降级路径上跑，不进 append 的热路径。
+   */
+  function altPrefix(state: ReplayState, view: ReturnType<typeof full>, id: string): string {
+    if (view.snapshot || screen?.altScreen?.(id) !== true) return "";
+    const carries = ALT_SCREEN.test(view.history) || view.chunks.some((chunk) => ALT_SCREEN.test(chunk.data));
+    return carries ? "" : "\x1b[?1049h";
   }
 
   function resume(id: string, cursor?: ReplayCursor, maxBytes = MAX_REPLAY_JSON_BYTES): ReplayPayload | null {
@@ -320,7 +337,7 @@ export function createReplayStore(
     const view = full(state, id);
     const frame: ReplayPayload = {
       type: "replay", instanceId: state.instanceId, seq: state.seq,
-      ...stream(view.snapshot?.data ?? view.history, view.chunks, state.sizes,
+      ...stream(view.snapshot?.data ?? altPrefix(state, view, id) + view.history, view.chunks, state.sizes,
         // 快照之后的才算切换；没有快照时（重放原始历史）从环还留着的地方算起。
         view.snapshot ? view.snapshot.seq : state.floor, state.mouseModes.restore()),
       revived: Boolean(state.history), truncated: view.truncated || same,

@@ -120,6 +120,23 @@ export function createScreenStore(options?: { scrollback?: number }) {
      * 配的 seq 是「已解析到哪」，调用方要把之后的原始块接在后面。少了这一步，在途的
      * 那点数据要么丢、要么被重放两遍。
      */
+    /**
+     * 这个会话此刻是不是在**备用屏**上。拿不准就返回 null。
+     *
+     * 存在的理由只有一个：重放降级到「发原始 chunk」时，进备用屏的那条 `?1049h` 很可能
+     * 已经被内存上限挤出环外了。客户端于是在 normal buffer 里画 TUI 的整屏输出——回滚被
+     * 一份份画面顶上去，TUI 退出也回不来。omp / codex 这种整屏重绘的 CLI 最容易撞上。
+     *
+     * 读的是解析器自己的缓冲类型，**不在热路径上扫字节**（那正是当初没做这件事的原因，
+     * 见 issues/2026-09-16-alt-screen-lost-when-server-screen-breaks.md）。网格标成 broken
+     * 之后这个值停在出事那一刻，但那也比什么都不知道强。
+     */
+    altScreen(id: string): boolean | null {
+      const screen = screens.get(id);
+      if (!screen) return null;
+      try { return screen.terminal.buffer.active.type === "alternate"; } catch { return null; }
+    },
+
     snapshot(id: string): ScreenSnapshot | null {
       const screen = screens.get(id);
       if (!screen || screen.broken) return null;

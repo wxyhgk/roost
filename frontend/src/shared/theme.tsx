@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { ANSI_COLORS } from "./ansi-colors";
 
 export type Theme = "dark" | "light";
 export type TerminalAppearance = "follow" | Theme;
@@ -44,6 +45,9 @@ export function applyTheme(theme: Theme) {
   document.documentElement.dataset.theme = theme;
 }
 
+/** brightBlack -> bright-black：CSS 变量名用短横线。 */
+const kebab = (name: string) => name.replace(/([a-z])([A-Z])/g, "$1-$2").toLowerCase();
+
 export function xtermThemeFromCss() {
   const styles = getComputedStyle(document.documentElement);
   const value = (name: string) => styles.getPropertyValue(name).trim();
@@ -54,6 +58,11 @@ export function xtermThemeFromCss() {
     cursorAccent: value("--terminal-bg") || value("--bg"),
     selectionBackground: value("--terminal-selection"),
     minimumContrastRatio: document.documentElement.dataset.terminalContrast === "off" ? 1 : 4.5,
+    /*
+      16 色照样从 CSS 变量来，和上面几项同一条路：主题切换只改变量，不用改这里。
+      读不到就不传那一项，让 xterm 用它自己的默认值——总比传一个空串强。
+    */
+    ...Object.fromEntries(ANSI_COLORS.map(name => [name, value(`--terminal-${kebab(name)}`)]).filter(([, color]) => color)),
   };
 }
 

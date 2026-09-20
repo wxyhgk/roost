@@ -1,7 +1,7 @@
 import { sessionTitle } from "../shared/sessionTitle";
 import { useWorkspace } from "../shared/store";
 import { useTheme } from "../shared/theme";
-import { MoonIcon, SunIcon, ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
+import { MoonIcon, SunIcon, ChevronLeftIcon, ChevronRightIcon, MagnifyingGlassIcon } from "@heroicons/react/24/outline";
 import { NewMenu } from "../features/workspace/NewMenu";
 import type { Scope } from "../shared/view";
 import { IconButton } from "../shared/ui/IconButton";
@@ -15,6 +15,7 @@ export function TopBar({
   rightCollapsed,
   onToggleLeft,
   onToggleRight,
+  onOpenPalette,
 }: {
   /** 新终端落在哪个工作区——和画布上那个「新建终端」保持一致。 */
   scope: Scope;
@@ -22,6 +23,8 @@ export function TopBar({
   rightCollapsed: boolean;
   onToggleLeft: () => void;
   onToggleRight: () => void;
+  /** 快速切换（⌘K）。没有这个入口的话，那个功能在界面上完全不存在。 */
+  onOpenPalette: () => void;
 }) {
   const { theme, toggleTheme } = useTheme();
   const { projects, sessions, selectedId } = useWorkspace("projects", "sessions", "selectedId");
@@ -66,6 +69,18 @@ export function TopBar({
         ) : <span className="truncate font-semibold text-bar-text">{t.topBar.noSession}</span>}
       </nav>
       <div className="ml-auto flex shrink-0 items-center gap-0.5">
+        {/*
+          ⌘K 原来只有一个 keydown 监听器，界面上和所有文案里都找不到它——而旁边
+          ⌘B / ⌘J / ⌘F / ⌘, 的 tooltip 里都写着自己的快捷键。不知道的人永远不会知道。
+        */}
+        <IconButton
+          inverse
+          className="h-9 w-9"
+          title={t.topBar.commandPalette}
+          onClick={onOpenPalette}
+        >
+          <MagnifyingGlassIcon className="size-5" />
+        </IconButton>
         <NewMenu scope={scope} />
         <IconButton
           inverse

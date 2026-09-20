@@ -203,6 +203,8 @@ export const workspace = {
 
   topBar: {
     breadcrumb: "当前位置",
+    /** ⌘K 原来只有热键、界面上没有入口，等于不存在。 */
+    commandPalette: "快速切换 (⌘K)",
     expandSessions: "展开会话栏",
     collapseSessions: "收起会话栏 (⌘B)",
     expandRight: "展开右侧栏",

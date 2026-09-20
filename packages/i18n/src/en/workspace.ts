@@ -198,6 +198,8 @@ export const workspace = {
 
   topBar: {
     breadcrumb: "Location",
+    /** ⌘K 原来只有热键、界面上没有入口，等于不存在。 */
+    commandPalette: "Quick switch (⌘K)",
     expandSessions: "Expand session sidebar",
     collapseSessions: "Collapse session sidebar (⌘B)",
     expandRight: "Expand right sidebar",

@@ -1,3 +1,4 @@
+import type { AnsiColor } from "../../shared/ansi-colors";
 /** 终端网格里的一个格子。放在这儿而不是 touchSelect：共享类型不该反过来依赖引擎零件。 */
 export type Cell = { col: number; row: number };
 
@@ -27,7 +28,7 @@ export type TermTheme = {
   cursorAccent: string;
   selectionBackground: string;
   minimumContrastRatio?: number;
-};
+} & Partial<Record<AnsiColor, string>>;
 
 
 export type TermHandle = {

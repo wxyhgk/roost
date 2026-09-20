@@ -101,7 +101,7 @@ export const terminal = {
     /** 多个观众共用一个 PTY：尺寸只有一个赢家，先让用户知道另一头有人。 */
     othersWatching: (labels: string) => `另有 ${labels} 在看同一个终端`,
     resume: (cli: string) => `恢复 ${cli} 对话`,
-    resumeHint: (command: string) => `重新启动并执行 ${command}`,
+    resumeHint: (command: string) => `重启这个终端并执行 ${command}，接着上一段对话`,
     /** 运行中的第一下 Ctrl+C 被当成「清空输入」吃掉了，告诉人怎么才是真打断。 */
     interruptArmed: "已清空输入 · 再按一次 Ctrl+C 打断模型",
     pendingImageAlt: "待发送图片",
