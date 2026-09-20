@@ -39,6 +39,8 @@ function fixture(id: string, wait = Promise.resolve(), reopening = Promise.resol
     get cols() { return grid.cols; }, get rows() { return grid.rows; },
     resize: (cols: number, rows: number) => { grid = { cols, rows }; },
     fit: () => { fitted++; termFits++; if (measured) { grid = measured; measured = null; } return grid; },
+    /** 只测不改，和真引擎一样。`reconcile` 靠它判断「现状和测量对不对得上」。 */
+    measureFit: () => measured ?? grid,
     write: (_data: string, done: () => void) => writes.push(done), reset() {}, snapshot: () => 'screen',
     setFrozen() {}, setReplaying() {}, setAppearanceReady() {}, setAppearanceOwner() {},
     onData(fn: typeof input) { input = fn; return { dispose() { input = () => {}; } }; },
@@ -684,3 +686,43 @@ test('回到前台时探一次自称还活着的连接，而不是直接信它',
   assert.equal(f.metrics().restarts, 1);
   f.controller.dispose();
 });
+
+/*
+  重连之后本地网格对不上，要自己归位，不能等人往终端里点一下。
+
+  发布版里 `canResize` 要求 `engaged`，而它只由终端内部的 pointerdown/keydown 打开。
+  实测过的后果：重连后 grid=117x41 卡住、fits=118x41 一直在喊，这期间 TUI 按 PTY 的宽度
+  折行、浏览器按另一个宽度渲染，行尾看起来就是被吞掉。而 fit() 上面那段注释声称
+  「窗口获得焦点走 kick」是一条自愈路径——在发布版里那条路本来是空的。
+*/
+test('发布版里网格和测量对不上时自己归位，不必先点进终端', async () => {
+  const f = fixture('reconcile', Promise.resolve(), Promise.resolve(), { deliberateResize: true });
+  try {
+    await tick();
+    await f.callbacks().onHello('reconcile-instance', false);
+    f.callbacks().onFrame({ type: 'replay', instanceId: 'reconcile-instance', seq: 1, data: 'history' }, () => true);
+    await tick();
+    f.writes.shift()!(); await tick();
+    // 握手把尺寸立过一次了；现在让容器比网格宽一列，模拟重连之后网格没跟上。
+    f.measure(118, 41);
+    f.setGrid(117, 41);
+    const before = f.resized.length;
+
+    f.windowEvents.dispatchEvent(new Event('online'));
+    assert.ok(f.resized.length > before, '差一列也要归位，否则要等人点一下终端里面');
+  } finally { f.controller.dispose(); }
+});
+
+/* 尺寸抖动会让 omp 把整段对话重新打印一遍，所以对得上时一个字节都不许发。 */
+test('网格和测量一致时，归位不发任何东西', async () => {
+  const f = fixture('reconcile-noop', Promise.resolve(), Promise.resolve(), { deliberateResize: true });
+  await tick();
+  f.measure(118, 41);
+  f.setGrid(118, 41);
+  const before = f.resized.length;
+  f.windowEvents.dispatchEvent(new Event('online'));
+  f.documentEvents.dispatchEvent(new Event('visibilitychange'));
+  assert.equal(f.resized.length, before);
+  f.controller.dispose();
+});
+

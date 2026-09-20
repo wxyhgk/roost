@@ -56,9 +56,34 @@ export function createTerminalSessionController(options: {
   let follow = initialFollowIntent;
   const gesture = () => { follow = afterGesture(follow, Date.now()); };
   let engaged = false;
-  const canResize = () => active && inputReady && deps.isVisible() && (deps.isFocused?.() ?? true) && (!deps.deliberateResize || engaged);
+  /*
+    「这一次不是猜的」。
+
+    `engaged` 那道门是为了不在布局还没稳的时候乱发尺寸——拖动中、动画中、刚切回来的
+    那一帧。但它连**本地网格已经确实不对**也一起挡住了：`kick()` 里调的 `fit()` 第一行
+    就被拦下，而 `fit()` 上面那段注释声称「窗口获得焦点走 kick」是一条自愈路径。
+    发布版里 `deliberateResize` 恒为真，那条路是空的。
+
+    实测的后果（用户的诊断面板）：重连之后 `grid=117x41` 卡住不动，`fits=118x41` 一直在
+    喊，要等人往终端里点一下才归位。这期间 TUI 按 PTY 的宽度折行、浏览器按另一个宽度
+    渲染，行尾看起来就是被吞掉了。
+
+    所以只在**测量和现状确实不一致**时临时开门：那是证据不是猜测。布局没稳的那种情形由
+    `fitSize` 自己的下限挡着，差一列不会是它。
+  */
+  let reconciling = false;
+  const canResize = () => active && inputReady && deps.isVisible() && (deps.isFocused?.() ?? true) && (!deps.deliberateResize || engaged || reconciling);
   const engage = () => { if (!deps.deliberateResize || engaged) return; engaged = true; fit(); };
   const disengage = () => { engaged = false; };
+  /** 网格和测量对不上就认测量。对得上时一个字节都不发——尺寸抖动会让 omp 重印整段对话。 */
+  const reconcile = () => {
+    if (!valid() || !term || engaged || reconciling) return;
+    const want = term.measureFit?.();
+    if (!want || (want.cols === term.cols && want.rows === term.rows)) return;
+    reconciling = true;
+    try { trace.record('grid-reconciled'); fit(); }
+    finally { reconciling = false; }
+  };
   host.addEventListener('pointerdown', engage);
   host.addEventListener('keydown', engage);
   // 可能引起滚动的用户动作。只有它们之后的一小段时间内，滚动才被认为是用户造成的。
@@ -187,6 +212,12 @@ export function createTerminalSessionController(options: {
           if (!valid() || dead || !ready()) return;
           inputReady = true;
           phase = 'live'; trace.record('replay-applied');
+          /*
+            刚接上的这一刻最容易网格不对：shell 可能是新起的（默认 80x24），也可能是断线
+            期间别处改过尺寸。`inputReady` 到这一行才为真，而它是 `canResize` 的前置条件——
+            所以在这之前的任何一次 fit 都不算数，必须在这里再对一次。
+          */
+          reconcile();
           const linesAfter = term?.inspect?.().bufferLines ?? null;
           if (linesBefore !== null && linesAfter !== null && linesAfter < linesBefore) {
             trace.record('history-shortened', linesBefore - linesAfter);
@@ -362,7 +393,7 @@ export function createTerminalSessionController(options: {
         不出提示、本地回显照画，两秒后字自己消失。回到前台是我们唯一知道「刚才可能断过」
         的时刻，当场探一次，5 秒内没回音就按断线处理。
       */
-      if (conn?.isAlive()) { conn.verify(); return; }
+      if (conn?.isAlive()) { conn.verify(); reconcile(); return; }
       conn?.restart();
     };
     const onHide = () => persist(false);
