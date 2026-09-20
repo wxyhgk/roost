@@ -45,8 +45,9 @@ export const workspace = {
 
     /** 传输连不上后端，与「shell 已退出」是两回事。 */
       offline: "Backend unreachable",
-      offlineHint: "Automatic retries stopped; check that the backend is running",
-      retry: "Retry",
+      offlineHint: "Retrying in the background every 30 seconds — it reconnects on its own once the backend is back.",
+      screenUnavailable: "Screen could not be restored",
+      retry: "Retry now",
 
     /** agent 自报的状态。与「终端有没有输出」是两回事，文案要分得开。 */
     /** 结构化 AI 会话的只读同步面板。 */

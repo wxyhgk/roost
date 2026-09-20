@@ -5,6 +5,8 @@
   left: var(--ime-left) !important;
   top: var(--ime-top) !important;
   width: var(--ime-width) !important;
+  /* 组字框用的是 width:auto，靠这一条挡住长句子伸出终端之外。隐藏 textarea 不设它。 */
+  max-width: var(--ime-max-width, none) !important;
   height: var(--ime-height) !important;
   line-height: var(--ime-height) !important;
   clip-path: none !important;

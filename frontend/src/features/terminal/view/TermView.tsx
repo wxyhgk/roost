@@ -31,6 +31,9 @@ function rememberHistoryNotice(sessionId: string) {
   } catch { /* Storage unavailable: keep the current view's dismissal working. */ }
 }
 
+/** 这一下落在终端网格里，还是落在我们自己叠上去的浮层上。 */
+const onGrid = (target: EventTarget | null) => target instanceof Element && target.closest(".xterm") !== null;
+
 export function TermView({ sessionId, active, onCwd, onCli }: Props) {
   const touch = useTouchSelection(sessionId);
   // 轻点判定：按下的位置和抬起的位置差得远就是滑动（滚动），不是点。
@@ -90,9 +93,9 @@ export function TermView({ sessionId, active, onCwd, onCli }: Props) {
         if (touch.on) return;
         readSelection(e.clientX, e.clientY);
       }}
-      onPointerDown={(e) => { if (touch.on) tapStart.current = { x: e.clientX, y: e.clientY }; }}
+      onPointerDown={(e) => { if (touch.on && onGrid(e.target)) tapStart.current = { x: e.clientX, y: e.clientY }; }}
       onPointerUp={(e) => {
-        if (!touch.on) return;
+        if (!touch.on || !onGrid(e.target)) return;
         const start = tapStart.current;
         tapStart.current = null;
         // 允许一点抖动：手指按下时几乎不可能纹丝不动。超过阈值就是在滑动，
@@ -100,8 +103,19 @@ export function TermView({ sessionId, active, onCwd, onCli }: Props) {
         if (!start || Math.hypot(e.clientX - start.x, e.clientY - start.y) > 10) return;
         touch.tap(e.clientX, e.clientY);
       }}
-      // 选择模式下轻点不应触发链接跳转：此刻每一下都是在圈范围。
-      onClickCapture={(e) => { if (touch.on) { e.preventDefault(); e.stopPropagation(); } }}
+      /*
+        选择模式下，落在**终端网格上**的轻点不该触发链接跳转：此刻每一下都是在圈范围。
+
+        `onGrid` 这道判断不是优化，是必需的。这个处理器挂在整个面板上，而选择工具条
+        （下面的 TouchSelectionBar）是它的 DOM 后代——捕获相位上 stopPropagation 会把
+        工具条上**每一个按钮**一起掐掉，包括「退出」，进了选择模式就再也出不来。
+        同理 onPointerUp：点工具条会被当成一次轻点，把选区终点悄悄拖到最后一行。
+      */
+      onClickCapture={(e) => {
+        if (!touch.on || !onGrid(e.target)) return;
+        e.preventDefault();
+        e.stopPropagation();
+      }}
     >
       {active && <TerminalWatermark sessionId={sessionId} />}
       {active && <TerminalDiagnostics diagnostics={diagnostics} repaint={repaint} reloadView={reloadView} viewIssue={viewIssue} />}
@@ -128,7 +142,9 @@ export function TermView({ sessionId, active, onCwd, onCli }: Props) {
           className="term-status-exited absolute top-2 left-1/2 z-[6] -translate-x-1/2 flex max-w-[calc(100%-24px)] flex-wrap items-center gap-2 rounded-lg bg-bg-raised/80 border border-border/60 px-3 py-1.5 text-caption text-text-dim pointer-events-auto backdrop-blur-md shadow-[0_2px_12px_rgba(0,0,0,0.3)]"
           role="alert"
         >
-          <span>{t.session.offline}</span>
+          {/* 标题跟着原因走：`connectionError` 那一类是真的不再重连，和「后端连不上、
+              正在后台慢速重试」是相反的状态，顶同一个标题会让人去查一个没坏的东西。 */}
+          <span>{connectionError ? t.session.screenUnavailable : t.session.offline}</span>
           <span className="text-text-dim/70">{connectionError ?? t.session.offlineHint}</span>
           <button type="button" onClick={() => restart()}>{t.session.retry}</button>
         </div>
@@ -158,18 +174,20 @@ export function TermView({ sessionId, active, onCwd, onCli }: Props) {
           {t.terminal.view.interruptArmed}
         </div>
       )}
-      {active && imagePaste && (
-        <div className="absolute bottom-3 right-3 z-[7] flex max-w-[calc(100%-24px)] items-center gap-3 rounded-lg border border-border bg-bg-raised p-3 text-caption text-text shadow-lg" role={imagePaste.phase === "error" ? "alert" : "status"}>
-          {imagePaste.preview && <img src={imagePaste.preview} alt={t.terminal.view.pendingImageAlt} className="h-12 w-16 rounded object-contain" />}
-          <span>{imagePaste.message}</span>
-          {imagePaste.phase === "confirm" && <button type="button" className="shrink-0 rounded border border-border px-2 py-1" onClick={insertImage}>{t.terminal.view.insertImage}</button>}
-          <button type="button" className="shrink-0 px-1 py-1 text-text-dim" onClick={cancelImage}>{imagePaste.phase === "uploading" || imagePaste.phase === "confirm" ? t.terminal.view.cancel : t.terminal.view.close}</button>
-        </div>
-      )}
+      {/*
+        右下角这三样必须叠成一列，不能各自 `bottom-3 right-3` 靠 z-index 分层。
+
+        它们可以同时成立，而且最要命的组合恰好最常见：手机上往回翻历史时，「跳到底部」
+        （z-8）正好压住「选择文本」——而那是触屏上**唯一**的选区入口，拇指最自然的落点
+        就在那儿，一点就被弹回底部、刚翻到的位置也没了。贴图条的「取消」同样被压住。
+
+        容器本身不吃事件，各自打开 pointer-events；顺序是自下而上，最常出现的在最下面。
+      */}
+      <div className="pointer-events-none absolute bottom-3 right-3 z-[8] flex max-w-[calc(100%-24px)] flex-col-reverse items-end gap-2">
       {active && !atBottom && (
         <button
           type="button"
-          className="absolute bottom-3 right-3 z-[8] grid h-7 w-7 place-items-center rounded-full border border-border bg-bg-panel/90 text-text-dim opacity-70 shadow-pop backdrop-blur hover:opacity-100 hover:text-text"
+          className="pointer-events-auto grid h-7 w-7 place-items-center rounded-full border border-border bg-bg-panel/90 text-text-dim opacity-70 shadow-pop backdrop-blur hover:opacity-100 hover:text-text"
           title={t.terminal.view.jumpToBottom}
           onClick={jumpToBottom}
         >
@@ -178,6 +196,23 @@ export function TermView({ sessionId, active, onCwd, onCli }: Props) {
           </span>
         </button>
       )}
+      {/* 入口只在粗指针设备上出现：桌面用鼠标划选就够了，多一个按钮是噪音。
+          放在终端右下角而不是面板标题栏，是因为拇指够得到那里、够不到顶端。 */}
+      {active && !touch.on && (
+        <button type="button" onClick={touch.enter}
+          className="touch-only pointer-events-auto items-center rounded-full border border-border bg-bg-raised/90 px-3 py-2 text-caption text-text shadow-pop backdrop-blur-sm">
+          {t.misc.selection.touch.enter}
+        </button>
+      )}
+      {active && imagePaste && (
+        <div className="pointer-events-auto flex max-w-full items-center gap-3 rounded-lg border border-border bg-bg-raised p-3 text-caption text-text shadow-lg" role={imagePaste.phase === "error" ? "alert" : "status"}>
+          {imagePaste.preview && <img src={imagePaste.preview} alt={t.terminal.view.pendingImageAlt} className="h-12 w-16 rounded object-contain" />}
+          <span>{imagePaste.message}</span>
+          {imagePaste.phase === "confirm" && <button type="button" className="shrink-0 rounded border border-border px-2 py-1" onClick={insertImage}>{t.terminal.view.insertImage}</button>}
+          <button type="button" className="shrink-0 px-1 py-1 text-text-dim" onClick={cancelImage}>{imagePaste.phase === "uploading" || imagePaste.phase === "confirm" ? t.terminal.view.cancel : t.terminal.view.close}</button>
+        </div>
+      )}
+      </div>
       {active && saveBar && (
         <SelectionSaveBar
           x={saveBar.x}
@@ -188,14 +223,6 @@ export function TermView({ sessionId, active, onCwd, onCli }: Props) {
         />
       )}
       {active && savedTick && <SavedTick />}
-      {/* 入口只在粗指针设备上出现：桌面用鼠标划选就够了，多一个按钮是噪音。
-          放在终端右下角而不是面板标题栏，是因为拇指够得到那里、够不到顶端。 */}
-      {active && !touch.on && (
-        <button type="button" onClick={touch.enter}
-          className="touch-only absolute bottom-3 right-3 z-[6] items-center rounded-full border border-border bg-bg-raised/90 px-3 py-2 text-caption text-text shadow-pop backdrop-blur-sm">
-          {t.misc.selection.touch.enter}
-        </button>
-      )}
       {active && touch.on && (
         <TouchSelectionBar
           state={touch}

@@ -356,7 +356,13 @@ export function createTerminalSessionController(options: {
       if (!deps.isVisible()) return;
       if (active) fit();
       if (active) term?.repaint?.();
-      if (conn?.isAlive()) return;
+      /*
+        **不能只信 readyState。** 合盖 / 切后台 / 换网之后 socket 常常是半开的：本地
+        还报 OPEN，发出去的字节掉进黑洞，而 `ws.send()` 不抛错，于是输入被判成「已发送」、
+        不出提示、本地回显照画，两秒后字自己消失。回到前台是我们唯一知道「刚才可能断过」
+        的时刻，当场探一次，5 秒内没回音就按断线处理。
+      */
+      if (conn?.isAlive()) { conn.verify(); return; }
       conn?.restart();
     };
     const onHide = () => persist(false);

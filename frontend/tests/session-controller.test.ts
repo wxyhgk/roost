@@ -23,7 +23,9 @@ function fixture(id: string, wait = Promise.resolve(), reopening = Promise.resol
   const resized: boolean[] = [];
   let lastSent: { cols: number; rows: number } | null = null;
   let signal!: AbortSignal;
-  let mounted = 0, disposed = 0, stopped = 0, restarts = 0, reopens = 0, fitted = 0, focuses = 0, refreshes = 0, bottoms = 0;
+  let mounted = 0, disposed = 0, stopped = 0, restarts = 0, reopens = 0, fitted = 0, focuses = 0, refreshes = 0, bottoms = 0, verifies = 0;
+  /** 连接自称还活着吗。半开的 socket 正是「自称活着但不通」，用例要能摆出这个局面。 */
+  let alive = true;
   // term.fit 重排本地缓冲区，conn.fit 通知 PTY——两者必须成对，所以分开数。
   let termFits = 0;
   let input: (value: string) => void = () => {};
@@ -74,7 +76,7 @@ function fixture(id: string, wait = Promise.resolve(), reopening = Promise.resol
       // 默认走**退化路径**（就地重排），这样已有的测试仍然在测原来的行为。
       // 尺寸回声那条路由下面它自己的测试覆盖。
       echoesSize: () => echoesSize, carriesReplayGeometry: () => carriesReplayGeometry,
-      restart() { restarts++; }, refresh() { refreshes++; }, isAlive: () => true, dispose() { stopped++; },
+      restart() { restarts++; }, refresh() { refreshes++; }, isAlive: () => alive, verify() { verifies++; }, dispose() { stopped++; },
     }; },
     reopen: () => { reopens++; return reopening; }, loadSnapshot: () => null, saveSnapshot() {},
     observeResize: () => () => {}, windowEvents, documentEvents, isVisible: () => visible, isFocused: () => focused,
@@ -92,7 +94,8 @@ function fixture(id: string, wait = Promise.resolve(), reopening = Promise.resol
     scroll: (bottom: boolean) => scroll(bottom), render: () => render(), stateUpdates: () => stateUpdates,
     /* 真实的用户翻页是「一个滚轮事件 + 若干滚动观察」，缺了前者就和内容抖动分不开。 */
     userScroll: (bottom: boolean) => { host.dispatchEvent(new Event('wheel')); scroll(bottom); },
-    callbacks: () => callbacks, metrics: () => ({ mounted, disposed, stopped, restarts, reopens, fitted, termFits, focuses, refreshes, bottoms, aborted: signal.aborted })};
+    setAlive(value: boolean) { alive = value; },
+    callbacks: () => callbacks, metrics: () => ({ mounted, disposed, stopped, restarts, reopens, fitted, termFits, focuses, refreshes, bottoms, verifies, aborted: signal.aborted })};
 }
 test('continuous output does not republish unchanged view state; scroll transitions still reach the view', async () => {
   const f = fixture('output-state-pressure');
@@ -654,3 +657,30 @@ for (const carries of [false, true]) {
     } finally { f.controller.dispose(); }
   });
 }
+
+/*
+  半开的 socket：本地 readyState 还是 OPEN，发出去的字节掉进黑洞。
+
+  这是合盖 / 切后台 / 换网之后最常见的形态，而它的症状最难受——界面显示「已连接」，
+  `ws.send()` 不抛错所以输入被判成已发送、不出提示，本地回显照画，两秒后字自己消失。
+  回到前台是我们唯一知道「刚才可能断过」的时刻，必须当场证伪，不能信 readyState。
+*/
+test('回到前台时探一次自称还活着的连接，而不是直接信它', async () => {
+  const f = fixture('wake-verify');
+  await tick();
+  assert.equal(f.metrics().verifies, 0);
+
+  f.windowEvents.dispatchEvent(new Event('online'));
+  assert.equal(f.metrics().verifies, 1, '自称活着也要探——半开的 socket 正是这么骗人的');
+  assert.equal(f.metrics().restarts, 0, '探一次就够了，不该无缘无故把好连接踢掉重连');
+
+  f.documentEvents.dispatchEvent(new Event('visibilitychange'));
+  assert.equal(f.metrics().verifies, 2);
+
+  // 已经自称不活了就不必探，直接重连——那条路本来就是对的。
+  f.setAlive(false);
+  f.windowEvents.dispatchEvent(new Event('online'));
+  assert.equal(f.metrics().verifies, 2);
+  assert.equal(f.metrics().restarts, 1);
+  f.controller.dispose();
+});

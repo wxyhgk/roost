@@ -47,9 +47,22 @@ export function attachLocalEcho(term: Terminal, cursorVisible: () => boolean, sy
   }
   function paint() {
     const view = model.view();
-    overlay.dataset.state = JSON.stringify({ ...model.inspect(), hardwareCursor: cursorVisible(), synchronized: synchronized() });
+    /*
+      **没有预测可画的时候一个 DOM 都别动。**
+
+      这个函数挂在 `onRender` 上，也就是每一帧、每一个已挂载的终端都跑一次（面板会把
+      所有未关闭的会话都挂着）。原来这里还无条件写一个 `dataset.state = JSON.stringify(...)`
+      的调试字段——全仓库没有任何代码读它，包括浏览器里那几个用例读的是 textContent 和
+      cell 的类名。那是纯残留，而且写 data 属性会让 `.xterm` 里的样式失效，正好撞上同一
+      帧里别处的强制重算。
+
+      清空仍然要保证：预测作废时屏幕上不能留残影。但已经空了就不必再清一次。
+    */
+    if (!view || synchronized()) {
+      if (overlay.firstChild) overlay.replaceChildren();
+      return;
+    }
     overlay.replaceChildren();
-    if (!view || synchronized()) return;
     const screen = root.querySelector('.xterm-screen')?.getBoundingClientRect();
     if (!screen) return;
     const host = root.getBoundingClientRect(), width = screen.width / term.cols, height = screen.height / term.rows;

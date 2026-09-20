@@ -39,6 +39,8 @@ export type ConnectionHandle = {
   /** 丢掉本地这一屏，向服务端重取。用在「本地画面已经不可信」的时候。 */
   refresh(): void;
   isAlive(): boolean;
+  /** 刚回到前台时叫一声：半开的连接靠它当场暴露，而不是等常规心跳。 */
+  verify(): void;
   sendSnapshot(snapshot: { instanceId: string; seq: number; data: string }): void;
   dispose(): void;
 };
@@ -294,6 +296,15 @@ export function createConnection(options: ConnectionOptions): ConnectionHandle {
     connect();
   }
 
+  /*
+    `isAlive()` 看的是 readyState，而半开的 socket 照样报 OPEN——所以「看起来活着」
+    不等于「还通」。回到前台时用一次短期限的心跳去证伪，比枯等常规节奏快一个量级。
+  */
+  function verify(): void {
+    if (cancelled || dead || !ws || ws.readyState !== WebSocket.OPEN) return;
+    heartbeat?.wake();
+  }
+
   function isAlive(): boolean {
     return !cancelled && !dead && ws !== null && (
       ws.readyState === WebSocket.OPEN ||
@@ -365,6 +376,7 @@ export function createConnection(options: ConnectionOptions): ConnectionHandle {
     },
     restart,
     isAlive,
+    verify,
     dispose() {
       cancelled = true;
       stopHeartbeat();
