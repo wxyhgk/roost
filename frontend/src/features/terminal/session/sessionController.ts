@@ -77,7 +77,9 @@ export function createTerminalSessionController(options: {
   const disengage = () => { engaged = false; };
   /** 网格和测量对不上就认测量。对得上时一个字节都不发——尺寸抖动会让 omp 重印整段对话。 */
   const reconcile = () => {
-    if (!valid() || !term || engaged || reconciling) return;
+    if (!valid() || !term || reconciling) return;
+    // 门本来就开着（用户点过终端里面）：照常走，不必先证明有分歧。
+    if (engaged) { fit(); return; }
     const want = term.measureFit?.();
     if (!want || (want.cols === term.cols && want.rows === term.rows)) return;
     reconciling = true;
@@ -336,11 +338,18 @@ export function createTerminalSessionController(options: {
         },
       });
 
+      /*
+        容器尺寸变了。**这是最常走的一条路**：收起/展开右侧面板、拖分隔条、改浏览器窗口，
+        以及字体晚到（`observeFonts` 用的也是它）。
+
+        这里必须走 `reconcile` 而不是直接 `fit`——发布版里 `canResize` 要求 `engaged`，
+        而那道门只由**终端内部**的 pointerdown/keydown 打开。收个面板不会去点终端里面，
+        于是 `fit()` 第一行就被拦下，网格停在旧列数：容器宽了而终端没跟上，满行的尾巴
+        落在看不见的地方。`reconcile` 只在测量和现状确实不一致时临时开门，那是证据。
+      */
       const sendResize = () => {
         clearTimeout(resizeTimer);
-        resizeTimer = setTimeout(() => {
-          fit();
-        }, 50);
+        resizeTimer = setTimeout(reconcile, 50);
       };
       stopResize = deps.observeResize(host, sendResize);
       stopFonts = deps.observeFonts?.(sendResize);

@@ -26,6 +26,8 @@ function fixture(id: string, wait = Promise.resolve(), reopening = Promise.resol
   let mounted = 0, disposed = 0, stopped = 0, restarts = 0, reopens = 0, fitted = 0, focuses = 0, refreshes = 0, bottoms = 0, verifies = 0;
   /** 连接自称还活着吗。半开的 socket 正是「自称活着但不通」，用例要能摆出这个局面。 */
   let alive = true;
+  /** 容器尺寸变化的回调。收面板、拖分隔条、字体晚到都走它。 */
+  let resizeContainer: (() => void) | null = null;
   // term.fit 重排本地缓冲区，conn.fit 通知 PTY——两者必须成对，所以分开数。
   let termFits = 0;
   let input: (value: string) => void = () => {};
@@ -81,7 +83,7 @@ function fixture(id: string, wait = Promise.resolve(), reopening = Promise.resol
       restart() { restarts++; }, refresh() { refreshes++; }, isAlive: () => alive, verify() { verifies++; }, dispose() { stopped++; },
     }; },
     reopen: () => { reopens++; return reopening; }, loadSnapshot: () => null, saveSnapshot() {},
-    observeResize: () => () => {}, windowEvents, documentEvents, isVisible: () => visible, isFocused: () => focused,
+    observeResize: (_host, callback) => { resizeContainer = callback; return () => { resizeContainer = null; }; }, windowEvents, documentEvents, isVisible: () => visible, isFocused: () => focused,
     ...overrides,
   };
   const controller = createTerminalSessionController({sessionId:id, host, active:true, onCwd: value => cwd.push(value), onCli() {}, onState() { stateUpdates++; }}, deps);
@@ -97,6 +99,8 @@ function fixture(id: string, wait = Promise.resolve(), reopening = Promise.resol
     /* 真实的用户翻页是「一个滚轮事件 + 若干滚动观察」，缺了前者就和内容抖动分不开。 */
     userScroll: (bottom: boolean) => { host.dispatchEvent(new Event('wheel')); scroll(bottom); },
     setAlive(value: boolean) { alive = value; },
+    /** 模拟容器尺寸变化（收起右侧面板之类）。 */
+    resizeHost() { resizeContainer?.(); },
     callbacks: () => callbacks, metrics: () => ({ mounted, disposed, stopped, restarts, reopens, fitted, termFits, focuses, refreshes, bottoms, verifies, aborted: signal.aborted })};
 }
 test('continuous output does not republish unchanged view state; scroll transitions still reach the view', async () => {
@@ -726,3 +730,27 @@ test('网格和测量一致时，归位不发任何东西', async () => {
   f.controller.dispose();
 });
 
+
+/*
+  收起右侧面板之后终端要跟着变宽。
+
+  发布版里 `canResize` 要求 `engaged`，而它只由终端**内部**的 pointerdown/keydown 打开。
+  收个面板不会去点终端里面，于是原来那条 `sendResize → fit()` 第一行就被拦下：容器宽了
+  而网格停在旧列数，满行的尾巴落在看不见的地方，而且要等人点一下终端才归位。
+*/
+test('容器变宽（收面板、拖分隔条）也要重新量，不必先点进终端', async () => {
+  const f = fixture('container-resize', Promise.resolve(), Promise.resolve(), { deliberateResize: true });
+  try {
+    await tick();
+    await f.callbacks().onHello('cr-instance', false);
+    f.callbacks().onFrame({ type: 'replay', instanceId: 'cr-instance', seq: 1, data: 'history' }, () => true);
+    await tick();
+    f.writes.shift()!(); await tick();
+
+    f.measure(140, 41);          // 面板收起来了，容器宽了一大截
+    const before = f.resized.length;
+    f.resizeHost();
+    await new Promise(resolve => setTimeout(resolve, 80));   // sendResize 有 50ms 去抖
+    assert.ok(f.resized.length > before, '收面板之后终端必须跟着变宽');
+  } finally { f.controller.dispose(); }
+});
