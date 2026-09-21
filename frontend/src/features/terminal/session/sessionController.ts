@@ -5,9 +5,9 @@ import { claimTerminalSession } from "../handles";
 import { createResume, type ResumeFrame, type ResumeSnapshot } from "./resume";
 import type { ConnectionHandle, ConnectionOptions } from "./connection";
 import { createImagePaste, type ImagePasteState } from "../imagePaste";
-import { createInterruptGuard, INTERRUPT_WINDOW_MS } from "../interruptGuard";
 import { createResizeGate } from "./resizeGate";
 import { createReadReceipts } from "./readReceipts";
+import { createInputRelay } from "./inputRelay";
 import { createDiagnosticTrace, stalledParser } from './diagnostics';
 import { t } from "@roost/i18n";
 import { ApiError } from '../../../shared/api/errors';
@@ -114,9 +114,17 @@ export function createTerminalSessionController(options: {
   deps.windowEvents.addEventListener('blur', disengage);
   let liveInstance: string | null = null;
   let state = { ...initialSessionState };
-  const interrupts = createInterruptGuard();
-  /** 举起来之后要自己落下：`armed` 是看时间的，没人按键就不会再有人来问它。 */
-  let interruptTimer: ReturnType<typeof setTimeout> | undefined;
+  /*
+    打断守卫和本地回显预测整个搬到了 `inputRelay`：它自己拥有「举没举起来」和那个自动落下的
+    计时器。`term` 用访问器递进去——它在下面才被赋值，按值传等于永远拿到 null。
+  */
+  const relay = createInputRelay({
+    send: data => send(data) === 'sent',
+    echoable: () => active && inputReady && !dead,
+    terminal: () => term,
+    context: () => deps.interruptContext?.() ?? { clearInputKey: null, working: false },
+    armed: value => update({ interruptArmed: value }),
+  });
   const trace = createDiagnosticTrace();
   trace.record('waiting-for-layout');
   let phase = 'layout', lastFrameAt: number | null = null;
@@ -314,7 +322,17 @@ export function createTerminalSessionController(options: {
       options.onCli(cli, cliId);
     };
 
-    void (async () => {
+    /*
+      启动序列。**四步，每一步都依赖上一步**，所以它是一条 async 直线而不是几件并排的初始化：
+      容器要先量得出尺寸才能 mount；终端要先存在才能订阅、才能建 resume；订阅要先挂上才能
+      连——否则第一批 replay 帧到达时没有人在听，那一屏历史就白送了。
+
+      整条线挂在 `await` 后面，意味着**每一个恢复点都可能已经被 dispose 了**，所以每次
+      await 回来都要重新问一次 `valid()`。这不是防御性编程，是这条路上的常态：切走一个
+      标签页就会走到。
+    */
+    const start = async () => {
+      // 1. 挂上渲染器。容器没有尺寸时 xterm 量不出格子，只能等。
       await deps.waitForMeasurable(host, abort.signal);
       if (!valid()) return;
       term = deps.mount(host);
@@ -328,22 +346,8 @@ export function createTerminalSessionController(options: {
       if (active) term.focus();
       resume = createResume(term);
 
-      dataSub = term.onData((input) => {
-        /*
-          运行中的第一下 Ctrl+C 改成「先清空输入框」。为什么见 interruptGuard.ts；
-          这里只负责把它替换掉，并让界面知道现在举着「再按一次就打断」。
-        */
-        const decision = interrupts.press(input, deps.interruptContext?.() ?? { clearInputKey: null, working: false });
-        const data = decision.kind === 'clear' ? decision.data : input;
-        const result = send(data);
-        clearTimeout(interruptTimer);
-        update({ interruptArmed: interrupts.armed() });
-        if (interrupts.armed()) interruptTimer = setTimeout(() => update({ interruptArmed: false }), INTERRUPT_WINDOW_MS);
-        // 预测的是**真发出去的那一串**。替换成清空键之后再去预测用户按的 Ctrl+C，
-        // 本地回显会画出一个永远等不到回声的东西。
-        if (result === 'sent' && active && inputReady && !dead && decision.kind !== 'clear') term?.previewInput?.(data);
-        else term?.clearLocalEcho?.();
-      });
+      // 2. 订阅终端事件。四条线各自的逻辑都在别处，这里只负责接上。
+      dataSub = term.onData(input => relay.press(input));
       appearanceSub = term.onAppearanceResponse(data => { if (valid()) conn?.sendAppearanceResponse(data); });
       scrollSub = term.onScrollPosition((bottom) => {
         if (valid()) setAtBottom(bottom);
@@ -354,6 +358,7 @@ export function createTerminalSessionController(options: {
       // 快照只在切走/退出/关页面时做一次，不跟随每次输出，以换输出密集时的主线程。
       // 崩溃丢失的尾部由后端 replay 全量补回（有界）。
 
+      // 3. 接上。回调都在上面具名定义好了，这里只递名字。
       conn = deps.connect({
         canResize,
         url: deps.url,
@@ -368,7 +373,7 @@ export function createTerminalSessionController(options: {
       });
 
       /*
-        容器尺寸变了。**这是最常走的一条路**：收起/展开右侧面板、拖分隔条、改浏览器窗口，
+        4. 盯住容器尺寸变化。**这是最常走的一条路**：收起/展开右侧面板、拖分隔条、改浏览器窗口，
         以及字体晚到（`observeFonts` 用的也是它）。
 
         这里必须走 `reconcile` 而不是直接 `fit`——发布版里 `canResize` 要求 `engaged`，
@@ -384,14 +389,21 @@ export function createTerminalSessionController(options: {
       };
       stopResize = deps.observeResize(host, sendResize);
       stopFonts = deps.observeFonts?.(sendResize);
-    })().catch((err: unknown) => {
+    };
+
+    /*
+      启动失败。这条路上**没有「部分可用」**：四步里任何一步抛了，后面的都没建起来，留一个
+      半挂的终端在那儿只会让人以为是网络慢。所以拆干净、把话说给用户。
+    */
+    const onStartFailed = (err: unknown) => {
       if (!valid()) return;
       phase = 'error'; trace.record('initialization-failed');
       inputReady = false;
       update({ viewIssue: t.misc.terminal.viewInitFailed(err instanceof Error ? err.message : t.misc.terminal.unknownError) });
       dispose();
       term = null; resume = null; conn = null;
-    });
+    };
+    void start().catch(onStartFailed);
 
     /* resume=true 时后端用「接着那条对话跑」的命令起 PTY；其余一步不差，包括失败后的回填。 */
     const restart = (resume = false) => {
@@ -475,7 +487,7 @@ export function createTerminalSessionController(options: {
       stopFonts?.();
       clearTimeout(resizeTimer);
       clearInterval(watchdog);
-      clearTimeout(interruptTimer);
+      relay.dispose();
       conn?.dispose();
       lease.dispose();
       term?.dispose();
