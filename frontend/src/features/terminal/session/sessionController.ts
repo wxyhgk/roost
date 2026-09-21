@@ -167,6 +167,18 @@ export function createTerminalSessionController(options: {
       state: value => { if (valid()) setImagePaste(value); },
     });
     const onImagePaste = (event: ClipboardEvent) => { void images.paste(event); };
+
+    /*
+      「连在旧身份上的东西全部作废」。掉线、重连、换了一个 CLI——这三处都是同一件事，
+      原来在 onStatus 和 onCli 里各手抄了一遍。三样东西各自作废的是：
+
+      - `epoch`：图片附件的身份戳（见 attachmentTarget）。不 bump 的话，一张正在上传的图
+        会打到**新**实例上——用户看到的是自己没贴过的图凭空出现在另一个会话里。
+      - `images.invalidate()`：把在途的那次粘贴本身取消掉。
+      - `clearLocalEcho()`：丢掉乐观回显。它赌的是「这些字节会原样回来」，而身份一换这个
+        赌注就作废了，留着就是屏幕上一段永远不会被覆盖的幽灵文字。
+    */
+    const discardPriorIdentity = () => { epoch++; images.invalidate(); term?.clearLocalEcho?.(); };
     host.addEventListener("paste", onImagePaste, { capture: true });
 
     const storeSnapshot = (snapshot: ResumeSnapshot | null) => {
@@ -295,7 +307,7 @@ export function createTerminalSessionController(options: {
     const onStatus = (s: TermStatus) => {
       if (!valid()) return;
       if (s !== "open") term?.setAppearanceReady(false);
-      if (s !== "open") { epoch++; inputReady = false; images.invalidate(); term?.clearLocalEcho?.(); }
+      if (s !== "open") { inputReady = false; discardPriorIdentity(); }
       if (s === 'reconnecting') phase = 'connecting';
       trace.record(s);
       if (valid()) setStatus(s);
@@ -303,7 +315,7 @@ export function createTerminalSessionController(options: {
     };
     const onCli = (cli: CliKind | null, cliId?: string | null) => {
       if (!valid()) return;
-      if (cli !== currentCli || cliId !== currentCliId) { epoch++; images.invalidate(); term?.clearLocalEcho?.(); currentCli = cli; currentCliId = cliId; }
+      if (cli !== currentCli || cliId !== currentCliId) { discardPriorIdentity(); currentCli = cli; currentCliId = cliId; }
       options.onCli(cli, cliId);
     };
 
