@@ -6,6 +6,7 @@ import { createResume, type ResumeFrame, type ResumeSnapshot } from "./resume";
 import type { ConnectionHandle, ConnectionOptions } from "./connection";
 import { createImagePaste, type ImagePasteState } from "../imagePaste";
 import { createInterruptGuard, INTERRUPT_WINDOW_MS } from "../interruptGuard";
+import { createResizeGate } from "./resizeGate";
 import { createDiagnosticTrace, stalledParser } from './diagnostics';
 import { t } from "@roost/i18n";
 import { ApiError } from '../../../shared/api/errors';
@@ -55,22 +56,6 @@ export function createTerminalSessionController(options: {
   */
   let follow = initialFollowIntent;
   const gesture = () => { follow = afterGesture(follow, Date.now()); };
-  let engaged = false;
-  /*
-    「这一次不是猜的」。
-
-    `engaged` 那道门是为了不在布局还没稳的时候乱发尺寸——拖动中、动画中、刚切回来的
-    那一帧。但它连**本地网格已经确实不对**也一起挡住了：`kick()` 里调的 `fit()` 第一行
-    就被拦下，而 `fit()` 上面那段注释声称「窗口获得焦点走 kick」是一条自愈路径。
-    发布版里 `deliberateResize` 恒为真，那条路是空的。
-
-    实测的后果（用户的诊断面板）：重连之后 `grid=117x41` 卡住不动，`fits=118x41` 一直在
-    喊，要等人往终端里点一下才归位。这期间 TUI 按 PTY 的宽度折行、浏览器按另一个宽度
-    渲染，行尾看起来就是被吞掉了。
-
-    所以只在**测量和现状确实不一致**时临时开门：那是证据不是猜测。布局没稳的那种情形由
-    `fitSize` 自己的下限挡着，差一列不会是它。
-  */
   /*
     「这一屏真的被画出来了吗」——缓存它，**别每帧都问 DOM**。
 
@@ -92,21 +77,38 @@ export function createTerminalSessionController(options: {
     if (presentedCache === null) presentedCache = deps.isPresented?.() ?? false;
     return presentedCache;
   };
-  let reconciling = false;
-  const canResize = () => active && inputReady && deps.isVisible() && (deps.isFocused?.() ?? true) && (!deps.deliberateResize || engaged || reconciling);
-  const engage = () => { if (!deps.deliberateResize || engaged) return; engaged = true; fit(); };
-  const disengage = () => { engaged = false; forgetPresented(); };
-  /** 网格和测量对不上就认测量。对得上时一个字节都不发——尺寸抖动会让 omp 重印整段对话。 */
-  const reconcile = () => {
-    if (!valid() || !term || reconciling) return;
-    // 门本来就开着（用户点过终端里面）：照常走，不必先证明有分歧。
-    if (engaged) { fit(); return; }
-    const want = term.measureFit?.();
-    if (!want || (want.cols === term.cols && want.rows === term.rows)) return;
-    reconciling = true;
-    try { trace.record('grid-reconciled'); fit(); }
-    finally { reconciling = false; }
-  };
+  /*
+    尺寸这一摊整个搬到了 `resizeGate`：什么时候允许改、改完告诉谁、以及那三条实测教训
+    （推迟本地 reflow、缩行没通报就重取、抖尺寸是最后手段）。它自己拥有 `engaged` 和
+    `reconciling`，这里只把能力递进去。
+  */
+  const gate = createResizeGate({
+    deliberate: deps.deliberateResize ?? false,
+    ready: () => active && inputReady && deps.isVisible() && (deps.isFocused?.() ?? true),
+    record: (event, value) => trace.record(event, value),
+    terminal: () => {
+      const live = valid() ? term : null;
+      return live && {
+        grid: () => ({ cols: live.cols, rows: live.rows }),
+        measure: () => live.measureFit?.(),
+        reflow: () => live.fit(),
+        resize: (cols: number, rows: number) => live.resize(cols, rows),
+      };
+    },
+    connection: () => {
+      const live = valid() ? conn : null;
+      return live && {
+        echoesSize: () => live.echoesSize(),
+        fit: (want?: { cols: number; rows: number }) => live.fit(want),
+        refresh: () => live.refresh(),
+      };
+    },
+  });
+  const fit = () => gate.fit();
+  const canResize = () => gate.canResize();
+  const reconcile = () => { if (valid()) gate.reconcile(); };
+  const engage = () => gate.engage();
+  const disengage = () => { gate.disengage(); forgetPresented(); };
   host.addEventListener('pointerdown', engage);
   host.addEventListener('keydown', engage);
   // 可能引起滚动的用户动作。只有它们之后的一小段时间内，滚动才被认为是用户造成的。
@@ -517,53 +519,6 @@ export function createTerminalSessionController(options: {
 
       本地和 PTY 仍然一起改，那条不变式没破。
     */
-    function nudgePty() {
-      if (!term || !valid() || !canResize()) return;
-      const cols = term.cols, rows = term.rows;
-      term.resize(cols, rows + 1);
-      const grew = conn?.fit() ?? false;
-      term.resize(cols, rows);
-      const restored = conn?.fit() ?? false;
-      trace.record(grew && restored ? 'pty-nudged' : 'pty-nudge-skipped');
-    }
-
-    /**
-     * 返回值：这一次**有没有任何东西到达 PTY 或服务端**——发出了新尺寸，或者改走了重取。
-     * 两者都会让画面自己更新（真尺寸变化 = 真 SIGWINCH，TUI 自己重画；重取 = 拿权威那份），
-     * 所以调用方据此判断还需不需要「抖尺寸」这条最后手段：只有两者都没发生才需要。
-     */
-    function fit(): boolean {
-      if (!valid() || !canResize()) return false;
-      const before = term ? { rows: term.rows } : null;
-      /*
-        **本地 reflow 推迟到守护进程把标记插进流里**（见 connection 的 echoesSize）。
-
-        原来这里是先 `term.fit()` 就地重排，再 `conn.fit()` 通知——那只保证了「同时发出」，
-        不保证「同一个流位置」。已经在 WebSocket 上飞着的旧宽度字节，到达时会被这个已经
-        重排过的终端按新宽度解析，画面就花了。跨太平洋的链路上在途字节最多。
-
-        守护进程不报这个能力时退回原来的行为：没有标记可等，就地重排仍然是最好的选择。
-      */
-      const echoes = conn?.echoesSize() ?? false;
-      const want = echoes ? term?.measureFit?.() : undefined;
-      if (!echoes) term?.fit();
-      const shrank = !!before && !!term && term.rows < before.rows;
-      const told = conn?.fit(want) ?? false;
-      /*
-        本地缩了行，而 PTY 没被告知一个**不同的**尺寸——这两件同时成立，屏幕就已经不可信了。
-
-        xterm 缩行时丢的是**光标下面的行**，而序列化恢复恰好把光标放在 AI CLI 的输入框里，
-        于是输入框下半截被吃掉；同时 PTY 尺寸没变就不会有 SIGWINCH，TUI 永远不知道要重画。
-        单看任何一件都没事：拖侧边栏也缩行，但那时 PTY 真的换了尺寸，TUI 自己会重画。
-
-        这一刻正确的动作是把屏幕重新要一份——服务端那份网格是从字节流解析出来的，没被毁。
-        **不要用「把尺寸抖一下」去逼 TUI 重画**：那等于人为制造 SIGWINCH，而 omp 收到
-        SIGWINCH 会把整段对话重新打印一遍（tasks/terminal-flood/README.md）。
-        见 issues/2026-09-10-restore-loses-rows-below-cursor.md。
-      */
-      if (shrank && !told) { trace.record('grid-shrank-unannounced'); conn?.refresh(); return true; }
-      return told;
-    }
     return {
       dispose, restart, persist, send,
       dismissInputNotice: () => update({ inputNotice: false }),
@@ -576,7 +531,7 @@ export function createTerminalSessionController(options: {
         白刷一屏。**只有两者都没发生**——尺寸没变、也没重取——画面才可能停在错的样子而
         CLI 毫不知情，那时才轮到抖尺寸这条最后手段。
       */
-      repaint() { if(!valid()) return; trace.record('manual-repaint'); term?.setFrozen?.(false); term?.repaint?.(); engaged = true; if (!fit()) nudgePty(); },
+      repaint() { if(!valid()) return; trace.record('manual-repaint'); term?.setFrozen?.(false); term?.repaint?.(); gate.open(); if (!fit()) gate.nudge(); },
       diagnostics: () => ({ phase, status: state.status, historyTruncated: state.historyTruncated, active, visible: deps.isVisible(), inputReady, lastFrameAt,
         renderer: term?.inspect?.() ?? null, replay: resume?.inspect() ?? null, events: trace.read() }),
       snapshot: () => state,
