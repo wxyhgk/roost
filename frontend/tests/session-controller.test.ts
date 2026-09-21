@@ -161,8 +161,14 @@ test('read cursor waits for paint, excludes newer unrendered frames, and respect
     f.render(); f.visible(false); paint(); assert.deepEqual(seen, [1]);
     f.visible(true); f.focus(false); f.render(); paint(); assert.deepEqual(seen, [1]);
     f.focus(true); f.scroll(false); f.render(); paint(); assert.deepEqual(seen, [1]);
-    f.scroll(true); presented = false; f.render(); paint(); assert.deepEqual(seen, [1]);
-    presented = true; f.controller.setActive(false); f.render(); paint(); assert.deepEqual(seen, [1]);
+    /*
+      「画出来了没有」这个答案是**缓存**的——每帧去问 DOM 会强制 layout，而它挂在
+      每一帧都跑的 `canRead()` 上（见 sessionController 里那段）。缓存的前提是：它每一种
+      变法我们都收得到信号（前后台切换 / 容器尺寸 / 标签页可见性 / 窗口焦点）。
+      所以这里跟着发一个容器尺寸信号——真实世界里被收起来也正是这么发生的。
+    */
+    f.scroll(true); presented = false; f.resizeHost(); f.render(); paint(); assert.deepEqual(seen, [1]);
+    presented = true; f.resizeHost(); f.controller.setActive(false); f.render(); paint(); assert.deepEqual(seen, [1]);
     f.controller.setActive(true); f.render(); paint(); assert.deepEqual(seen, [1, 2]);
     f.render(); f.controller.dispose(); paint(); assert.deepEqual(seen, [1, 2]);
   } finally { f.controller.dispose(); }
@@ -752,5 +758,42 @@ test('容器变宽（收面板、拖分隔条）也要重新量，不必先点�
     f.resizeHost();
     await new Promise(resolve => setTimeout(resolve, 80));   // sendResize 有 50ms 去抖
     assert.ok(f.resized.length > before, '收面板之后终端必须跟着变宽');
+  } finally { f.controller.dispose(); }
+});
+
+/*
+  「画出来了没有」这个答案是缓存的，因为问一次 DOM 就是一次强制 layout，而它挂在每一帧
+  都跑的 `canRead()` 上——执行时机还正好在 xterm 刚写完行 DOM 之后，layout 必然是脏的。
+
+  缓存成立的前提只有一条：**它每一种变法我们都收得到信号**。这条用例把那个前提钉住——
+  以后谁加了一种新的隐藏方式却没在这里清缓存，它会红。
+*/
+test('「画出来了没有」按帧缓存，但每个能改变它的信号都会让它重新去问', async () => {
+  let asked = 0;
+  const f = fixture('presented-cache', Promise.resolve(), Promise.resolve(), {
+    isPresented: () => { asked++; return true; },
+  });
+  try {
+    await tick();
+    await f.callbacks().onHello('pc-instance', false);
+    f.callbacks().onFrame({ type: 'replay', instanceId: 'pc-instance', seq: 1, data: 'x' }, () => true);
+    await tick(); f.writes.shift()!(); await tick();
+
+    f.render(); f.render(); f.render();
+    const cached = asked;
+    f.render(); f.render();
+    assert.equal(asked, cached, '连续几帧只该问一次——每帧问一次就是每帧一次强制 layout');
+
+    // 前后台切换靠 visibility 实现，不改布局，ResizeObserver 收不到，只能靠 setActive。
+    f.controller.setActive(false); f.controller.setActive(true); f.render();
+    assert.ok(asked > cached, '切前后台之后必须重新问');
+
+    const afterActive = asked;
+    f.resizeHost(); f.render();
+    assert.ok(asked > afterActive, '容器尺寸变了（收面板、被收成 0 宽）必须重新问');
+
+    const afterResize = asked;
+    f.documentEvents.dispatchEvent(new Event('visibilitychange')); f.render();
+    assert.ok(asked > afterResize, '标签页前后台切换必须重新问');
   } finally { f.controller.dispose(); }
 });

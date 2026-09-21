@@ -71,10 +71,31 @@ export function createTerminalSessionController(options: {
     所以只在**测量和现状确实不一致**时临时开门：那是证据不是猜测。布局没稳的那种情形由
     `fitSize` 自己的下限挡着，差一列不会是它。
   */
+  /*
+    「这一屏真的被画出来了吗」——缓存它，**别每帧都问 DOM**。
+
+    `deps.isPresented()` 里是 `getClientRects()` 加 `getComputedStyle()`，一个强制 layout、
+    一个强制 style recalc。而它挂在 `canRead()` 里，`canRead()` 由 `term.onRendered` **每一帧**
+    调一次，命中后 `afterPaint` 里还会再调一次。执行时机还格外糟：那一刻 xterm 刚写完行的
+    DOM，layout 必然是脏的，浏览器只能同步重算整个终端子树——刷屏时整个界面发涩的主因之一。
+
+    这个答案其实很少变，而且它**每一种变法我们都收得到信号**：
+    - 前后台切换 → `setActive`（隐藏用的是 `visibility`，不改布局，只能靠这个）
+    - 容器尺寸变了（收面板、拖分隔条、display:none）→ ResizeObserver
+    - 标签页前后台、窗口焦点 → visibilitychange / focus / blur
+
+    所以改成「失效即重算」：这些信号来时把缓存清掉，下一次用到再问一遍 DOM。
+  */
+  let presentedCache: boolean | null = null;
+  const forgetPresented = () => { presentedCache = null; };
+  const presented = () => {
+    if (presentedCache === null) presentedCache = deps.isPresented?.() ?? false;
+    return presentedCache;
+  };
   let reconciling = false;
   const canResize = () => active && inputReady && deps.isVisible() && (deps.isFocused?.() ?? true) && (!deps.deliberateResize || engaged || reconciling);
   const engage = () => { if (!deps.deliberateResize || engaged) return; engaged = true; fit(); };
-  const disengage = () => { engaged = false; };
+  const disengage = () => { engaged = false; forgetPresented(); };
   /** 网格和测量对不上就认测量。对得上时一个字节都不发——尺寸抖动会让 omp 重印整段对话。 */
   const reconcile = () => {
     if (!valid() || !term || reconciling) return;
@@ -281,7 +302,7 @@ export function createTerminalSessionController(options: {
         follow = afterScroll(follow, bottom, Date.now());
       });
       const canRead = () => valid() && active && atBottom && inputReady && deps.isVisible() &&
-        (deps.isFocused?.() ?? false) && (deps.isPresented?.() ?? false);
+        (deps.isFocused?.() ?? false) && presented();
       renderSub = term.onRendered?.(() => {
         // Capture only the cursor represented by this render. A later incoming
         // frame must not be marked read before it has appeared on screen.
@@ -348,6 +369,8 @@ export function createTerminalSessionController(options: {
         落在看不见的地方。`reconcile` 只在测量和现状确实不一致时临时开门，那是证据。
       */
       const sendResize = () => {
+        // 容器变了，「画没画出来」这个答案可能跟着变（比如被收成 0 宽）。
+        forgetPresented();
         clearTimeout(resizeTimer);
         resizeTimer = setTimeout(reconcile, 50);
       };
@@ -392,6 +415,7 @@ export function createTerminalSessionController(options: {
     };
 
     const kick = () => {
+      forgetPresented();
       if (!valid() || dead || state.connectionError) return;
       if (!deps.isVisible()) return;
       if (active) fit();
@@ -406,7 +430,7 @@ export function createTerminalSessionController(options: {
       conn?.restart();
     };
     const onHide = () => persist(false);
-    const onVisibility = () => { if (deps.isVisible()) kick(); else persist(); };
+    const onVisibility = () => { forgetPresented(); if (deps.isVisible()) kick(); else persist(); };
     deps.windowEvents.addEventListener("pagehide", onHide);
     deps.windowEvents.addEventListener("online", kick);
     deps.windowEvents.addEventListener('focus', kick);
@@ -558,6 +582,8 @@ export function createTerminalSessionController(options: {
       snapshot: () => state,
       setActive(value: boolean) {
         active = value;
+        // 前后台切换靠 `visibility` 实现，不改布局，ResizeObserver 收不到——只能在这儿清。
+        forgetPresented();
         // 交出前台身份就必须交出键盘：光靠上面盖一层不透明的东西挡不住按键，
         // textarea 还留着 DOM 焦点，敲什么都会照样进 PTY。
         if (!value) { term?.clearLocalEcho?.(); term?.blur?.(); images.cancel(); persist(); return; }
