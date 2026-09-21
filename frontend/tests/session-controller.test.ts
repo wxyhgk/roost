@@ -4,7 +4,7 @@ import { createTerminalSessionController, type SessionDependencies } from '../sr
 import type { ConnectionOptions } from '../src/features/terminal/session/connection';
 import type { TermHandle } from '../src/features/terminal/types.ts';
 import { getTerminalHandle, sendToSession } from '../src/features/terminal/handles.ts';
-import { getTerminalStatus } from '../src/features/terminal/status.ts';
+import { getTerminalStatus, getTerminalLatency } from '../src/features/terminal/status.ts';
 import { emitFileLink, subscribeFileLink } from '../src/features/terminal/fileLinks.ts';
 import { ApiError } from '../src/shared/api/errors.ts';
 import { t } from '@roost/i18n';
@@ -24,6 +24,11 @@ function fixture(id: string, wait = Promise.resolve(), reopening = Promise.resol
   let lastSent: { cols: number; rows: number } | null = null;
   let signal!: AbortSignal;
   let mounted = 0, disposed = 0, stopped = 0, restarts = 0, reopens = 0, fitted = 0, focuses = 0, refreshes = 0, bottoms = 0, verifies = 0;
+  /** 推给服务端的快照次数。死掉的 PTY 一次都不该收到。 */
+  let pushedSnapshots = 0;
+  const appearanceReady: boolean[] = [], appearanceOwner: boolean[] = [];
+  /** 控制器往外转发的 CLI 身份。`cliId` 有没有被丢掉，只有这儿看得见。 */
+  const reportedCli: (string | null | undefined)[][] = [];
   /** 连接自称还活着吗。半开的 socket 正是「自称活着但不通」，用例要能摆出这个局面。 */
   let alive = true;
   /** 容器尺寸变化的回调。收面板、拖分隔条、字体晚到都走它。 */
@@ -44,7 +49,13 @@ function fixture(id: string, wait = Promise.resolve(), reopening = Promise.resol
     /** 只测不改，和真引擎一样。`reconcile` 靠它判断「现状和测量对不对得上」。 */
     measureFit: () => measured ?? grid,
     write: (_data: string, done: () => void) => writes.push(done), reset() {}, snapshot: () => 'screen',
-    setFrozen() {}, setReplaying() {}, setAppearanceReady() {}, setAppearanceOwner() {},
+    setFrozen() {}, setReplaying() {},
+    /*
+      外观握手的两条线。原来是空实现，于是「replay 期间不许回答历史探测」「断线时要先
+      收回 ready」这两件事一条断言都没有——CLI 猜错主题色，用户只会觉得「配色有时候不对」。
+    */
+    setAppearanceReady(value: boolean) { appearanceReady.push(value); },
+    setAppearanceOwner(value: boolean) { appearanceOwner.push(value); },
     onData(fn: typeof input) { input = fn; return { dispose() { input = () => {}; } }; },
     onAppearanceResponse: () => ({ dispose() {} }),
     onScrollPosition(fn: typeof scroll) { scroll = fn; return { dispose() { scroll = () => {}; } }; },
@@ -58,7 +69,13 @@ function fixture(id: string, wait = Promise.resolve(), reopening = Promise.resol
   const deps: SessionDependencies = {
     url: 'test', waitForMeasurable: async (_host, abort) => { signal = abort; await wait; }, mount: () => { mounted++; return term; },
     connect: options => { connectionOptions = options; callbacks = options.callbacks; callbacks.onStatus('reconnecting'); return {
-      sendInput: data => { if (!accepting) return 'rejected'; sent.push(data); return 'sent'; }, sendAppearanceResponse() {}, sendSnapshot() {},
+      sendInput: data => { if (!accepting) return 'rejected'; sent.push(data); return 'sent'; }, sendAppearanceResponse() {},
+      /*
+        **必须记数。** `storeSnapshot` 的守卫是 `!dead && inputReady`，而 onExit 里那三行
+        （dead=true → inputReady=false → persist）的顺序一反，就会给刚死的 PTY 推一份快照。
+        原来这里是空函数，那件事今天完全观测不到。
+      */
+      sendSnapshot() { pushedSnapshots++; },
       /*
         照真实实现建模：尺寸没变就什么都不发，被挡下时把「PTY 已知尺寸」置空。
         `resized` 里记的是**真正到达 PTY 的那些**——控制器多调几次 fit 不该体现在这里。
@@ -86,7 +103,7 @@ function fixture(id: string, wait = Promise.resolve(), reopening = Promise.resol
     observeResize: (_host, callback) => { resizeContainer = callback; return () => { resizeContainer = null; }; }, windowEvents, documentEvents, isVisible: () => visible, isFocused: () => focused,
     ...overrides,
   };
-  const controller = createTerminalSessionController({sessionId:id, host, active:true, onCwd: value => cwd.push(value), onCli() {}, onState() { stateUpdates++; }}, deps);
+  const controller = createTerminalSessionController({sessionId:id, host, active:true, onCwd: value => cwd.push(value), onCli(cli, cliId) { reportedCli.push([cli, cliId]); }, onState() { stateUpdates++; }}, deps);
   return {controller, term, sent, writes, cwd, windowEvents, documentEvents, resized,
     enableSizeEcho: () => { echoesSize = true; },
     enableReplayGeometry: () => { carriesReplayGeometry = true; },
@@ -101,7 +118,8 @@ function fixture(id: string, wait = Promise.resolve(), reopening = Promise.resol
     setAlive(value: boolean) { alive = value; },
     /** 模拟容器尺寸变化（收起右侧面板之类）。 */
     resizeHost() { resizeContainer?.(); },
-    callbacks: () => callbacks, metrics: () => ({ mounted, disposed, stopped, restarts, reopens, fitted, termFits, focuses, refreshes, bottoms, verifies, aborted: signal.aborted })};
+    appearanceReady, appearanceOwner, reportedCli,
+    callbacks: () => callbacks, metrics: () => ({ pushedSnapshots, mounted, disposed, stopped, restarts, reopens, fitted, termFits, focuses, refreshes, bottoms, verifies, aborted: signal.aborted })};
 }
 test('continuous output does not republish unchanged view state; scroll transitions still reach the view', async () => {
   const f = fixture('output-state-pressure');
@@ -795,5 +813,198 @@ test('「画出来了没有」按帧缓存，但每个能改变它的信号都�
     const afterResize = asked;
     f.documentEvents.dispatchEvent(new Event('visibilitychange')); f.render();
     assert.ok(asked > afterResize, '标签页前后台切换必须重新问');
+  } finally { f.controller.dispose(); }
+});
+
+/*
+  下面这一批是**特征化用例**：先把连接回调今天的行为钉住，再谈重构。
+
+  这一块的失效模式绝大多数是**静默的**——不是崩溃，是配色偶尔不对、回显闪一下、粘图打到
+  死实例上、给刚死的 PTY 推快照、每次重连悄悄少几百行历史。删掉其中任何一行转发，原有的
+  36 条用例照样全绿。所以「一条没改就全过」这句话，只有在补完这些之后才算数。
+
+  每一条的标题写的是**它防住了什么**，不是它调了什么。
+*/
+
+/** 把会话推到 live：握手、喂一帧 replay、flush 掉那次写入。 */
+async function live(f: ReturnType<typeof fixture>, instance = 'instance') {
+  await tick();
+  await f.callbacks().onHello(instance, false);
+  f.callbacks().onFrame({ type: 'replay', instanceId: instance, seq: 1, data: 'x' }, () => true);
+  await tick();
+  f.writes.shift()!();
+  await tick();
+}
+
+/*
+  onExit 里的三行有严格的先后：dead=true → inputReady=false → persist()。
+  而 storeSnapshot 的守卫正是 `!dead && inputReady`——顺序一反，就把快照推给一个刚死的 PTY。
+*/
+test('shell 退出时只存本地快照，绝不推给已经死掉的 PTY', async () => {
+  const f = fixture('exit-order');
+  try {
+    await live(f);
+    const before = f.metrics().pushedSnapshots;
+    f.callbacks().onExit();
+    await tick();
+    assert.equal(f.metrics().pushedSnapshots, before, '死了还推快照，等于把一屏写进一个没人接的连接');
+  } finally { f.controller.dispose(); }
+});
+
+/*
+  replay 的写入回调是异步 flush 的。如果这期间 shell 退出了，那一次 flush 不许再把
+  inputReady 置真——否则 attachmentTarget 变成非 null，粘图会打到一个死实例上。
+*/
+test('replay 还在 flush 时 shell 退出，那一次不许把输入打开', async () => {
+  const f = fixture('exit-during-replay');
+  try {
+    await tick();
+    await f.callbacks().onHello('instance', false);
+    f.callbacks().onFrame({ type: 'replay', instanceId: 'instance', seq: 1, data: 'x' }, () => true);
+    await tick();
+    f.callbacks().onExit();          // 写入回调还挂着
+    f.writes.shift()!();
+    await tick();
+    assert.equal(f.canResize(), false, 'inputReady 是 canResize 的前置条件，它不该被这次迟到的 flush 打开');
+  } finally { f.controller.dispose(); }
+});
+
+/* `ready()` 返回 false 表示这一帧没能真的落到终端上，同样不该开输入。 */
+test('帧没能落到终端上时，不许把输入打开', async () => {
+  const f = fixture('frame-not-ready');
+  try {
+    await tick();
+    await f.callbacks().onHello('instance', false);
+    f.callbacks().onFrame({ type: 'replay', instanceId: 'instance', seq: 1, data: 'x' }, () => false);
+    await tick();
+    f.writes.shift()!();
+    await tick();
+    assert.equal(f.canResize(), false);
+  } finally { f.controller.dispose(); }
+});
+
+/*
+  同一个 CLI 反复上报是常态。每次都 bump epoch + 清本地回显的话，表现是回显闪一下就没、
+  粘图不断失效——而且是间歇性的、不可复现的那种。
+*/
+test('同一个 CLI 反复上报什么都不做；换了才失效', async () => {
+  const f = fixture('cli-idempotent');
+  let cleared = 0;
+  f.term.clearLocalEcho = () => { cleared++; };
+  try {
+    await live(f);
+    f.callbacks().onCli('claude', 'claude');
+    const baseline = cleared;
+    f.callbacks().onCli('claude', 'claude');
+    f.callbacks().onCli('claude', 'claude');
+    assert.equal(cleared, baseline, '同一个身份重复上报不该清回显——否则回显会间歇性地闪一下就没');
+    f.callbacks().onCli('codex', 'codex');
+    assert.ok(cleared > baseline, '换了身份才该失效');
+  } finally { f.controller.dispose(); }
+});
+
+test('CLI 身份原样转发给外面，cliId 不许丢', async () => {
+  const f = fixture('cli-forward');
+  try {
+    await live(f);
+    f.callbacks().onCli('claude', 'claude-custom');
+    assert.deepEqual(f.reportedCli.at(-1), ['claude', 'claude-custom'],
+      'cliId 丢了，界面上那个自定义 CLI 的图标和名字就回退成通用的');
+  } finally { f.controller.dispose(); }
+});
+
+test('cwd 会转发出去——面包屑和标题靠它', async () => {
+  const f = fixture('cwd-forward');
+  try {
+    await live(f);
+    f.callbacks().onCwd('/work/project');
+    assert.deepEqual(f.cwd, ['/work/project']);
+  } finally { f.controller.dispose(); }
+});
+
+test('延迟读数会转发到注册表；失效之后不再写', async () => {
+  const f = fixture('latency-forward');
+  try {
+    await live(f);
+    // 注册表只在状态是 open 时收延迟读数（status.ts 里那道守卫），所以先把状态推到位。
+    f.callbacks().onStatus('open');
+    f.callbacks().onLatency(42);
+    assert.equal(getTerminalLatency('latency-forward')?.milliseconds, 42);
+    // 拆掉时 lease 会把这条整个删掉（releaseRegistrations），之后再报也不许把它复活。
+    f.controller.dispose();
+    f.callbacks().onLatency(999);
+    assert.equal(getTerminalLatency('latency-forward'), null, '已经拆掉的控制器不许再写注册表');
+  } finally { f.controller.dispose(); }
+});
+
+/*
+  外观握手：replay 期间不许回答历史里的颜色探测（那会答非所问），断线时要先把 ready 收回。
+  错了的表现只是「配色有时候不对」，没人会来报 bug。
+*/
+test('断线收回外观应答，replay 落地后才重新打开', async () => {
+  const f = fixture('appearance-wiring');
+  try {
+    await live(f);
+    assert.equal(f.appearanceReady.at(-1), true, 'replay 落地之后才可以回答探测');
+    f.callbacks().onStatus('reconnecting');
+    assert.equal(f.appearanceReady.at(-1), false, '断线的第一件事就是别再回答');
+  } finally { f.controller.dispose(); }
+});
+
+test('外观归属原样转发', async () => {
+  const f = fixture('appearance-owner');
+  try {
+    await live(f);
+    f.callbacks().onAppearanceOwner(true);
+    f.callbacks().onAppearanceOwner(false);
+    assert.deepEqual(f.appearanceOwner.slice(-2), [true, false]);
+  } finally { f.controller.dispose(); }
+});
+
+test('replay 不可用和画面过大给的是两句不同的话', async () => {
+  const f = fixture('replay-error-unavailable');
+  try {
+    await live(f);
+    f.callbacks().onReplayError('unavailable');
+    const unavailable = f.controller.snapshot().connectionError;
+    f.callbacks().onReplayError('too-large');
+    assert.notEqual(f.controller.snapshot().connectionError, unavailable, '两个原因串了位也不会有人发现');
+  } finally { f.controller.dispose(); }
+});
+
+test('传输事件进诊断面包屑；拆掉之后不再进', async () => {
+  const f = fixture('transport-events');
+  try {
+    await live(f);
+    f.callbacks().onTransportEvent('socket-connect', 7);
+    assert.ok(f.controller.diagnostics().events.some(e => e.event === 'socket-connect' && e.value === 7));
+    f.controller.dispose();
+    f.callbacks().onTransportEvent('socket-close');
+    assert.ok(!f.controller.diagnostics().events.some(e => e.event === 'socket-close'));
+  } finally { f.controller.dispose(); }
+});
+
+/*
+  **特征化，不是规范。** replay 的 done 闭包只查 valid()/dead/ready()，**不查实例**，
+  所以在途期间换了实例，旧 replay 完成仍会把输入打开。这里把今天的行为写下来——以后谁
+  加了实例检查、或者顺手去掉一个，都会在这条上看见变化，而不是悄无声息。
+*/
+test('【特征化】replay 在途时换实例：旧的那一次仍然会把输入打开', async () => {
+  const f = fixture('instance-swap-during-replay');
+  try {
+    await tick();
+    await f.callbacks().onHello('first', false);
+    f.callbacks().onFrame({ type: 'replay', instanceId: 'first', seq: 1, data: 'x' }, () => true);
+    await tick();
+    /*
+      hello 先到、写入还挂着。**不能 await 它**——`onHello` 里要 `resume.prepare`，而那条
+      队列正卡在这次没 flush 的写入上，等下去就是死锁。这本身也是这块的一个事实：
+      握手会被在途的重放挡住。
+    */
+    const swapping = f.callbacks().onHello('second', false);
+    f.writes.shift()!();
+    await swapping;
+    await tick();
+    assert.equal(f.canResize(), true, '今天就是这样。改了它要有意为之，而不是重构时顺手');
   } finally { f.controller.dispose(); }
 });
