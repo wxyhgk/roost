@@ -267,6 +267,46 @@ export function createTerminalSessionController(options: {
       persist();
     };
 
+    /*
+      下面这些原来直接写在 `deps.connect({ callbacks: { … } })` 的对象字面量里，缩进 12 格。
+      提成命名常量只是**降缩进**：它们捕获的还是同一批 `let`（`valid` / `term` / `resume` /
+      `epoch` / `inputReady` / `phase` / `currentCli` …），读的仍然是最新绑定，语义一个字没变。
+
+      **没有搬进独立模块**，因为这一摊不符合那条判据——它向外写 8 个可变量，其中 6 个在
+      文件别处被读。搬走就得传一个可变 context，比闭包更难读也更容易被偷改（见 ce88325）。
+      唯一符合判据的是 `onCli` 那两个变量，那是下一步的事。
+    */
+
+    /*
+      守护进程按流序插进来的尺寸标记。**走 resume 的队列**，排在它前面的旧宽度
+      字节先落进旧网格，然后才改几何——这正是「推迟 reflow」的兑现点。
+    */
+    const onSize = (cols: number, rows: number) => { if (valid()) void resume?.applySize(cols, rows); };
+    const onLatency = (milliseconds: number) => { if (valid()) lease.latency(milliseconds); };
+    const onReplayError = (error: 'too-large' | 'unavailable' | null) =>
+      update({ connectionError: error === 'too-large' ? t.misc.terminal.replayTooLarge : error === 'unavailable' ? t.misc.terminal.replayUnavailable : null });
+    const onTransportEvent = (event: string, value?: number) => { if (valid()) trace.record(event, value); };
+    const onCwd = (cwd: string) => { if (valid()) options.onCwd(cwd); };
+    const onAppearanceOwner = (owner: boolean) => { if (valid()) term?.setAppearanceOwner(owner); };
+    /** 只有多于一个观众时界面才显示——一个人用的时候显示「1 个观众」是纯噪音。 */
+    const onViewers = (viewers: { label: string }[], self: number) => {
+      if (valid()) update({ viewers: viewers.length > 1 ? viewers.filter((_, i) => i !== self) : [] });
+    };
+    const onStatus = (s: TermStatus) => {
+      if (!valid()) return;
+      if (s !== "open") term?.setAppearanceReady(false);
+      if (s !== "open") { epoch++; inputReady = false; images.invalidate(); term?.clearLocalEcho?.(); }
+      if (s === 'reconnecting') phase = 'connecting';
+      trace.record(s);
+      if (valid()) setStatus(s);
+      lease.status(s);
+    };
+    const onCli = (cli: CliKind | null, cliId?: string | null) => {
+      if (!valid()) return;
+      if (cli !== currentCli || cliId !== currentCliId) { epoch++; images.invalidate(); term?.clearLocalEcho?.(); currentCli = cli; currentCliId = cliId; }
+      options.onCli(cli, cliId);
+    };
+
     void (async () => {
       await deps.waitForMeasurable(host, abort.signal);
       if (!valid()) return;
@@ -323,37 +363,8 @@ export function createTerminalSessionController(options: {
         canResize,
         url: deps.url,
         callbacks: {
-          /*
-            守护进程按流序插进来的尺寸标记。**走 resume 的队列**，排在它前面的旧宽度
-            字节先落进旧网格，然后才改几何——这正是「推迟 reflow」的兑现点。
-          */
-          onSize: (cols: number, rows: number) => { if (valid()) void resume?.applySize(cols, rows); },
-          onLatency: milliseconds => { if (valid()) lease.latency(milliseconds); },
-          onReplayError: error => update({ connectionError: error === 'too-large' ? t.misc.terminal.replayTooLarge : error === 'unavailable' ? t.misc.terminal.replayUnavailable : null }),
-          onTransportEvent: (event, value) => { if(valid()) trace.record(event, value); },
-          onStatus: (s) => {
-            if (!valid()) return;
-            if (s !== "open") term?.setAppearanceReady(false);
-            if (s !== "open") { epoch++; inputReady = false; images.invalidate(); term?.clearLocalEcho?.(); }
-            if (s === 'reconnecting') phase = 'connecting';
-            trace.record(s);
-            if (valid()) setStatus(s);
-            lease.status(s);
-          },
-          onCwd: (cwd) => { if (valid()) options.onCwd(cwd); },
-          onCli: (cli, cliId) => {
-            if (!valid()) return;
-            if (cli !== currentCli || cliId !== currentCliId) { epoch++; images.invalidate(); term?.clearLocalEcho?.(); currentCli = cli; currentCliId = cliId; }
-            options.onCli(cli, cliId);
-          },
-          onHello,
-          onFrame,
-          onExit,
-          onAppearanceOwner: owner => { if (valid()) term?.setAppearanceOwner(owner); },
-          // 只有多于一个观众时界面才显示——一个人用的时候显示「1 个观众」是纯噪音。
-          onViewers: (viewers, self) => {
-            if (valid()) update({ viewers: viewers.length > 1 ? viewers.filter((_, i) => i !== self) : [] });
-          },
+          onHello, onFrame, onExit, onStatus, onCli, onCwd,
+          onSize, onLatency, onReplayError, onTransportEvent, onAppearanceOwner, onViewers,
         },
         getTermSize: () => {
           if (!term) return { cols: 80, rows: 24 };
