@@ -122,8 +122,21 @@ test('ignored trees are never traversed; directory discovery is async and bounde
   assert.ok(await waitFor(()=>watcher.directoryCount===3));
   await new Promise(r=>setTimeout(r,50));
   assert.equal(errors,0); assert.equal(watcher.directoryCount,3);
-  mkdirSync(join(dir,'extra','too-many'),{recursive:true});
-  assert.ok(await waitFor(()=>errors===1),'budget overflow must notify the consumer');
+  /*
+    **反复建，别赌那一次事件一定送到。**
+
+    这里原来只建一个目录就干等 8 秒。macOS 的 FSEvents 有布防延迟，紧跟着的那一次改动
+    可能根本不会被投递（`pokeUntil` 顶上那段说的就是它），于是这条用例在全量 verify 的
+    并发下会偶发超时——实测撞到过两次，单独跑只要 128ms。
+
+    每一个新目录都同样超预算，所以反复建不改变这条用例在测什么，只是不再依赖单次事件。
+    判据也从 `=== 1` 放宽成 `> 0`：两次事件挨得近时计数可能直接跳过 1，而我们要断言的是
+    「超预算必须通知」，不是「正好通知一次」。
+  */
+  assert.ok(await pokeUntil(
+    attempt => mkdirSync(join(dir, `extra${attempt}`, 'too-many'), {recursive:true}),
+    () => errors > 0,
+  ), 'budget overflow must notify the consumer');
   assert.equal(watcher.directoryCount,0,'budget overflow must release all handles');
   assert.equal(watcher.size,0);
 });
