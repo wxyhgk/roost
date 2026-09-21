@@ -51,12 +51,15 @@ export function TermView({ sessionId, active, onCwd, onCli }: Props) {
     imagePaste,
     insertImage,
     cancelImage,
+    dropImage,
     diagnostics, repaint, reloadView, viewIssue, viewers, inputNotice, dismissInputNotice, connectionError, interruptArmed,
   } = useTerminal(sessionId, active, onCwd, onCli);
   const { saveBar, savedTick, readSelection, saveNote, saveToFile } = useTerminalSelection(sessionId);
 
   const [dismissedHistoryFor, setDismissedHistoryFor] = useState<string | null>(() => seenHistoryNotices().includes(sessionId) ? sessionId : null);
   const [historyNoticeStartedAt, setHistoryNoticeStartedAt] = useState<number | null>(null);
+  /** 有东西正拖在终端上方。只用来给一个「松手会发生什么」的提示。 */
+  const [dropping, setDropping] = useState(false);
   const showHistoryNotice = active && status === 'open' && historyTruncated && dismissedHistoryFor !== sessionId;
   useEffect(() => {
     if (!showHistoryNotice || historyNoticeStartedAt !== null) return;
@@ -76,16 +79,37 @@ export function TermView({ sessionId, active, onCwd, onCli }: Props) {
         active ? "" : "invisible pointer-events-none"
       }`}
       onDragOver={(e) => {
-        if (e.dataTransfer.types.includes(ROOST_PATH_MIME)) e.preventDefault();
+        // 两种拖放：应用内部拖来的路径，和从系统里拖进来的文件。
+        if (e.dataTransfer.types.includes(ROOST_PATH_MIME)) { e.preventDefault(); return; }
+        if (!e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+        // 拖进来的那一刻还看不到 MIME（浏览器要到 drop 才给），所以一律先亮起来；
+        // 真的不是图片时，下面 drop 里那条错误提示会说清楚。
+        setDropping(true);
+      }}
+      onDragLeave={(e) => {
+        // 只认真正离开面板的那一次。dragleave 在子元素上也会触发，不挡住会一直闪。
+        if (e.relatedTarget === null || !e.currentTarget.contains(e.relatedTarget as Node)) setDropping(false);
       }}
       onDrop={(e) => {
+        setDropping(false);
         const raw = e.dataTransfer.getData(ROOST_PATH_MIME);
-        if (!raw) return;
+        if (raw) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (sendToSession(sessionId, `${quoteShellPath(raw)} `) === "rejected") {
+            window.alert(t.terminal.view.notConnected);
+          }
+          return;
+        }
+        /*
+          从系统里拖进来的图，和粘贴完全同义——上传、拿绝对路径、按当前 CLI 的规矩插进去。
+          截图工具和聊天软件里更自然的动作本来就是拖，而这条路以前什么都不做。
+        */
+        if (!e.dataTransfer.files.length) return;
         e.preventDefault();
         e.stopPropagation();
-        if (sendToSession(sessionId, `${quoteShellPath(raw)} `) === "rejected") {
-          window.alert(t.terminal.view.notConnected);
-        }
+        void dropImage(e.dataTransfer);
       }}
       onMouseUp={(e) => {
         if (e.button !== 0) return;
@@ -117,6 +141,17 @@ export function TermView({ sessionId, active, onCwd, onCli }: Props) {
         e.stopPropagation();
       }}
     >
+      {/*
+        拖放提示。`pointer-events-none` 是必须的——它盖在终端上方，吃掉事件的话
+        dragover/drop 就到不了下面那一层，拖进来反而失效。
+      */}
+      {active && dropping && (
+        <div className="pointer-events-none absolute inset-2 z-[9] grid place-items-center rounded-lg border-2 border-dashed border-accent bg-bg/70 backdrop-blur-sm">
+          <span className="rounded-full border border-border bg-bg-raised px-3 py-1.5 text-body text-text shadow-pop">
+            {t.terminal.view.dropImage}
+          </span>
+        </div>
+      )}
       {active && <TerminalWatermark sessionId={sessionId} />}
       {active && <TerminalDiagnostics diagnostics={diagnostics} repaint={repaint} reloadView={reloadView} viewIssue={viewIssue} />}
       {active && inputNotice && (

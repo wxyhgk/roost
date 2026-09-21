@@ -103,6 +103,8 @@ export const terminal = {
     resume: (cli: string) => `恢复 ${cli} 对话`,
     resumeHint: (command: string) => `重启这个终端并执行 ${command}，接着上一段对话`,
     /** 运行中的第一下 Ctrl+C 被当成「清空输入」吃掉了，告诉人怎么才是真打断。 */
+    /** 有文件拖在终端上方时的提示。说清楚松手会发生什么，而不是「拖放到这里」。 */
+    dropImage: "松手把图片交给这个终端里的 AI CLI",
     interruptArmed: "已清空输入 · 再按一次 Ctrl+C 打断模型",
     pendingImageAlt: "待发送图片",
     insertImage: "插入图片",

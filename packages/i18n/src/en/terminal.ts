@@ -100,6 +100,8 @@ export const terminal = {
     resume: (cli: string) => `Resume ${cli} conversation`,
     resumeHint: (command: string) => `Restarts this terminal and runs ${command} to pick up the last conversation`,
     /** 运行中的第一下 Ctrl+C 被当成「清空输入」吃掉了，告诉人怎么才是真打断。 */
+    /** 有文件拖在终端上方时的提示。说清楚松手会发生什么，而不是「拖放到这里」。 */
+    dropImage: "Drop to hand the image to the AI CLI in this terminal",
     interruptArmed: "Input cleared · press Ctrl+C again to interrupt",
     pendingImageAlt: "Image pending send",
     insertImage: "Insert image",

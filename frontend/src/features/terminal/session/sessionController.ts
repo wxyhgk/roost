@@ -598,6 +598,14 @@ export function createTerminalSessionController(options: {
       jumpToBottom() { if (valid()) { follow = afterExplicitJump(follow); term?.scrollToBottom(); term?.focus(); } },
       insertImage() { if (valid()) { images.insert(); term?.focus(); } },
       cancelImage() { if (valid()) images.cancel(); },
+      /**
+       * 从系统里拖进来的图。返回 true 表示这一下被收下了，调用方据此决定要不要
+       * 继续走它自己的拖放处理（比如应用内部的路径拖放）。
+       */
+      dropImage(transfer: DataTransfer | null) {
+        if (!valid()) return Promise.resolve(false);
+        return images.drop(transfer).then(taken => { if (taken) term?.focus(); return taken; });
+      },
     };
 }
 export type TerminalSessionController = ReturnType<typeof createTerminalSessionController>;

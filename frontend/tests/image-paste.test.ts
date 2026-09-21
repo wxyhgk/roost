@@ -61,3 +61,72 @@ test('unknown CLI upload shows an error and never inserts a path', async()=>{
   f.reply({kind:'unsupported',reason:'unknown-cli'});await done;
   assert.equal(f.state?.phase,'error');assert.deepEqual(f.sent,[]);f.controller.dispose();
 });
+
+/*
+  从系统里拖一张图进终端，和粘贴完全同义。
+
+  截图工具、聊天软件里更自然的动作是拖而不是复制，而这条路以前什么都不做——上传和插入
+  的两半零件一直都在，只差这个入口。所以下面钉的是「两条路汇到同一处」，不是新逻辑。
+*/
+const transfer = (...files: File[]) => ({ files } as unknown as DataTransfer);
+const png = (size = 1) => new File([new Uint8Array(size)], 'shot.png', { type: 'image/png' });
+
+test('拖进来的图走的是和粘贴同一条路：上传、拿路径、按 CLI 的规矩插进去', async () => {
+  const f = fixture();
+  const done = f.controller.drop(transfer(png()));
+  assert.equal(f.state?.phase, 'uploading');
+  f.reply();
+  assert.equal(await done, true, '收下了要说一声，调用方据此不再走它自己的拖放处理');
+  f.controller.insert();
+  assert.equal(f.sent[0], "\x1b[200~'/tmp/user'\\''s picture.png'\x1b[201~");
+  f.controller.dispose();
+});
+
+/*
+  应用内部的拖放（文件树把路径拖到终端）走的是另一条：`ROOST_PATH_MIME`，它的 files 是
+  空的。这里必须原样放过去，否则那条路会被这条截胡。
+*/
+test('没有文件的拖放不接，交还给调用方', async () => {
+  const f = fixture();
+  assert.equal(await f.controller.drop(transfer()), false);
+  assert.equal(await f.controller.drop(null), false);
+  assert.equal(f.uploads, 0);
+  assert.equal(f.state, null, '不是我们的事就别在界面上留下痕迹');
+  f.controller.dispose();
+});
+
+test('非图片的文件当场说清楚，而不是悄悄不动', async () => {
+  const f = fixture();
+  await f.controller.drop(transfer(new File(['x'], 'notes.txt', { type: 'text/plain' })));
+  assert.equal(f.state, null, '压根不是图片，连提示都不该有——那是别人的拖放');
+  await f.controller.drop(transfer(new File(['x'], 'photo.gif', { type: 'image/gif' })));
+  assert.equal(f.state?.phase, 'error', '是图片但格式不收，就得说出来');
+  f.controller.dispose();
+});
+
+test('一次拖多张只报一句，不挑一张偷偷传', async () => {
+  const f = fixture();
+  await f.controller.drop(transfer(png(), png()));
+  assert.equal(f.state?.phase, 'error');
+  assert.equal(f.uploads, 0);
+  f.controller.dispose();
+});
+
+test('太大的图在上传之前就被挡下来', async () => {
+  const f = fixture();
+  await f.controller.drop(transfer(png(10 * 1024 * 1024 + 1)));
+  assert.equal(f.state?.phase, 'error');
+  assert.equal(f.uploads, 0, '别让一张 10MB 以上的图先跑一趟网络再被拒');
+  f.controller.dispose();
+});
+
+/* 正在传的那一张不能被后来的顶掉——界面上它还挂着，用户以为还在传。 */
+test('上传进行中时，再拖一张不打断前一张', async () => {
+  const f = fixture();
+  const first = f.controller.drop(transfer(png()));
+  await f.controller.drop(transfer(png()));
+  assert.equal(f.uploads, 1);
+  f.reply();
+  await first;
+  f.controller.dispose();
+});

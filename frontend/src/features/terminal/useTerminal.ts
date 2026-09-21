@@ -37,6 +37,7 @@ export function useTerminal(sessionId: string, active: boolean, onCwd: (cwd: str
     restart: (resume?: boolean) => controller.current?.restart(resume),
     insertImage: () => controller.current?.insertImage(),
     cancelImage: () => controller.current?.cancelImage(),
+    dropImage: (transfer: DataTransfer | null) => controller.current?.dropImage(transfer) ?? Promise.resolve(false),
     dismissInputNotice: () => controller.current?.dismissInputNotice(),
   };
 }
