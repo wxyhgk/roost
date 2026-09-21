@@ -207,7 +207,7 @@ for (const owner of owners) {
         }
       } else {
         const node = spec.startsWith('node:') || builtinModules.includes(spec);
-        if (owner === 'frontend' && /(?:features\/library\/(?:client|query|api)|shared\/store\/(?:state|observable)|features\/terminal\/sessionController)\.ts$/.test(path) && /^react(?:-dom)?(?:\/|$)/.test(spec)) reason = 'state core must remain independent of React';
+        if (owner === 'frontend' && /(?:features\/library\/(?:client|query|api)|shared\/store\/(?:state|observable)|features\/terminal\/session\/sessionController)\.ts$/.test(path) && /^react(?:-dom)?(?:\/|$)/.test(spec)) reason = 'state core must remain independent of React';
         if (node && (owner === 'frontend' || owner === 'stable-workbench' || owner.endsWith('terminal-protocol') || owner.endsWith('cli-adapters'))) reason = 'Node dependency in browser code';
         else if (spec.startsWith('@roost/') && !allowed[owner].includes(spec)) reason = 'private or disallowed package entry';
         else if (owner.startsWith('packages/') && !node && !allowed[owner].includes(spec)) reason = 'undeclared package dependency';
@@ -262,7 +262,7 @@ if (existsSync(frontendSrc)) {
     }
     return null;
   };
-  const STATE_CORE = /^(?:features\/library\/(?:client|query|api)|shared\/store\/(?:state|observable)|features\/terminal\/sessionController)\.ts$/;
+  const STATE_CORE = /^(?:features\/library\/(?:client|query|api)|shared\/store\/(?:state|observable)|features\/terminal\/session\/sessionController)\.ts$/;
   for (const key of localEdges.keys()) {
     if (STATE_CORE.test(key)) {
       const trail = findPath(key, spec => /^react(?:-dom)?(?:\/|$)/.test(spec));
@@ -287,6 +287,15 @@ for (const anchor of [
   'frontend/src/features/terminal/public.ts',
   'frontend/src/features/terminal/engine/xtermEngine.ts',
   'frontend/src/features/session-status/public.ts',
+  /*
+    这一条是补回来的。它原来写的是 `features/terminal/sessionController.ts`，而文件在
+    9dce0a4（按真实引用重分目录）那次搬进了 `session/`，上面那两条正则没跟着改——于是
+    「状态内核不许引 React」**静默失效**了，从那时起一直没人拦。
+
+    上面那段注释预言的正是这件事，只是当时没把这个文件列进锚点。现在补上：它再搬家，
+    这里会当场红，而不是又一次悄悄地什么都不检查。
+  */
+  'frontend/src/features/terminal/session/sessionController.ts',
 ]) {
   if (!existsSync(resolve(root, anchor))) errors.push(`${anchor}: 规则锚点不存在——改名或删除时请同步更新 scripts/check-boundaries.mjs`);
 }
