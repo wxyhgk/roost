@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { IconClose } from "../../../shared/icons";
 import type { TermHandle } from "../types";
 import { IconButton } from "../../../shared/ui/IconButton";
 import { t } from "@roost/i18n";
+import { createSearchScheduler } from "./searchScheduler";
 
 /**
  * 终端内查找。
@@ -16,13 +17,6 @@ export function useTerminalSearch(handle: TermHandle | null) {
   const [query, setQuery] = useState("");
   const [notFound, setNotFound] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  // 换了终端就重来一次：上一个终端的查询词和高亮对新的这个没有意义。
-  useEffect(() => {
-    setQuery("");
-    setNotFound(false);
-    return () => handle?.clearSearch();
-  }, [handle]);
 
   useEffect(() => {
     if (open) inputRef.current?.select();
@@ -46,9 +40,34 @@ export function useTerminalSearch(handle: TermHandle | null) {
     if (!handle || !next) { handle?.clearSearch(); setNotFound(false); return; }
     setNotFound(!handle.searchText(next, direction));
   }
+  const latest = useRef(run);
+  latest.current = run;
+  /*
+    打字走 `type`（攒一下再搜），回车和上下箭头走 `now`（立刻）。
+    为什么要攒，见 searchScheduler.ts 顶上。
+
+    `useMemo` 的依赖是空的：调度器自己持有定时器，每次渲染重建会把等着的那一次丢掉。
+    最新的 `run` 从 ref 读，所以不会捕获过期的 handle。
+  */
+  const scheduler = useMemo(() => createSearchScheduler({
+    search: (query, direction) => latest.current(query, direction),
+    // 词变了，上一次的「未找到」对它不成立——先收掉，免得在一个正确的词上闪红字。
+    onPending: () => setNotFound(false),
+  }), []);
+  useEffect(() => scheduler.cancel, [scheduler]);
+
+  // 换了终端就重来一次：上一个终端的查询词和高亮对新的这个没有意义。
+  useEffect(() => {
+    setQuery("");
+    setNotFound(false);
+    return () => { scheduler.cancel(); handle?.clearSearch(); };
+  }, [handle, scheduler]);
+
 
   /** 收起查找，但**不动焦点**。离开终端时用——那时焦点该归接手的那一方。 */
   function reset() {
+    // 等着的那一次必须取消：不然关掉查找栏之后它还会触发一次，把高亮又画回来。
+    scheduler.cancel();
     handle?.clearSearch();
     setOpen(false);
     setQuery("");
@@ -64,6 +83,8 @@ export function useTerminalSearch(handle: TermHandle | null) {
   return {
     open, query, notFound, inputRef, run, reset, close,
     setQuery,
+    /** 打字用这个，不要用 `run`——它会攒一下，见 searchScheduler.ts。 */
+    typeQuery: scheduler.type,
     toggle: () => (open ? close() : setOpen(true)),
   };
 }
@@ -71,7 +92,7 @@ export function useTerminalSearch(handle: TermHandle | null) {
 export type TerminalSearch = ReturnType<typeof useTerminalSearch>;
 
 export function TerminalSearchBar({ search }: { search: TerminalSearch }) {
-  const { query, notFound, inputRef, run, close, setQuery } = search;
+  const { query, notFound, inputRef, run, close, setQuery, typeQuery } = search;
   return (
     <div className="flex shrink-0 items-center gap-1.5 border-b border-border px-2.5 py-1.5">
       {/* 字号跟笔记/文件/对话那几个搜索框一致：这是要打字的控件，走 text-body；
@@ -82,7 +103,7 @@ export function TerminalSearchBar({ search }: { search: TerminalSearch }) {
         onChange={event => {
           const next = event.target.value;
           setQuery(next);
-          run(next, 1);
+          typeQuery(next);
         }}
         onKeyDown={event => {
           if (event.key === "Enter") { event.preventDefault(); run(query, event.shiftKey ? -1 : 1); }
