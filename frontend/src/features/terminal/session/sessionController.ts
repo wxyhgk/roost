@@ -303,9 +303,22 @@ export function createTerminalSessionController(options: {
     const onTransportEvent = (event: string, value?: number) => { if (valid()) trace.record(event, value); };
     const onCwd = (cwd: string) => { if (valid()) options.onCwd(cwd); };
     const onAppearanceOwner = (owner: boolean) => { if (valid()) term?.setAppearanceOwner(owner); };
-    /** 只有多于一个观众时界面才显示——一个人用的时候显示「1 个观众」是纯噪音。 */
+    /*
+      只有多于一个观众时界面才显示——一个人用的时候显示「1 个观众」是纯噪音。
+
+      **内容没变就不能往下发。** `update()` 靠 `Object.is` 挡住「输出不变就别重渲染」，而
+      这里每次都新建一个数组，那道兜底对它永远为假。后端只在连上和断开时发名单，看着不
+      频繁；可这台是单人用的，`length > 1` 几乎永远不成立，也就是说**每一次重连都白发一次
+      整个视图状态**——合盖、换网、切回前台探到半开 socket，都会走到。
+
+      比的是标签序列而不是长度：换了个设备而人数没变，那是真的变了。
+    */
     const onViewers = (viewers: { label: string }[], self: number) => {
-      if (valid()) update({ viewers: viewers.length > 1 ? viewers.filter((_, i) => i !== self) : [] });
+      if (!valid()) return;
+      const next = viewers.length > 1 ? viewers.filter((_, i) => i !== self) : [];
+      const now = state.viewers;
+      if (next.length === now.length && next.every((viewer, i) => viewer.label === now[i].label)) return;
+      update({ viewers: next });
     };
     const onStatus = (s: TermStatus) => {
       if (!valid()) return;

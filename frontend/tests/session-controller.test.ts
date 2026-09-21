@@ -141,6 +141,46 @@ test('continuous output does not republish unchanged view state; scroll transiti
     assert.equal(f.stateUpdates(), before + 3);
   } finally { f.controller.dispose(); }
 });
+/*
+  上面那条用滚动钉了「输出不变就不重发视图状态」。观众名单走的是**同一条兜底**，但它是
+  数组：每次都新建一个，`Object.is` 永远为假，于是那条兜底对它完全失效。
+
+  后端只在**连上**和**断开**时发观众名单，看起来不频繁——但这台是单人用的，`length > 1`
+  几乎永远为假，也就是说**每一次重连都白发一次整个视图状态**。合盖、换网、切回前台探到
+  半开 socket，都会走到。
+*/
+test('观众没变就不该重发整个视图状态——数组每次新建会让 Object.is 兜底失效', async () => {
+  const f = fixture('viewers-identity');
+  try {
+    await tick();
+    // 单人：名单里只有自己，界面上是空的。这是这台机器上的常态。
+    f.callbacks().onViewers([{ label: '这台' }], 0);
+    const alone = f.stateUpdates();
+    f.callbacks().onViewers([{ label: '这台' }], 0);
+    f.callbacks().onViewers([{ label: '这台' }], 0);
+    assert.equal(f.stateUpdates(), alone, '重连了三次，观众一次都没变，不该有任何一次重发');
+
+    // 真的多了一个人：这一次必须发。
+    f.callbacks().onViewers([{ label: '这台' }, { label: '手机' }], 0);
+    assert.equal(f.stateUpdates(), alone + 1);
+    assert.deepEqual(f.controller.snapshot().viewers, [{ label: '手机' }], '名单里不该有自己');
+
+    // 同一份名单再来一遍：不发。
+    const together = f.stateUpdates();
+    f.callbacks().onViewers([{ label: '这台' }, { label: '手机' }], 0);
+    assert.equal(f.stateUpdates(), together);
+
+    // 换了个设备，人数没变——按人数比会漏掉这种，所以要按内容比。
+    f.callbacks().onViewers([{ label: '这台' }, { label: '平板' }], 0);
+    assert.equal(f.stateUpdates(), together + 1);
+    assert.deepEqual(f.controller.snapshot().viewers, [{ label: '平板' }]);
+
+    // 那个人走了，回到单人。
+    f.callbacks().onViewers([{ label: '这台' }], 0);
+    assert.equal(f.stateUpdates(), together + 2);
+    assert.deepEqual(f.controller.snapshot().viewers, []);
+  } finally { f.controller.dispose(); }
+});
 test('only sent live foreground keyboard input is previewed, and reconnect/CLI changes clear it', async () => {
   const f = fixture('local-echo-lifecycle'), previews: string[] = [];
   let cleared = 0;
