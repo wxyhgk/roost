@@ -7,6 +7,7 @@ import type { ConnectionHandle, ConnectionOptions } from "./connection";
 import { createImagePaste, type ImagePasteState } from "../imagePaste";
 import { createInterruptGuard, INTERRUPT_WINDOW_MS } from "../interruptGuard";
 import { createResizeGate } from "./resizeGate";
+import { createReadReceipts } from "./readReceipts";
 import { createDiagnosticTrace, stalledParser } from './diagnostics';
 import { t } from "@roost/i18n";
 import { ApiError } from '../../../shared/api/errors';
@@ -57,26 +58,21 @@ export function createTerminalSessionController(options: {
   let follow = initialFollowIntent;
   const gesture = () => { follow = afterGesture(follow, Date.now()); };
   /*
-    「这一屏真的被画出来了吗」——缓存它，**别每帧都问 DOM**。
+    已读回执整个搬到了 `readReceipts`：缓存「画出来了吗」、只认这一帧代表的光标、以及在途
+    回调的取消。它自己拥有那两样状态，这里只把能力递进去。
 
-    `deps.isPresented()` 里是 `getClientRects()` 加 `getComputedStyle()`，一个强制 layout、
-    一个强制 style recalc。而它挂在 `canRead()` 里，`canRead()` 由 `term.onRendered` **每一帧**
-    调一次，命中后 `afterPaint` 里还会再调一次。执行时机还格外糟：那一刻 xterm 刚写完行的
-    DOM，layout 必然是脏的，浏览器只能同步重算整个终端子树——刷屏时整个界面发涩的主因之一。
-
-    这个答案其实很少变，而且它**每一种变法我们都收得到信号**：
-    - 前后台切换 → `setActive`（隐藏用的是 `visibility`，不改布局，只能靠这个）
-    - 容器尺寸变了（收面板、拖分隔条、display:none）→ ResizeObserver
-    - 标签页前后台、窗口焦点 → visibilitychange / focus / blur
-
-    所以改成「失效即重算」：这些信号来时把缓存清掉，下一次用到再问一遍 DOM。
+    `resume` / `liveInstance` 要用访问器而不是值：它们在下面会被重新赋值，按值传等于把回执
+    永远钉死在第一个实例上。
   */
-  let presentedCache: boolean | null = null;
-  const forgetPresented = () => { presentedCache = null; };
-  const presented = () => {
-    if (presentedCache === null) presentedCache = deps.isPresented?.() ?? false;
-    return presentedCache;
-  };
+  const receipts = createReadReceipts({
+    ready: () => valid() && active && atBottom && inputReady && deps.isVisible() && (deps.isFocused?.() ?? false),
+    isPresented: () => deps.isPresented?.() ?? false,
+    afterPaint: deps.afterPaint ? callback => deps.afterPaint!(callback) : undefined,
+    report: (instanceId, seq) => deps.reportPresented?.(instanceId, seq),
+    instance: () => liveInstance,
+    seq: () => resume ? resume.inspect().applied : null,
+  });
+  const forgetPresented = () => receipts.forget();
   /*
     尺寸这一摊整个搬到了 `resizeGate`：什么时候允许改、改完告诉谁、以及那三条实测教训
     （推迟本地 reflow、缩行没通报就重取、抖尺寸是最后手段）。它自己拥有 `engaged` 和
@@ -152,7 +148,6 @@ export function createTerminalSessionController(options: {
     let appearanceSub: { dispose(): void } | null = null;
     let scrollSub: { dispose(): void } | null = null;
     let renderSub: { dispose(): void } | null = null;
-    const pendingPresented = new Set<() => void>();
     let resizeTimer: ReturnType<typeof setTimeout> | undefined;
     let stopResize: (() => void) | undefined;
     let stopFonts: (() => void) | undefined;
@@ -355,19 +350,7 @@ export function createTerminalSessionController(options: {
         atBottom = bottom;
         follow = afterScroll(follow, bottom, Date.now());
       });
-      const canRead = () => valid() && active && atBottom && inputReady && deps.isVisible() &&
-        (deps.isFocused?.() ?? false) && presented();
-      renderSub = term.onRendered?.(() => {
-        // Capture only the cursor represented by this render. A later incoming
-        // frame must not be marked read before it has appeared on screen.
-        if (!canRead() || !liveInstance || !resume || !deps.afterPaint) return;
-        const instance = liveInstance, seq = resume.inspect().applied;
-        const cancel = deps.afterPaint(() => {
-          pendingPresented.delete(cancel);
-          if (canRead() && instance === liveInstance) deps.reportPresented?.(instance, seq);
-        });
-        pendingPresented.add(cancel);
-      }) ?? null;
+      renderSub = term.onRendered?.(() => receipts.rendered()) ?? null;
       // 快照只在切走/退出/关页面时做一次，不跟随每次输出，以换输出密集时的主线程。
       // 崩溃丢失的尾部由后端 replay 全量补回（有界）。
 
@@ -487,8 +470,7 @@ export function createTerminalSessionController(options: {
       appearanceSub?.dispose();
       scrollSub?.dispose();
       renderSub?.dispose();
-      for (const cancel of pendingPresented) cancel();
-      pendingPresented.clear();
+      receipts.dispose();
       stopResize?.();
       stopFonts?.();
       clearTimeout(resizeTimer);
