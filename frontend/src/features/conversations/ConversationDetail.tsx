@@ -16,6 +16,9 @@ import { startConversationRecovery } from "./recovery";
 
 import { ConversationComposer, PendingMessage } from "./ConversationComposer";
 import { shouldOfferRun, type SendBlock } from "./sendability";
+import { rebindWithRetry } from "./rebind";
+import { fetchAiBinding, rebindAiSession } from "../../shared/api/conversations";
+import { useSessionActivity } from "../session-status/public";
 import { createSession } from "../../shared/api/session";
 import { useWorkspace } from "../../shared/store";
 import { useOutgoing } from "./useOutgoing";
@@ -31,7 +34,7 @@ import { BookmarkButton } from '../bookmarks/BookmarkButton';
  * 打开它不会启动任何 CLI，也不会继续生成——所以这里没有「恢复并继续」按钮。
  * run 非空时给一个「跳到终端」的入口，为空就照常读历史，两种情况都完整可用。
  */
-export function ConversationDetail({ conversation: initial, onBack, onJumpToTerminal, readOnly = false, blocked = null }: {
+export function ConversationDetail({ conversation: initial, onBack, onJumpToTerminal, readOnly = false, blocked = null, terminalId }: {
   conversation: Conversation;
   /** 目录里进来才有「返回列表」；中间栏是这个终端的固定视角，没有可返回的列表。 */
   onBack?: () => void;
@@ -39,6 +42,8 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
   readOnly?: boolean;
   /** 发不出去的成因。只有中间栏喂得出来——目录里进来时没有终端上下文。 */
   blocked?: SendBlock | null;
+  /** 从终端侧进来时才有；目录和书签里没有终端上下文。 */
+  terminalId?: string;
 }) {
   // 改标题/分组会返回新的记录（含新 revision），本地跟着走，
   // 否则下一次修改会拿着过期的 revision 撞 409。
@@ -208,7 +213,7 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
 
       {/* 没有在跑的终端时不给输入框：投递不出去，摆一个能打字的框只会让人白写一段。 */}
       {jumpTarget && !readOnly ? <ConversationComposer outgoing={outgoing} />
-        : <SendBlocked blocked={blocked} readOnly={readOnly} conversation={conversation} />}
+        : <SendBlocked blocked={blocked} readOnly={readOnly} conversation={conversation} terminalId={terminalId} />}
     </div>
   );
 }
@@ -232,8 +237,10 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
  * **`blocked` 为 null 时退回原文案，不猜**：目录（`ConversationList`）里进来时根本没有
  * 终端上下文，这里编一个理由出来只是把一句假话换成另一句。
  */
-function SendBlocked({ blocked, readOnly, conversation }: {
+function SendBlocked({ blocked, readOnly, conversation, terminalId }: {
   blocked: SendBlock | null; readOnly: boolean; conversation: Conversation;
+  /** 从终端侧进来时才有。目录或书签里进来没有终端上下文，那时不给重绑按钮。 */
+  terminalId?: string;
 }) {
   const m = t.misc.conversations.detail.send.blocked;
   const [text, hint]: [string, string | null] =
@@ -244,15 +251,70 @@ function SendBlocked({ blocked, readOnly, conversation }: {
     : blocked === "unbound" ? [m.unbound, m.unboundHint]
     : [readOnly ? t.bookmarks.readingHistory : t.misc.conversations.detail.send.noRun, null];
   const showRun = shouldOfferRun(blocked, conversation.source.cliId, conversation.source.nativeSessionId);
+  /*
+    `unbound` 有一个**不需要新开终端**的解法：绑定挪到当前那条 PTY 上就行，CLI 早就在
+    它的日志里报过身份了。所以这一格优先给「重新绑定」，`RunConversation`（新开一个终端）
+    留给真的没有附着进程的那几格——`shouldOfferRun` 本来就把 `unbound` 排除在外。
+  */
+  const showRebind = blocked === "unbound" && !!terminalId;
   return (
     <div className="shrink-0 border-t border-border px-2.5 py-2 text-caption text-text-dim">
       <div role="status">
         <p>{text}</p>
-        {/* 有按钮时不再留那句「先自己去终端里启动一个」——它和正下方的按钮说的是同一件事，
-            摆在一起像是在让用户绕远路。按钮自己那行说明已经讲清了会发生什么。 */}
-        {hint && !showRun && <p className="mt-0.5 text-text-dim/70">{hint}</p>}
+        {/* 有按钮时不再留那句提示——它和正下方的按钮说的是同一件事，摆在一起像是在让用户绕远路。 */}
+        {hint && !showRun && !showRebind && <p className="mt-0.5 text-text-dim/70">{hint}</p>}
       </div>
+      {showRebind && <RebindBinding terminalId={terminalId} />}
       {showRun && <RunConversation conversation={conversation} />}
+    </div>
+  );
+}
+
+/**
+ * 「重新绑定」。
+ *
+ * **这不是在替用户认领一个对话。** 服务端拿当前活着的那条 PTY 的实例号去读它自己的日志，
+ * 只有 CLI 已经报过的身份和我们声称的对得上才写入；认不出就 409，什么都不改。也就是说
+ * 这里做的是「把 CLI 早就说过的话读出来」，身份自始至终由 CLI 确认。
+ *
+ * **为什么这个按钮是必要的**：绑定记的是 PTY 进程的实例号，而实例号每次 spawn 现铸、不落盘
+ * （`terminal-runtime/src/replay.ts`），daemon 一重启全部换新。旧绑定从此对不上任何活着的
+ * PTY，而事件在到达绑定之前就被「实例号不符」丢掉了——**所以在终端里继续打字并不会让它自愈**，
+ * 那条路上的每一条事件都会被扔掉。实测：一个终端一整天 168 条事件，绑定一动没动。
+ */
+function RebindBinding({ terminalId }: { terminalId: string }) {
+  const m = t.misc.conversations.detail.send.blocked;
+  const { instanceId, cliId, agent } = useSessionActivity(terminalId);
+  // 旧 agent 的状态可能比它的 CLI 活得久；原生 ID 只和报出它的那个 CLI 配对。
+  const nativeSessionId = agent?.name === cliId ? agent?.agentSessionId ?? null : null;
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const ready = !!instanceId && !!cliId && !!nativeSessionId;
+  async function rebind() {
+    if (!ready) return;
+    setBusy(true); setFailed(null);
+    try {
+      await rebindWithRetry({
+        read: () => fetchAiBinding(terminalId),
+        write: body => rebindAiSession(terminalId, body),
+        identity: { terminalInstanceId: instanceId!, cliId: cliId!, nativeSessionId: nativeSessionId! },
+      });
+      // 成功之后什么都不用做：轮询会在下一拍看到 run 已经建起来，输入框自己出现。
+    } catch (error) {
+      const code = error instanceof ApiError ? error.code : null;
+      setFailed(code === "identity_unconfirmed" ? m.rebindUnconfirmed
+        : code === "conflict" ? m.rebindConflict
+        : error instanceof Error ? error.message : m.rebindFailed);
+    } finally { setBusy(false); }
+  }
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-2">
+      <button type="button" disabled={busy || !ready} title={m.rebindHint}
+        onClick={() => void rebind()}
+        className="shrink-0 rounded border border-border px-2 py-1 text-caption text-text hover:bg-bg-hover disabled:opacity-60">
+        {busy ? m.rebinding : m.rebind}
+      </button>
+      <span className="min-w-0 text-text-dim/70">{failed ?? m.rebindHint}</span>
     </div>
   );
 }

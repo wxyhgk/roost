@@ -293,3 +293,37 @@ export function patchConversation(conversationId: string, revision: number, patc
     body: JSON.stringify({ revision, ...patch }),
   });
 }
+
+/** 一条终端的 AI 绑定。只取重新绑定用得上的几个字段。 */
+export type AiBinding = {
+  webSessionId: string;
+  terminalInstanceId: string;
+  cliId: string;
+  nativeSessionId: string;
+  generation: string;
+  revision: number;
+};
+
+export function fetchAiBinding(terminalId: string) {
+  return request<{ binding: AiBinding }>(`/api/ai-sessions/${encodeURIComponent(terminalId)}`);
+}
+
+/**
+ * 把绑定挪到当前活着的那条 PTY 上。
+ *
+ * **服务端不猜身份**：它拿 `terminalInstanceId` 去读那条 PTY 自己的日志，只有 CLI 已经报过
+ * 的身份和你声称的 `nativeSessionId` 对得上才写入。所以这不是「替用户认领一个对话」，
+ * 是「把 CLI 早就说过的话读出来」。认不出时返回 409 `identity_unconfirmed`。
+ *
+ * 用 generation + revision 做乐观并发。**revision 涨得很快**（实测约 1 次/秒，transcript
+ * 摄取一直在写），而这个请求要走「读绑定 → 读日志核验 → 写入」整条链，几百毫秒足够它变一次
+ * ——所以调用方必须重试，见 `rebindWithRetry`。
+ */
+export function rebindAiSession(terminalId: string, body: {
+  expectedGeneration: string; expectedRevision: number;
+  terminalInstanceId: string; cliId: string; nativeSessionId: string;
+}) {
+  return request<{ binding: AiBinding }>(`/api/ai-sessions/${encodeURIComponent(terminalId)}/rebind`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+  });
+}

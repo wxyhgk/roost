@@ -106,11 +106,11 @@ export function ConversationLens({ terminalId, conversationId, current }: { term
     </div>
     {error && <p role="status" className="px-3 text-caption text-text-dim">{t.bookmarks.historyFailed}</p>}
     {active && !current && !selected && <p className="border-b border-border px-3 py-1.5 text-caption text-text-dim">{t.bookmarks.historyFallback}</p>}
-    {active ? <ConversationContent key={active} conversationId={active} readOnly={!!selected || !current} blocked={blocked} /> : <p role="status" className="p-4 text-caption text-text-dim">{loading ? t.bookmarks.loading : t.bookmarks.noTerminalHistory}</p>}
+    {active ? <ConversationContent key={active} conversationId={active} readOnly={!!selected || !current} blocked={blocked} terminalId={terminalId} /> : <p role="status" className="p-4 text-caption text-text-dim">{loading ? t.bookmarks.loading : t.bookmarks.noTerminalHistory}</p>}
   </div>;
 }
 
-function ConversationContent({ conversationId, readOnly, blocked }: { conversationId: string; readOnly: boolean; blocked: SendBlock | null }) {
+function ConversationContent({ conversationId, readOnly, blocked, terminalId }: { conversationId: string; readOnly: boolean; blocked: SendBlock | null; terminalId: string }) {
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [error, setError] = useState(false);
   const [retry, setRetry] = useState(0);
@@ -124,5 +124,5 @@ function ConversationContent({ conversationId, readOnly, blocked }: { conversati
   }, [conversationId, retry]);
   if (error) return <button className="p-4 text-caption text-text-dim" onClick={() => setRetry(value => value + 1)}>{t.bookmarks.historyFailed} · {t.bookmarks.retry}</button>;
   if (!conversation) return <div className="px-2.5 py-2 text-caption text-text-dim">{t.terminal.lens.resolving}</div>;
-  return <Suspense fallback={null}><ConversationDetail key={conversation.id} conversation={conversation} readOnly={readOnly} blocked={blocked} /></Suspense>;
+  return <Suspense fallback={null}><ConversationDetail key={conversation.id} conversation={conversation} readOnly={readOnly} blocked={blocked} terminalId={terminalId} /></Suspense>;
 }
