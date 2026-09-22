@@ -7,7 +7,7 @@ import { t } from "@roost/i18n";
 import { writeClipboard } from "../../shared/clipboard";
 import { FileIcon } from "./FileGlyphs";
 import { NewEntryRow } from "./NewEntryRow";
-import type { FolderActions, PendingCreate } from "./types";
+import type { FolderActions, NewKind, PendingCreate } from "./types";
 import { createCoalescedLoad } from "./coalescedLoad";
 import { Menu, MenuItem, MenuSeparator } from "./Menu";
 
@@ -316,6 +316,7 @@ export function TreeNode({
       )}
       {menu && (
         <NodeMenu
+          onNavigate={onNavigate}
           x={menu.x}
           y={menu.y}
           cwd={cwd}
@@ -347,6 +348,7 @@ function NodeMenu({
   node,
   sessionId,
   folder,
+  onNavigate,
   onRename,
   onDelete,
   onClose,
@@ -357,11 +359,30 @@ function NodeMenu({
   node: FileNode;
   sessionId: string;
   folder: FolderActions;
+  /** 列表模式下才有。有它就说明这棵树是平的，没有子列表可以就地长出新建行。 */
+  onNavigate?: (path: string) => void;
   onRename: () => void;
   onDelete: () => void;
   onClose: () => void;
 }) {
   const isDir = node.kind === "dir";
+
+  /*
+    「在这个文件夹里新建」。
+
+    **列表模式下不能只设 pending 就完事**——那是这个菜单三个新建项以前什么都不做的原因：
+    新建行只有两个落脚点，顶层那个要求 `pending.dir === 当前浏览目录`（右键的是子目录，
+    不匹配），节点里那个在列表模式下被 `!onNavigate` 整段关掉了（平列表没有子列表）。
+    于是 pending 设上了，却没有任何地方渲染得出来，看起来就是「点了没反应」。
+
+    所以列表模式先进到那个目录里去：directory 变成它，新建行就落在顶层，和「在当前目录
+    新建」完全是同一条路。树模式下 onNavigate 是 undefined，照旧就地展开。
+  */
+  const createIn = (kind: NewKind) => {
+    onClose();
+    onNavigate?.(node.path);
+    folder.create(node.path, kind);
+  };
 
   async function copy(text: string) {
     onClose();
@@ -430,9 +451,9 @@ function NodeMenu({
       <MenuSeparator />
       {isDir && (
         <>
-          <MenuItem label={t.files.menu.newFile} onClick={() => { onClose(); folder.create(node.path, "file"); }} />
-          <MenuItem label={t.files.menu.newFolder} onClick={() => { onClose(); folder.create(node.path, "dir"); }} />
-          <MenuItem label={t.files.menu.newMolecule} onClick={() => { onClose(); folder.create(node.path, "mol"); }} />
+          <MenuItem label={t.files.menu.newFile} onClick={() => createIn("file")} />
+          <MenuItem label={t.files.menu.newFolder} onClick={() => createIn("dir")} />
+          <MenuItem label={t.files.menu.newMolecule} onClick={() => createIn("mol")} />
         </>
       )}
       <MenuItem label={t.files.menu.rename} onClick={() => { onClose(); onRename(); }} />
