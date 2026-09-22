@@ -230,34 +230,6 @@ export function fetchPeerMessage(messageId: string, signal?: AbortSignal) {
   return request<PeerDetail>(`/api/peer-messages/${encodeURIComponent(messageId)}`, readOptions(signal));
 }
 
-/**
- * 已保存的运行轨迹。
- *
- * **所有行都固定 `runtimeVerified: false`**——即使 `recordedState === "active"`
- * 也只是过去保存的观察，这个接口不问 daemon。**绝不能拿它当在线徽标。**
- */
-export type ConversationRun = {
-  id: string;
-  provenance: "run" | "generation";
-  runId: string | null;
-  webSessionId: string;
-  terminalInstanceId: string;
-  generation: string;
-  cliId: string;
-  nativeSessionId: string;
-  startedAt: number;
-  endedAt: number | null;
-  recordedState: "active" | "ended" | "unknown";
-  runtimeVerified: false;
-  reason: string | null;
-};
-
-export function fetchRuns(conversationId: string, cursor?: string | null, limit = 50) {
-  const params = new URLSearchParams({ limit: String(limit) });
-  if (cursor) params.set("cursor", cursor);
-  return request<{ items: ConversationRun[]; nextCursor: string | null }>(
-    `/api/conversations/${encodeURIComponent(conversationId)}/runs?${params}`);
-}
 
 /** 当前已核验的位置。只在用户点「定位」时调用。 */
 export type VerifiedRuntime = {

@@ -207,12 +207,6 @@ export const misc = {
       locateTrashed: "对话在回收站里，恢复后才能定位",
       locateChanged: "运行位置已变化，请重新定位",
       /** 运行轨迹：全部是过去的观察，不是在线状态。 */
-      runs: "运行记录",
-      runsHint: "这些是已保存的历史观察，不代表现在还在运行。",
-      runsEmpty: "没有已保存的运行记录",
-      runActive: "记录为运行中",
-      runEnded: "已结束",
-      runUnknown: "结束时间未知",
       /** 发信。202 只代表已排队，不代表 CLI 收到了。 */
       send: {
         placeholder: "发消息给这个对话的 CLI…",

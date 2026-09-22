@@ -200,12 +200,6 @@ export const misc = {
       locateTrashed: "This conversation is in the trash; restore it before locating",
       locateChanged: "The run moved; locate again",
       /** 运行轨迹：全部是过去的观察，不是在线状态。 */
-      runs: "Run history",
-      runsHint: "These are saved observations, not proof that anything is running now.",
-      runsEmpty: "No saved runs",
-      runActive: "Recorded as running",
-      runEnded: "Ended",
-      runUnknown: "End time unknown",
       /** 发信。202 只代表已排队，不代表 CLI 收到了。 */
       send: {
         placeholder: "Send a message to this conversation's CLI…",

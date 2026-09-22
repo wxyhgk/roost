@@ -4,8 +4,8 @@ import { renderMarkdown, useCodeHighlight } from "../../shared/markdown";
 import { afterGesture, afterScroll, initialFollowIntent, isViewportScrollKey } from "../../shared/followBottom";
 import { useTheme } from "../../shared/theme";
 import {
-  connectConversationStream, fetchMessage, fetchMessages, fetchRuns, fetchSnapshot, locateRuntime,
-  type Conversation, type ConversationRun, type SnapshotRun,
+  connectConversationStream, fetchMessage, fetchMessages, fetchSnapshot, locateRuntime,
+  type Conversation, type SnapshotRun,
 } from "../../shared/api/conversations";
 import { ApiError } from "../../shared/api/errors";
 import { IconChevron } from "../../shared/icons";
@@ -332,35 +332,6 @@ function JumpToTerminal({ conversationId, onJump }: { conversationId: string; on
 }
 
 /** 运行轨迹。全部是**已保存的观察**，不是在线状态——措辞上必须说死这一点。 */
-export function ConversationRuns({ conversationId }: { conversationId: string }) {
-  const [items, setItems] = useState<ConversationRun[] | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    void fetchRuns(conversationId).then(page => { if (!cancelled) setItems(page.items); }).catch(() => { if (!cancelled) setItems([]); });
-    return () => { cancelled = true; };
-  }, [conversationId]);
-  const s = t.misc.conversations.detail;
-  if (!items) return null;
-  return (
-    <div className="border-t border-border px-2.5 py-2">
-      <div className="text-caption text-text-dim">{s.runs}</div>
-      <div className="text-caption text-text-dim/70">{s.runsHint}</div>
-      {items.length === 0 && <div className="mt-1 text-caption text-text-dim">{s.runsEmpty}</div>}
-      <ul className="mt-1 flex flex-col gap-0.5">
-        {items.map(item => (
-          <li key={item.id} className="flex items-center gap-2 text-caption text-text-dim">
-            <span className="truncate">{item.cliId}</span>
-            <span>{formatTime(item.startedAt)}</span>
-            {/* recordedState=active 也只是「记录为运行中」，不是在线。 */}
-            <span className="opacity-80">
-              {item.recordedState === "active" ? s.runActive : item.recordedState === "ended" ? s.runEnded : s.runUnknown}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
 
 /*
   AI 的回复按 Markdown 渲染，**用户自己发的那条不渲染**——那是他敲进去的原文，
