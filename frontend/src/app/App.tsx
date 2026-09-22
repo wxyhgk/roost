@@ -1,5 +1,6 @@
 import { DndContext, DragOverlay, MouseSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { resolveDrop } from "../features/terminal/sessionOrder";
+import { NewBuildNotice } from "./NewBuildNotice";
 import { useEffect, useState } from "react";
 import { SessionLogo } from "../shared/ui/SessionLogo";
 import { Shell } from "./Shell";
@@ -71,6 +72,7 @@ export function App() {
       onDragEnd={onDragEnd}
     >
       <Shell />
+      <NewBuildNotice />
       <DragOverlay dropAnimation={null}>
         {drag ? (
           <div className="flex w-60 items-center gap-2.5 rounded-lg border border-text-dim bg-bg-raised px-2.5 py-2 shadow-pop opacity-100 cursor-grabbing">

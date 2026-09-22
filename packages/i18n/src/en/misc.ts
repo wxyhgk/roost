@@ -295,6 +295,11 @@ export const misc = {
     pasteFailed: "Not sent — check the connection",
   },
 
+  newBuild: {
+    message: "A new version was published",
+    action: "Reload",
+    dismiss: "Dismiss",
+  },
   shell: {
     regionLibraryFiles: "Library and files region",
     regionSettings: "Settings",

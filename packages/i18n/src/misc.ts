@@ -333,6 +333,12 @@ export const misc = {
     pasteFailed: "没发出去，检查连接",
   },
 
+  /** 线上换了新版本，而这个页面还是旧的。**不自动刷**——用户可能正在终端里打字。 */
+  newBuild: {
+    message: "已发布新版本",
+    action: "重新载入",
+    dismiss: "忽略",
+  },
   shell: {
     regionLibraryFiles: "资料与文件区域",
     regionSettings: "设置",
