@@ -27,7 +27,23 @@ export function classifyClaudeComposer(lines:string[],cursorY:number,cursorX:num
  if(!match)return 'screen_unknown';
  const border=(s:string)=>/^\s*[─━]{8,}\s*$/.test(s);
  if(!border(lines[cursorY-1]??'')||!border(lines[cursorY+1]??''))return 'screen_unknown';
- if(!/(?:Claude Code|shift\+tab|bypass permissions|accept edits|plan mode|for shortcuts)/i.test(surrounding))return 'screen_unknown';
+ /*
+   页脚：确认这块画面**真的是 Claude Code 的输入区**，而不是别的程序恰好画了一个
+   夹在横线之间的 `❯`（①②两条并不足以排除这种情况）。
+
+   这是一份按版本实测积累的白名单，而它漂了一次：2026-09-22 在 2.1.278 上实测，页脚是
+
+       ⏵⏵ auto mode on · 1 shell · ← 1 agent
+
+   `auto mode` 六个字母，上面一条都不命中，于是画面被判成「认不出」，一个字节都不写。
+   后果不是报错而是**静默不投递**：一条从网页发出的消息在这台机器上排了八分钟，命令
+   连续四十多次拿到拒绝，界面只说「正在提交，等待回执」。GUI→TUI 这条链从来没成功过，
+   卡的就是这一条。
+
+   所以补两样。`auto mode` 是这次实测到的措辞；`⏵⏵` 是那一行的模式指示符本身——
+   措辞会改，这个符号不会，把它一起认上，下次改名不至于又全线静默。
+ */
+ if(!/(?:Claude Code|shift\+tab|bypass permissions|accept edits|plan mode|auto mode|⏵⏵|for shortcuts)/i.test(surrounding))return 'screen_unknown';
  if(cursorX>match[1].length+2)return 'terminal_draft';
  const content=match[2].trim();
  if(!content)return 'empty';
