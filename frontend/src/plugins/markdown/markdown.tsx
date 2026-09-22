@@ -5,6 +5,7 @@ import { resolveDocPath, isExternalHref } from "./markdownPaths";
 import { rawFileUrl } from "../../shared/api/files";
 import { publishNav } from "../../shared/navigate";
 import { renderMarkdown, useCodeHighlight } from "../../shared/markdown";
+import "katex/dist/katex.min.css";
 import { useTheme } from "../../shared/theme";
 import { t } from "@roost/i18n";
 

@@ -1,5 +1,6 @@
 import { useEffect, type RefObject } from "react";
 import MarkdownIt from "markdown-it";
+import { katex } from "@mdit/plugin-katex";
 import { highlightCode } from "./code-highlight";
 
 /**
@@ -16,8 +17,28 @@ import { highlightCode } from "./code-highlight";
  * 一段没闭合的 `<div>` 或一个 `<style>` 足以把整个面板搞乱，而无论是文件预览还是
  * AI 回复，都没有任何理由需要执行内容里的 HTML。
  */
+/*
+  数学公式。四种写法全开，外加 ```math 围栏。
+
+  **`$…$` 那一档原本我打算关掉，量错了一次。** 第一次扫 .md 原文，数到 4 处 shell 变量
+  （`--run "$sender_conversation_id" …`）会被行内数学规则吃掉，于是判定单 `$` 对这个
+  仓库不安全。复查才发现**那 4 处全在代码围栏里**——markdown-it 从不对围栏内容套行内
+  规则，散文里真正会被误吃的是 **0 处**。原始文本的统计不等于渲染时的风险。
+
+  **KaTeX 的 CSS 不在这里 import，在挂载方那边**（`plugins/markdown/markdown.tsx` 和
+  `features/conversations/ConversationDetail.tsx`），和这个仓库其余 CSS 的放法一致：
+  这个文件要能在纯 node 里测，而 node 加载不了 `.css`。
+
+  代价是「新增一个消费者、忘了 import CSS」会出现「公式渲染了但排版是散的」这种半吊子
+  状态。那条配对由 `tests/markdown-math.test.ts` 的最后一条用例守着——它扫源码，
+  谁 import 了 renderMarkdown 就必须一起 import katex 的 CSS。
+
+  `throwOnError: false` —— 写错的公式显示成红色原文，而不是把整篇文档炸掉。
+  这和上面 `html: false` 的理由是同一条：**渲染内容的失败不该毁掉容器**。
+*/
 export function renderMarkdown(content: string, customize?: (md: InstanceType<typeof MarkdownIt>) => void): string {
   const md = new MarkdownIt({ html: false, linkify: true, breaks: false, typographer: false });
+  md.use(katex, { delimiters: "all", mathFence: true, throwOnError: false });
   customize?.(md);
   return md.render(content);
 }
