@@ -391,3 +391,95 @@ test("换了 PTY 又换了 native：绑定不许跟过去", async () => {
     assert.equal(binding?.terminalInstanceId, first, "绑定该原地不动，等人工决定");
   } finally { source.dispose(); runtime.dispose(); store.close(); rmSync(dir, { recursive: true, force: true }); }
 });
+
+/*
+  重放路径上的「跟到活着的那条 PTY 上」。
+
+  **这和实时路径是两份实现**，而 daemon 支持重放时，实时那条是死代码
+  （`if (replaySupported()) void pump(id); else if (connected()) {…}`）。上一轮只修了实时
+  那半边，于是真机上守护进程重启之后绑定照样一动不动——盯了 150 秒，期间 CLI 正常发过
+  Stop 钩子，绑定始终钉在上一代的实例号上。
+
+  钉死它的是两处：`instance` 取的是**绑定自己**记的实例，永远只读那条已经死掉的 PTY 的
+  日志；`stillCurrent()` 里「活 PTY 和 instance 不符就 false」让整个 pump 当场退出。
+*/
+function journal(instance: string, native: string, extra: { event: string; query?: string }[] = []) {
+  const events = [{ sourceSeq: 1, terminalInstanceId: instance,
+    agent: { event: "session_start", sessionId: native } },
+    ...extra.map((e, index) => ({ sourceSeq: index + 2, terminalInstanceId: instance,
+      agent: { sessionId: native, ...e } }))];
+  const high = events.length;
+  return async (after: number) => ({
+    events: events.filter(e => e.sourceSeq > after), cursor: high, highWater: high, more: false, hasGap: false,
+  }) as never;
+}
+
+test("重放路径：守护进程换了一代 PTY，绑定按 native 跟过去", async () => {
+  const f = replayFixture();
+  try {
+    assert.equal(f.bridge.get("s")?.terminalInstanceId, "i");
+    // 守护进程重启：同一条终端，新的 PTY 进程号；里面还是同一段对话（native 仍是 A）。
+    f.setInstance("i2");
+    f.setRead(journal("i2", "A"));
+    await f.source.catchUp("s");
+    assert.equal(f.bridge.get("s")?.terminalInstanceId, "i2", "绑定必须跟到活着的那条 PTY 上");
+    assert.equal(f.bridge.get("s")?.nativeSessionId, "A", "跟过去的是同一段对话，native 不变");
+    assert.notEqual(f.bridge.get("s")?.state, "offline");
+  } finally { f.close(); }
+});
+
+test("重放路径：新 PTY 里是另一段对话，绝不认领", async () => {
+  const f = replayFixture();
+  try {
+    f.setInstance("i2");
+    // 同一条终端上换了一条 PTY，但里面跑的是**别的** native 会话。
+    f.setRead(journal("i2", "B"));
+    await f.source.catchUp("s");
+    assert.equal(f.bridge.get("s")?.terminalInstanceId, "i", "绑定该原地不动，等人工决定");
+    assert.equal(f.bridge.get("s")?.nativeSessionId, "A", "绝不能把另一段对话拼进来");
+    assert.equal(f.source.status("s").lastError, "needs_rebind", "要说得出为什么停下");
+  } finally { f.close(); }
+});
+
+test("重放路径：跟不过去时节流，不把整条日志每 250ms 重读一遍", async () => {
+  const f = replayFixture();
+  try {
+    f.setInstance("i2");
+    let reads = 0;
+    const read = journal("i2", "B");
+    f.setRead(async (after: number) => { reads++; return read(after); });
+    await f.source.catchUp("s");
+    const first = reads;
+    assert.ok(first > 0, "第一次要真的去读");
+    await f.source.catchUp("s");
+    await f.source.catchUp("s");
+    assert.equal(reads, first, "同一条 PTY 上连续失败要退避，否则 pump 每 250ms 拖一遍整条日志");
+  } finally { f.close(); }
+});
+
+test("重放路径：新 PTY 里换了 CLI，不走这条路", async () => {
+  const f = replayFixture();
+  try {
+    f.setInstance("i2");
+    f.setCli("codex");
+    // native 对得上，但那条 PTY 里跑的是另一家 CLI。
+    f.setRead(journal("i2", "A"));
+    await f.source.catchUp("s");
+    assert.equal(f.bridge.get("s")?.terminalInstanceId, "i",
+      "跨 CLI 另有一条更严的路（要求显式标签和连续日志），不能从这里溜进去");
+    assert.equal(f.bridge.get("s")?.cliId, "omp", "更不能给跑着别家 CLI 的 PTY 贴上旧标签");
+  } finally { f.close(); }
+});
+
+test("重放路径：跟过去之后，这一拍就把新 PTY 的事件读完", async () => {
+  const f = replayFixture();
+  try {
+    f.setInstance("i2");
+    f.setRead(journal("i2", "A", [{ event: "prompt_submit", query: "新 PTY 上的第一句" }]));
+    await f.source.catchUp("s");
+    assert.equal(f.bridge.get("s")?.terminalInstanceId, "i2");
+    assert.equal(f.bridge.source("s").cursor, 2,
+      "跟过去之后必须接着往下读——漏了这一步，绑定挪了但内容要等下一拍，界面会空一下");
+    assert.equal(f.bridge.get("s")?.state, "running", "新 PTY 上那条事件要真的被投影");
+  } finally { f.close(); }
+});

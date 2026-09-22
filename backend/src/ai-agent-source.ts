@@ -44,6 +44,15 @@ export function followsToLivePty(old: Binding, live: TerminalSession | undefined
 export function createAiAgentSource(store: WorkspaceStore, runtime: TerminalService, bridge: AiSessionBridge,
   onRebound: (id: string) => void = () => {}) {
   const subscriptions = new Map<string, () => void>();
+  /*
+    「跟到活着的那条 PTY 上」失败后的节流。
+
+    跟不过去（新 PTY 里是**另一段**对话）时，判据要读一遍那条 PTY 的整条日志，而 pump
+    每 250ms 就会被叫一次——不节流就是每秒四次整条日志重读，而且会一直读下去。
+    按实例记：换了一条新 PTY 立刻重试，同一条上才等。
+  */
+  const followAttempts = new Map<string, { instance: string; at: number }>();
+  const FOLLOW_RETRY_MS = 3000;
   const confirmed = new Map<string, string>();
   const busy = new Set<string>();
   const pumps = new Map<string, Promise<void>>();
@@ -192,7 +201,7 @@ export function createAiAgentSource(store: WorkspaceStore, runtime: TerminalServ
   async function runPump(id: string) {
     if (disposed || busy.has(id) || !connected() || !replaySupported()) return;
     const initial = bridge.get(id), live = runtime.getSession(id);
-    const instance = initial?.terminalInstanceId ?? live?.instanceId;
+    let instance = initial?.terminalInstanceId ?? live?.instanceId;
     if (!instance || (!initial && !live?.cli)) return;
     busy.add(id);
     let generation = initial?.generation;
@@ -213,6 +222,48 @@ export function createAiAgentSource(store: WorkspaceStore, runtime: TerminalServ
       return true;
     };
     try {
+      /*
+        **绑定钉着的 PTY 已经不是活着的那条了——按 CLI 自己报的身份跟过去。**
+
+        这一段修的是「换一代永久失联」在**重放路径**上的那一半，而重放是 daemon 支持时的
+        默认路径（实时那条在 `replaySupported()` 为真时是死代码）。原来这里两处把它钉死：
+        `instance` 取的是**绑定自己**记的实例，于是永远只读那条已经死掉的 PTY 的日志；
+        而 `stillCurrent()` 里「活 PTY 和 instance 不符就返回 false」会让整个 pump 当场退出。
+        两条合起来：守护进程一重启，绑定再也不可能自己恢复，新 PTY 上的事件一条都读不到。
+
+        实测：2026-09-22 重启守护进程后盯了 150 秒，期间 CLI 正常发过 Stop 钩子，绑定
+        一次都没动过——它钉在上一代的实例号上，状态 offline。
+
+        判据仍然是**CLI 自己报的 native 会话 id**，不是进程号：读活着那条 PTY 自己的日志，
+        只有它报出来的身份和绑定记的对得上才跟过去。对不上说明那里跑的是**另一段**对话，
+        认领它等于把两段对话拼成一段——照旧停下来等人工换绑。这和 `/rebind` 端点、和
+        `followsToLivePty` 是同一条纪律：身份自始至终由 CLI 确认，我们从不猜。
+      */
+      if (initial && live?.cli && live.instanceId !== instance && live.cli === initial.cliId) {
+        const attempted = followAttempts.get(id);
+        if (attempted && attempted.instance === live.instanceId && Date.now() - attempted.at < FOLLOW_RETRY_MS) return;
+        followAttempts.set(id, { instance: live.instanceId, at: Date.now() });
+        let candidate;
+        try {
+          candidate = await readIdentityCandidate(runtime, id, { terminalInstanceId: live.instanceId, cliId: live.cli });
+        } catch (error) {
+          block(error instanceof AiIdentityError ? error.code : "source_unavailable");
+          return;
+        }
+        if (candidate.nativeSessionId !== initial.nativeSessionId) { block("needs_rebind", candidate.nativeSessionId); return; }
+        // 读日志期间别处可能已经改过绑定或换过 PTY。落笔前整份重新核对。
+        const current = bridge.get(id), now = runtime.getSession(id);
+        if (disposed || !connected() || !store.getSessionRecord(id) || !current
+            || current.generation !== initial.generation || current.revision !== initial.revision
+            || now?.instanceId !== live.instanceId || now.cli !== live.cli) return;
+        const next = adopt(id, current, live.instanceId, candidate.nativeSessionId, candidate.boundarySeq, candidate.transcriptPath);
+        if (!next) { block("binding_conflict", candidate.nativeSessionId); return; }
+        followAttempts.delete(id);
+        instance = live.instanceId;
+        generation = next.generation;
+        initialCli = next.cliId;
+        expectedCursor = bridge.source(id).cursor;
+      }
       if (initial && live?.instanceId === instance && live.cli && live.cli !== initial.cliId) {
         // Cross-CLI adoption needs an explicit owner label, durable old history,
         // and an uninterrupted journal. Never infer it from a reused native ID.
@@ -351,7 +402,7 @@ export function createAiAgentSource(store: WorkspaceStore, runtime: TerminalServ
     if (disposed) return;
     const ids = new Set(store.loadWorkspace().sessions.map(session => session.id));
     for (const [id, stop] of subscriptions) {
-      if (!ids.has(id)) { stop(); subscriptions.delete(id); confirmed.delete(id); health.delete(id); pendingIdentity.delete(id); }
+      if (!ids.has(id)) { stop(); subscriptions.delete(id); confirmed.delete(id); health.delete(id); pendingIdentity.delete(id); followAttempts.delete(id); }
     }
     for (const id of ids) {
       if (!subscriptions.has(id)) subscriptions.set(id, runtime.subscribe(id, event => guarded(() => {
