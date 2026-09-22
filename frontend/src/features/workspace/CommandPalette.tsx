@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { type Item, type WalkFile, matchFile, matchItem, walkFiles } from "./commandSearch";
 import { useWorkspace } from "../../shared/store";
-import { useLibraryList } from "../library/hooks";
+import { useLibraryList } from "../library/public";
 import { publishNav } from "../../shared/navigate";
 import { getTerminalHandle } from "../terminal/public";
 import { sessionTitle } from "../../shared/sessionTitle";

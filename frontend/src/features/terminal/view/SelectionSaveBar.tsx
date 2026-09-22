@@ -1,8 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPath, readFilePreview, writeFile } from "../../../shared/api";
-import type { Draft } from "../../library/client";
-import { library } from "../../library/runtime";
-import { message } from "../../library/api";
+import { library, message, type Draft } from "../../library/public";
 import { useWorkspace } from "../../../shared/store";
 import { getTerminalHandle, sendToSession, subscribeSelection } from "../public";
 import { planTextInsertion } from "@roost/cli-adapters";

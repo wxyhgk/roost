@@ -393,6 +393,7 @@ if (existsSync(frontendSrc)) {
 for (const anchor of [
   'frontend/src/features/terminal/public.ts',
   'frontend/src/features/session-status/public.ts',
+  'frontend/src/features/library/public.ts',
   /*
     这两批原来只钉了 6+2 个里的 2 个，因为锚点表是手抄的第三份。现在直接从规则用的那份
     生成——规则和锚点从此不可能对不上。
