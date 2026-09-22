@@ -21,7 +21,18 @@ function sources(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
     const path = join(dir, entry);
     if (statSync(path).isDirectory()) sources(path, out);
-    else if (/\.tsx?$/.test(entry)) out.push(normalize(path));
+    /*
+      **`.js` 一类也要算节点**，否则一个 `.js` 模块在图上是个洞：经过它的环全部隐形。
+
+      下面 `resolveSpecifier` 已经做了 `.js → .ts` 互换，但那只解决「说明符写成 .js、文件
+      其实是 .ts」；真的存在一个 `.js` 文件时，它压根不在 `files` 集合里，`candidate` 一个
+      都匹配不上，整条边被当成解析不到丢掉。
+
+      同一个洞在 scripts/check-boundaries.mjs 的可达性图上也有（那边节点集原来也是
+      `/\.tsx?$/`），已经一起补了——实测过：`state.ts → reactShim.js → react` 在两边都
+      曾经静默通过。`frontend/src` 今天零个 `.js` 文件，所以这是先把门关上。
+    */
+    else if (/\.(?:[cm]?jsx?|tsx?)$/.test(entry)) out.push(normalize(path));
   }
   return out;
 }

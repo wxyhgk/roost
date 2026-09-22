@@ -32,7 +32,55 @@ const allowed = {
   'packages/terminal-runtime': ['@roost/cli-adapters', '@roost/terminal-protocol', 'node-pty', '@xterm/headless', '@xterm/addon-serialize', '@xterm/addon-unicode11'],
   'packages/workspace-store': ['@roost/cli-adapters', '@roost/ai-session-bridge', '@roost/terminal-protocol'],
 };
+/*
+  **哪些工作区的代码会进浏览器。** 原来这里是手工枚举的四项（frontend / stable-workbench /
+  terminal-protocol / cli-adapters），而它和上面 `allowed.frontend` 那张「前端能引哪些包」
+  的名单**没有任何联动**。
+
+  后果实测过：`packages/auth-challenge` 引 `node:crypto` 检查器一声不吭，而同一行放进
+  `terminal-protocol` 当场红。偏偏 auth-challenge 自己的注释写着「它同时跑在 Node 和
+  浏览器里，而浏览器那边连 WebCrypto 都没有」——规则想守的正是它，却没守到。
+
+  改成推导：前端能引的每一个 `@roost/*` **主入口**，按定义都会被打进浏览器包，所以都受这条
+  约束。以后往 `allowed.frontend` 加一项，这里自动跟上。
+
+  **只认主入口，带子路径的不算**——这正是上面那张名单第一段注释在区分的东西：
+  `@roost/workspace-store/types` 和 `@roost/server-monitor/types` 是纯类型子入口，编译期
+  就擦掉了，而它们的包主入口 `import node:sqlite`、`node:child_process`，永远不该进浏览器。
+  把子路径剥掉当成整包会一次报出 47 条误判（我照着试过）。
+*/
+const BROWSER_OWNERS = new Set(['frontend', 'stable-workbench', ...allowed.frontend
+  .filter(spec => /^@roost\/[^/]+$/.test(spec))
+  .map(spec => 'packages/' + spec.slice('@roost/'.length))]);
+
 const errors = [];
+
+/*
+  **两份写死的路径集，各自原来在文件里出现两遍。**
+
+  `f30ffc3` 的教训是「规则依赖一个写死的路径，文件一搬规则就静默消失」，当时的对策是文件
+  末尾那张锚点表。但只钉了 6 个路径里的 1 个——因为锚点表是**手抄**的第三份。三份手抄
+  的东西必然漂移，这里改成一份：规则用它、锚点表也用它，想漏都漏不掉。
+
+  同一批文件在下面出现两次是有原因的：一次是逐边检查（直接 import react），一次是可达性
+  检查（经由中转到达 react）。两者必须看同一批文件，否则就是一个只挡正面的门。
+*/
+/** 状态内核：必须能脱离 React 跑。 */
+const STATE_CORE_FILES = [
+  'features/library/api.ts',
+  'features/library/client.ts',
+  'features/library/query.ts',
+  'shared/store/observable.ts',
+  'shared/store/state.ts',
+  'features/terminal/session/sessionController.ts',
+];
+/** 引擎：轻量终端入口不许把它们拉进来。 */
+const TERMINAL_ENGINE_FILES = [
+  'features/terminal/engine/xtermEngine.ts',
+  'features/terminal/useTerminal.ts',
+];
+/** `features/x/y.ts` → 去掉扩展名，用来和解析出来的 `to` 比。 */
+const bare = file => file.replace(/\.tsx?$/, '');
 
 /*
   引用指向的东西还在不在。
@@ -137,10 +185,27 @@ for (const owner of owners) {
           */
           // embeds/ 必须在这里面。少了它，`shared/ → embeds/ → features/` 就是一条洗白
           // 通道：直连被拦，中转一下就过。实测过，两行都补上之后仍然全绿。
-          const FEATURE = /^(features|app|plugins|embeds)\//;
+          /*
+            `(?:\/|$)` 那半不能省——**这是同一个错第二次犯**。上一次记在 featureOf 头上
+            （`import x from "../session-status"` 解析成目录入口时没有尾斜杠），当时修了
+            featureOf 和 pluginOf，漏了这条。
+
+            实测：`import "../../plugins"` 解析出的 `to` 就是 `plugins`，没有斜杠，原来的
+            正则匹配不上，下面两条**整条跳过**。写成 `../../plugins/index` 才会红。今天
+            `plugins/index.ts` 存在，所以这条洗白通道当时是通的。
+          */
+          const FEATURE = /^(features|app|plugins|embeds)(?:\/|$)/;
           if (from.startsWith('shared/') && FEATURE.test(to)) reason = 'a shared layer must not depend on a feature';
           if (['shared/store/state.ts', 'shared/store/observable.ts'].includes(from) && FEATURE.test(to)) reason = 'workspace state must not depend on features';
-          if (from === 'features/terminal/public.ts' && /(?:xtermEngine|useTerminal|index)$/.test(to)) reason = 'light terminal entry must not load the engine';
+          /*
+            原来写的是 `/(?:xtermEngine|useTerminal|index)$/`——**只做结尾匹配、不限定目录**，
+            于是 `public.ts` 引任何一个 `index` 结尾的模块都会被误判。实测：让它引
+            `shared/store/index` 就报「light terminal entry must not load the engine」。
+            今天没炸只是因为 public.ts 恰好只引自己目录下的东西。
+
+            `index` 那一支还是死的：`features/terminal/` 下没有 index 文件。一并去掉。
+          */
+          if (from === 'features/terminal/public.ts' && TERMINAL_ENGINE_FILES.some(f => to === f || to === bare(f))) reason = 'light terminal entry must not load the engine';
           /*
             **特性不许反过来依赖 app/。** `app/` 是组装层：它认识所有特性并把它们拼成界面，
             所以特性一旦回头 import 它，方向就反了——那个模块实际上属于组装层而不是特性。
@@ -207,8 +272,9 @@ for (const owner of owners) {
         }
       } else {
         const node = spec.startsWith('node:') || builtinModules.includes(spec);
-        if (owner === 'frontend' && /(?:features\/library\/(?:client|query|api)|shared\/store\/(?:state|observable)|features\/terminal\/session\/sessionController)\.ts$/.test(path) && /^react(?:-dom)?(?:\/|$)/.test(spec)) reason = 'state core must remain independent of React';
-        if (node && (owner === 'frontend' || owner === 'stable-workbench' || owner.endsWith('terminal-protocol') || owner.endsWith('cli-adapters'))) reason = 'Node dependency in browser code';
+        const inFrontend = owner === 'frontend' && relative(resolve(root, 'frontend/src'), path).split(sep).join('/');
+        if (inFrontend && STATE_CORE_FILES.includes(inFrontend) && /^react(?:-dom)?(?:\/|$)/.test(spec)) reason = 'state core must remain independent of React';
+        if (node && BROWSER_OWNERS.has(owner)) reason = 'Node dependency in browser code';
         else if (spec.startsWith('@roost/') && !allowed[owner].includes(spec)) reason = 'private or disallowed package entry';
         else if (owner.startsWith('packages/') && !node && !allowed[owner].includes(spec)) reason = 'undeclared package dependency';
       }
@@ -233,7 +299,17 @@ for (const owner of owners) {
 const frontendSrc = resolve(root, 'frontend/src');
 if (existsSync(frontendSrc)) {
   const localEdges = new Map(), externalEdges = new Map();
-  for (const path of allFiles(frontendSrc, /\.tsx?$/)) {
+  /*
+    **节点集必须含 `.js` 一类，否则整层可达性检查能被一个文件绕过去。**
+
+    实测：`shared/store/state.ts` → `shared/reactShim.ts` → react 会被抓住并打出完整路径；
+    把中转改名成 `reactShim.js`，同样的三段路径 **exit 0，一声不吭**——它既不是图里的节点，
+    也不会被解析成任何一条边的终点。逐边规则那侧也拦不住：那条只对状态内核那几个文件生效，
+    一个叫 reactShim.js 的普通文件引 react 完全合法。
+
+    `frontend/src` 今天零个 `.js` 文件，所以这个洞没被踩到；但也没有任何东西阻止它被引进来。
+  */
+  for (const path of allFiles(frontendSrc, /\.(?:[cm]?jsx?|tsx?)$/)) {
     const key = relative(frontendSrc, path).split(sep).join('/');
     const local = [], external = [];
     for (const [, spec] of readFileSync(path, 'utf8').matchAll(/(?:\bfrom\s*|(?<![\w"'-])import\s*(?:\(\s*)?|\brequire\s*\(\s*)["'`]([^"'`]+)["'`]/g)) {
@@ -241,7 +317,7 @@ if (existsSync(frontendSrc)) {
       const target = resolve(dirname(path), spec);
       const swapped = target.replace(/\.(js|jsx|mjs|cjs)$/, m => ({ '.js': '.ts', '.jsx': '.tsx', '.mjs': '.mts', '.cjs': '.cts' })[m]);
       for (const base of [target, swapped]) {
-        for (const ext of ['.ts', '.tsx', '/index.ts', '/index.tsx']) {
+        for (const ext of ['', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '/index.ts', '/index.tsx', '/index.js']) {
           if (existsSync(base + ext)) { local.push(relative(frontendSrc, base + ext).split(sep).join('/')); }
         }
       }
@@ -262,14 +338,13 @@ if (existsSync(frontendSrc)) {
     }
     return null;
   };
-  const STATE_CORE = /^(?:features\/library\/(?:client|query|api)|shared\/store\/(?:state|observable)|features\/terminal\/session\/sessionController)\.ts$/;
   for (const key of localEdges.keys()) {
-    if (STATE_CORE.test(key)) {
+    if (STATE_CORE_FILES.includes(key)) {
       const trail = findPath(key, spec => /^react(?:-dom)?(?:\/|$)/.test(spec));
       if (trail) errors.push(`frontend/src/${key}: state core must remain independent of React (经由 ${trail.join(' -> ')})`);
     }
     if (key === 'features/terminal/public.ts') {
-      const trail = findPath(key, () => false, next => /features\/terminal\/(?:engine\/xtermEngine|useTerminal|index)\.tsx?$/.test(next));
+      const trail = findPath(key, () => false, next => TERMINAL_ENGINE_FILES.includes(next));
       if (trail) errors.push(`frontend/src/${key}: light terminal entry must not load the engine (经由 ${trail.join(' -> ')})`);
     }
   }
@@ -285,17 +360,13 @@ if (existsSync(frontendSrc)) {
 */
 for (const anchor of [
   'frontend/src/features/terminal/public.ts',
-  'frontend/src/features/terminal/engine/xtermEngine.ts',
   'frontend/src/features/session-status/public.ts',
   /*
-    这一条是补回来的。它原来写的是 `features/terminal/sessionController.ts`，而文件在
-    9dce0a4（按真实引用重分目录）那次搬进了 `session/`，上面那两条正则没跟着改——于是
-    「状态内核不许引 React」**静默失效**了，从那时起一直没人拦。
-
-    上面那段注释预言的正是这件事，只是当时没把这个文件列进锚点。现在补上：它再搬家，
-    这里会当场红，而不是又一次悄悄地什么都不检查。
+    这两批原来只钉了 6+2 个里的 2 个，因为锚点表是手抄的第三份。现在直接从规则用的那份
+    生成——规则和锚点从此不可能对不上。
   */
-  'frontend/src/features/terminal/session/sessionController.ts',
+  ...STATE_CORE_FILES.map(f => `frontend/src/${f}`),
+  ...TERMINAL_ENGINE_FILES.map(f => `frontend/src/${f}`),
 ]) {
   if (!existsSync(resolve(root, anchor))) errors.push(`${anchor}: 规则锚点不存在——改名或删除时请同步更新 scripts/check-boundaries.mjs`);
 }
