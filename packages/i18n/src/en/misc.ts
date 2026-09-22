@@ -259,6 +259,13 @@ export const misc = {
         },
         queuedOther: (reason: string) => `Cannot deliver yet (${reason})`,
         dispatching: "Submitting, waiting for the receipt",
+        tui: {
+          label: "Terminal input",
+          empty: "empty",
+          unknown: "Cannot read the terminal screen",
+          ready: "ready to write",
+          typing: "You are typing in the terminal",
+        },
         dispatchingBlocked: (reason: string) => `Submitted, ${reason}`,
         accepted: "The CLI received it",
         acceptedHint: "It reached the CLI's native input. That does not mean the task is done.",

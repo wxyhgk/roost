@@ -5,6 +5,8 @@ import type { Outgoing } from "./useOutgoing";
 // 不存在），重写一份只会漏掉这个已经踩过的坑。
 import { t } from "@roost/i18n";
 import { queuedHint, queuedText } from "./deliveryReason";
+import { useTuiComposer } from "./useTuiComposer";
+import { mirrorBlock, mirrorContent } from "./tuiMirror";
 
 /**
  * 发信区。
@@ -16,12 +18,42 @@ import { queuedHint, queuedText } from "./deliveryReason";
  * 3. **accepted 之后不再显示在待发区**，正文会从原生历史那条路出现——留着就是重复。
  */
 /** 纯呈现：状态、提交、取消都由 useOutgoing 提供，待发列表由对话流负责渲染。 */
-export function ConversationComposer({ outgoing }: { outgoing: Outgoing }) {
+/**
+ * TUI 输入框的镜像，就贴在 GUI 输入框上面。
+ *
+ * 这一条是「GUI 和 TUI 是同一个输入框的两个视图」这件事在界面上的落点：你在这里看到
+ * 对面写着什么、键盘此刻归谁，发送才不是往看不见的地方投递。
+ *
+ * **三态，不能合并**：认不出画面（我们瞎了）、空着（对面确实是空的）、有草稿（那段字
+ * 可能是你自己在终端里打的，也可能是我们上一条放进去还没按回车的）。
+ */
+function TuiMirror({ terminalId }: { terminalId: string }) {
+  const control = useTuiComposer(terminalId);
+  const s = t.misc.conversations.detail.send;
+  if (!control) return null;
+  const blocked = mirrorBlock(control);
+  const content = mirrorContent(control);
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-caption text-text-dim">
+      <span className="shrink-0">{s.tui.label}</span>
+      {content.kind === "unknown" ? <span className="italic">{s.tui.unknown}</span>
+        : content.kind === "empty" ? <span className="italic">{s.tui.empty}</span>
+        : <span className="min-w-0 truncate font-mono text-text">{content.text}</span>}
+      <span className="shrink-0">·</span>
+      <span className={blocked ? "shrink-0" : "shrink-0 text-accent"}>
+        {blocked ? queuedText(blocked) : s.tui.ready}
+      </span>
+    </div>
+  );
+}
+
+export function ConversationComposer({ outgoing, terminalId }: { outgoing: Outgoing; terminalId?: string }) {
   const { text, setText, busy, error, submit } = outgoing;
   const overLimit = textBytes(text) > MAX_PEER_TEXT_BYTES;
 
   return (
     <div className="flex shrink-0 flex-col gap-1.5 border-t border-border px-2.5 py-2">
+      {terminalId && <TuiMirror terminalId={terminalId} />}
       {error && <div role="alert" className="text-caption text-danger">{error}</div>}
       <div className="flex items-end gap-1.5">
         <textarea

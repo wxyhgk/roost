@@ -57,3 +57,31 @@ test('2.1.278 的 auto mode 页脚要认得出来', () => {
   // 没有任何 Claude 迹象的画面照样不认——这条白名单的本职。
   assert.equal(classifyClaudeComposer([border, '❯ ', border, '  1 shell · 2 files'], 1, 2), 'screen_unknown');
 });
+
+/*
+  画面没稳下来时 composer 必须是 null。
+
+  上层（`ai-command-owner.ts` 的 `control()`）直接把它报给界面当 TUI 输入框的镜像，
+  **靠的就是这条不变量**：没有它，界面会在解析还没跑完的半张屏上读出一段残缺的字，
+  显示成「终端里现在写着 …」。变异测试发现上层那一道重复判断是死代码，判断因此挪到了
+  这里——它本来就该在这儿。
+*/
+test('画面没稳下来时不给 composer', async () => {
+ const screen = createClaudeScreen(80, 24);
+ try {
+  // 先让一张**带草稿**的画面稳下来。缓冲区里因此确实有内容可读——
+  // 不这么铺，「没稳」那一刻缓冲区本来就是空的，两种实现读出来一样，用例白写（变异测试发现）。
+  screen.write('\x1b[2J\x1b[H' + border + '\r\n❯ 已经在里面的字\r\n' + border + '\r\nshift+tab to cycle\x1b[2;3H', 1);
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal(screen.inspect().composer, '已经在里面的字');
+
+  // 再写一段还没解析完的数据：此刻缓冲区仍然holds着上面那段字。
+  screen.write('接着来的', 2);
+  const pending = screen.inspect();
+  assert.equal(pending.settled, false);
+  assert.equal(pending.composer, null, '解析没跑完就不许报——那一刻屏上的字是旧的，报上去就是撒谎');
+
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal(screen.inspect().settled, true, '稳下来之后才继续报');
+ } finally { screen.dispose(); }
+});

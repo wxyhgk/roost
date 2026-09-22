@@ -4,8 +4,8 @@ import type {TerminalService} from '@roost/terminal-runtime';
 import type {AiCommandInput,AiControl} from '@roost/terminal-protocol';
 import {readJson,HttpInputError,sendError,type ApiErrorCode} from './http';
 export async function commandControl(runtime:TerminalService,id:string):Promise<AiControl> {
- try{return await runtime.commandControl?.(id)??{supported:false,reason:'unsupported_daemon',inputEpoch:0,queue:[]};}
- catch{return {supported:false,reason:'daemon_unavailable',inputEpoch:0,queue:[]};}
+ try{return await runtime.commandControl?.(id)??{supported:false,reason:'unsupported_daemon',inputEpoch:0,queue:[],composer:null};}
+ catch{return {supported:false,reason:'daemon_unavailable',inputEpoch:0,queue:[],composer:null};}
 }
 export function createAiCommandHandler(store:WorkspaceStore,runtime:TerminalService) {
  return async(req:IncomingMessage,res:ServerResponse,url:URL)=>{

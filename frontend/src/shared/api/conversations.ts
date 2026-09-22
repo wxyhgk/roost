@@ -327,3 +327,20 @@ export function rebindAiSession(terminalId: string, body: {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
   });
 }
+
+/**
+ * TUI 输入框此刻的样子：里面写着什么、键盘现在归不归我们。
+ *
+ * `composer` 为 null 是**「不知道」**（画面认不出、或这个 CLI 没有可读的输入框），
+ * 不是「空的」——界面必须把这两件事分开说，否则会把「我们瞎了」显示成「对面是空的」。
+ */
+export type AiControl = {
+  supported: boolean;
+  reason: string | null;
+  inputEpoch: number;
+  composer: string | null;
+};
+
+export function fetchAiControl(terminalId: string) {
+  return request<AiControl>(`/api/ai-sessions/${encodeURIComponent(terminalId)}/control`);
+}

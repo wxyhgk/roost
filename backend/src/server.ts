@@ -233,6 +233,21 @@ export function createBackendServer({ store, runtime, workspaceRoot, access, aut
       }
       return;
     }
+    /*
+      TUI 输入框此刻的样子，单独一条轻端点。
+
+      GUI 的输入框和 TUI 的输入框是同一个东西的两个视图，所以界面要能持续看见对面写着
+      什么、键盘此刻归谁。这份数据本来就在 `/api/ai-sessions/:id` 的 `control` 里，但那条
+      端点同时返回整个读窗口，**拿它当镜像去轮询等于每秒重读一遍历史**。
+
+      也没有挂进 `/api/session-status` 那条广播：它是同步构造、一次覆盖所有会话的，而
+      `commandControl` 要走一次 IPC——挂上去就是「每个会话每帧一次 IPC」。而镜像只对你
+      正在看的那一条有意义。
+    */
+    const aiControl = pathname.match(/^\/api\/ai-sessions\/([^/]+)\/control$/);
+    if (aiControl && req.method === "GET") {
+      json(res, 200, await commandControl(runtime, decodeURIComponent(aiControl[1]))); return;
+    }
     const aiSession = pathname.match(/^\/api\/ai-sessions\/([^/]+)$/);
     if (aiSession) {
       try {

@@ -213,7 +213,7 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
       </div>
 
       {/* 没有在跑的终端时不给输入框：投递不出去，摆一个能打字的框只会让人白写一段。 */}
-      {jumpTarget && !readOnly ? <ConversationComposer outgoing={outgoing} />
+      {jumpTarget && !readOnly ? <ConversationComposer outgoing={outgoing} terminalId={terminalId} />
         : <SendBlocked blocked={blocked} readOnly={readOnly} conversation={conversation} terminalId={terminalId} />}
     </div>
   );

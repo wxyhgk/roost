@@ -124,7 +124,11 @@ const PASTE_ECHO_MS=2000;
   const waiting=s&&stuck.some(c=>c.reason==='awaiting_user_submit'&&composerHoldsPrompt(s.screen.inspect().composer,c.text));
   const unresolved=stuck.length>0;
   const transport=!!s&&s.cli===cli&&(cli==='claude'?!!s.version:cli==='qwen'&&s.version==='0.23.1'&&s.protocolVersion===2&&s.lifecycleSupported&&!!s.inputPath&&!!binding(id)?.transcriptPath);
-  return {supported:sendingEnabled&&configured(cli)&&transport,reason:waiting?'awaiting_user_submit':unresolved?'acceptance_uncertain':why,inputEpoch:s?.epoch??0,queue:store.aiCommands.active(id)};
+  // 画面没稳下来时 `inspect()` 自己就把 composer 置成 null（见 claude-screen.ts，那条
+  // 不变量在那边有用例钉着）——**「不知道」不能当成「空的」往上报**，这里不必再判一次。
+  const view=s?.screen.inspect();
+  return {supported:sendingEnabled&&configured(cli)&&transport,reason:waiting?'awaiting_user_submit':unresolved?'acceptance_uncertain':why,inputEpoch:s?.epoch??0,queue:store.aiCommands.active(id),
+   composer:view?.composer??null};
  }
  /**
   * 粘贴之后那一下回车。**只在屏幕上看见自己那段正文之后才发。**

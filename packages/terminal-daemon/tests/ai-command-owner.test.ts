@@ -294,3 +294,22 @@ test('正文已经不在输入框里时，不再说「按回车」',async t=>{
  await f.display('');   // 输入框空了
  assert.equal(f.owner.control('s').reason,'acceptance_uncertain','不能再声称它在等你按回车');
 });
+
+/*
+  `control()` 要把 TUI 输入框此刻的内容报上去。
+
+  界面那一头拿它当镜像：GUI 的输入框和 TUI 的输入框是同一个东西的两个视图。看不见对面写着
+  什么，「发送」就退化成往一个看不见的地方投递——回执、不确定态那一整套都是为那种投递准备的。
+
+  **null 是「不知道」，不是「空的」**，这两件事在这里就必须分开，合并了界面再也分不回来。
+*/
+test('control 报出输入框内容：空、有草稿、认不出，三件事分开',async t=>{
+ const f=await fixture(t);
+ assert.equal(f.owner.control('s').composer,'','空输入框报空字符串');
+ await f.display('用户在终端里打的字');
+ assert.equal(f.owner.control('s').composer,'用户在终端里打的字','草稿原样报上去');
+ // 画面不是已知的 claude 输入区：认不出就报 null，绝不冒充成空的。
+ f.owner.output('s',{type:'output',instanceId:'i',seq:999,data:'\x1b[2J\x1b[Hsome other program\r\n$ '});
+ await new Promise(r=>setTimeout(r,15));
+ assert.equal(f.owner.control('s').composer,null,'认不出画面时必须是 null');
+});
