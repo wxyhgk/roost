@@ -1,5 +1,5 @@
 import { DndContext, DragOverlay, MouseSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import { arrayMove } from "@dnd-kit/sortable";
+import { resolveDrop } from "../features/terminal/sessionOrder";
 import { useEffect, useState } from "react";
 import { SessionLogo } from "../shared/ui/SessionLogo";
 import { Shell } from "./Shell";
@@ -40,73 +40,21 @@ export function App() {
 
   const onDragEnd = (event: DragEndEvent) => {
     setDrag(null);
-    const { active, over } = event;
-    if (!over) return;
-
-    // 分组自身被拖动：落点仍是 project:<id>（会话的落点），按 active 的前缀改变解释。
-    const activeId = String(active.id);
-    if (activeId.startsWith("projectdrag:")) {
-      const moving = activeId.slice("projectdrag:".length);
-      const overId = String(over.id);
-      if (!overId.startsWith("project:")) return;
-      const target = overId.slice("project:".length);
-      if (target === moving) return;
-      const ids = projects.map((p) => p.id);
-      const from = ids.indexOf(moving);
-      const to = ids.indexOf(target);
-      if (from < 0 || to < 0) return;
-      const next = arrayMove(ids, from, to);
-      const at = next.indexOf(moving);
-      reorderProject(moving, next[at + 1] ?? null);
-      return;
-    }
-
     /*
-      拖的可能是画布上那张卡（id 就是 session.id），也可能是侧栏那一行
-      （`sessionrow:` 前缀——两者会同时在册，id 必须错开）。落点那边没有这个问题：
-      droppable 登记的一律是裸的 session.id。
+      决策全在 `resolveDrop` 里，纯函数、有测试（tests/session-order.test.ts）。
+      这里只负责把它的结果照着调一遍——原来那 70 行长在这个回调里，于是整个 App.tsx
+      没有测试，而它每一种失效都是静默的。
     */
-    const sessionId = activeId.startsWith("sessionrow:") ? activeId.slice("sessionrow:".length) : activeId;
-    if (pinnedSessionIds.includes(sessionId)) return;
-    const overId = String(over.id);
-    const open = allSessions.filter(isOpen).filter((s) => !pinnedSessionIds.includes(s.id));
-    const projectOf = (container: string) =>
-      container === "ungrouped" ? null : container.slice("project:".length);
-    const findContainer = (id: string): string | null => {
-      const s = open.find((x) => x.id === id);
-      if (!s) return null;
-      return s.projectId ? `project:${s.projectId}` : "ungrouped";
-    };
-    const listOf = (container: string) =>
-      open.filter((s) => findContainer(s.id) === container).map((s) => s.id);
-
-    if (overId === "ungrouped" || overId.startsWith("project:")) {
-      // 落到分组空白处：挪到该组队尾
-      const from = findContainer(sessionId);
-      const list = listOf(overId);
-      if (from === overId && list[list.length - 1] === sessionId) return;
-      reorderSession(sessionId, projectOf(overId), null);
-      return;
-    }
-    const toContainer = findContainer(overId);
-    const fromContainer = findContainer(sessionId);
-    if (!toContainer || !fromContainer) return;
-    const toList = listOf(toContainer);
-    const overIndex = toList.indexOf(overId);
-    if (overIndex < 0) return;
-    if (fromContainer === toContainer) {
-      // 同组内排序：放到落点会话的位置
-      const oldIndex = toList.indexOf(sessionId);
-      if (oldIndex < 0 || oldIndex === overIndex) return;
-      const next = arrayMove(toList, oldIndex, overIndex);
-      const at = next.indexOf(sessionId);
-      reorderSession(sessionId, projectOf(toContainer), next[at + 1] ?? null);
-      return;
-    }
-    // 跨组：插到落点会话前面
-    const next = [...toList.slice(0, overIndex), sessionId, ...toList.slice(overIndex)];
-    const at = next.indexOf(sessionId);
-    reorderSession(sessionId, projectOf(toContainer), next[at + 1] ?? null);
+    const decision = resolveDrop({
+      activeId: String(event.active.id),
+      overId: event.over ? String(event.over.id) : null,
+      open: allSessions.filter(isOpen),
+      projectIds: projects.map(p => p.id),
+      pinnedIds: pinnedSessionIds,
+    });
+    if (!decision) return;
+    if (decision.kind === "project") reorderProject(decision.projectId, decision.beforeId);
+    else reorderSession(decision.sessionId, decision.projectId, decision.beforeId);
   };
 
   return (
