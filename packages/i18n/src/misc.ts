@@ -328,6 +328,15 @@ export const misc = {
     saveSnippet: "存片段",
     saveFile: "存文件",
     saved: "已保存",
+    /** 把选中的文本括号粘贴进 CLI 的输入框，用 ``` 包起来，**不替你按回车**。 */
+    toCli: "粘到对话框",
+    pasted: (lines: number) => `已粘 ${lines} 行到对话框`,
+    /** 折叠型（opencode）：内容进去了，但它显示的是占位符，得说一声免得以为没成功。 */
+    pastedCollapsed: (lines: number) => `已粘 ${lines} 行（对话框显示为折叠占位符）`,
+    /** 没在真 PTY 里量过这家 CLI 的多行粘贴，不敢发——理由见 cli-adapters 的 multilinePaste。 */
+    pasteUnmeasured: (cli: string) => `还没在 ${cli} 上验证过多行粘贴，先不发`,
+    pasteNoCli: "没认出正在跑的 CLI，先不发",
+    pasteFailed: "没发出去，检查连接",
   },
 
   shell: {

@@ -163,6 +163,17 @@ export function mountXterm(host: HTMLElement, theme: TermTheme, onFileLink?: (li
     // 是「这次页面加载内最多能翻多深」。真正丢的时候会有提示（见 sessionController 的
     // history-shortened）。
     scrollback: 20000,
+    /*
+      **右键不许改选区。**
+
+      xterm 这一项的默认值是 `Browser.isMac`——在 macOS 上默认为真，右键会把已有选区替换成
+      光标下的那个词。那是很多 mac 应用的惯例，但在这里它和「选中一段话 → 右键粘到对话框」
+      直接冲突：右键那一下先把选区毁了，拿到的永远是一个词。
+
+      代价是失去 mac 上的右键选词。换来的是右键有一个明确得多的用途，见 TermView 的
+      onContextMenu。
+    */
+    rightClickSelectsWord: false,
     theme,
     minimumContrastRatio: theme.minimumContrastRatio ?? 4.5,
     linkHandler: { activate: openWebLink },

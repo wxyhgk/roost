@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { detectCli, listCliAdapters, getCliAdapter, planImageInsertion } from '../src/index.ts';
+import { detectCli, fenceFor, getCliAdapter, listCliAdapters, planImageInsertion, planTextInsertion } from '../src/index.ts';
 
 test('recognizes native executable names, installed launcher scripts and Claude version paths', () => {
   for (const [command, expected] of [
@@ -97,4 +97,87 @@ test('只有实测过的 CLI 才带清空键，而且必须是 Ctrl+U', () => {
   for (const adapter of withKey) assert.equal(adapter.clearInputKey, '\x15', adapter.id);
   // codex 是整屏重绘，用「打字→按键→再打字」那个法子量不出来；qwen/grok 手上没有。
   assert.deepEqual(listCliAdapters().filter(a => !a.clearInputKey).map(a => a.id).sort(), ['codex', 'grok', 'qwen']);
+});
+
+/*
+  把选中的文本括号粘贴进输入框。和贴图同一条路，但多行的代价完全不同——
+  见 `multilinePaste` 那个字段的注释。
+*/
+test('只有在真 PTY 里量过多行粘贴的 CLI 才开这条路', () => {
+  const measured = listCliAdapters().filter(a => a.multilinePaste);
+  assert.deepEqual(measured.map(a => a.id).sort(), ['claude', 'omp', 'opencode'],
+    '加一家之前先量：送三行进去，之后不按任何键，看它有没有自己提交');
+  // codex 本机落在登录流程里进不到输入框；qwen/grok 没装。没量到就不开。
+  assert.deepEqual(listCliAdapters().filter(a => !a.multilinePaste).map(a => a.id).sort(), ['codex', 'grok', 'qwen']);
+});
+
+test('没量过的 CLI 一个字节都不发', () => {
+  for (const cli of ['codex', 'qwen', 'grok']) {
+    assert.deepEqual(planTextInsertion({ cli, text: 'hello' }), { kind: 'unsupported', reason: 'unmeasured-cli' }, cli);
+  }
+  assert.deepEqual(planTextInsertion({ cli: null, text: 'hello' }), { kind: 'unsupported', reason: 'unknown-cli' });
+  assert.deepEqual(planTextInsertion({ cli: 'bash', text: 'hello' }), { kind: 'unsupported', reason: 'unknown-cli' });
+});
+
+test('多行：围栏包起来，行间用 CR，结尾不带回车', () => {
+  const plan = planTextInsertion({ cli: 'claude', text: 'first\nsecond' });
+  if (plan.kind !== 'paste') throw new Error('missing paste');
+  assert.equal(plan.data, '\x1b[200~```\rfirst\rsecond\r```\x1b[201~');
+  assert.equal(plan.lines, 2);
+  assert.equal(plan.presentation, 'literal');
+  assert.ok(!plan.data.includes('\n'), 'xterm 选区给的是 \\n，但真实终端粘贴发的是 \\r');
+  assert.ok(!/\r$/.test(plan.data.replace('\x1b[201~', '')), '结尾不许有回车——按不按发送由人决定');
+});
+
+test('内容里已经有反引号时，围栏要比它更长（CommonMark 的规则）', () => {
+  assert.equal(fenceFor('没有反引号'), '```');
+  assert.equal(fenceFor('行内 `code` 而已'), '```');
+  assert.equal(fenceFor('里面有 ``` 一整段'), '````');
+  assert.equal(fenceFor('````甚至四个'), '`````');
+  const plan = planTextInsertion({ cli: 'claude', text: '```\nnested\n```' });
+  if (plan.kind !== 'paste') throw new Error('missing paste');
+  assert.ok(plan.data.startsWith('\x1b[200~````\r'), '三个反引号的围栏会被内容当场撑破');
+  assert.ok(plan.data.endsWith('\r````\x1b[201~'));
+});
+
+/*
+  这条是**注入防护**，不是卫生问题。
+
+  内容里如果混进一个真正的 ESC，后面跟 `[201~` 就会提前结束这次括号粘贴，剩下的字节被
+  TUI 当**按键**处理——包括回车。终端屏幕上本来不该出现裸 ESC（解析器吃掉了），但这条路
+  的输入来自选区，不值得赌。
+*/
+test('控制字符一律剥掉：伪造的结束标记不能把粘贴劈成两半', () => {
+  const evil = 'safe\x1b[201~\rrm -rf /\x1b[200~tail';
+  const plan = planTextInsertion({ cli: 'claude', text: evil });
+  if (plan.kind !== 'paste') throw new Error('missing paste');
+  const inner = plan.data.slice('\x1b[200~'.length, -'\x1b[201~'.length);
+  assert.ok(!inner.includes('\x1b'), '内层不许再有 ESC');
+  assert.equal(inner.split('\x1b[201~').length, 1, '不许出现第二个结束标记');
+  assert.ok(inner.includes('safe[201~'), 'ESC 剥掉，可见字符留着——不悄悄改用户的内容');
+});
+
+test('全是空白就什么都不做；首尾空行剥掉，中间的留着', () => {
+  assert.deepEqual(planTextInsertion({ cli: 'claude', text: '  \n\n \n' }), { kind: 'unsupported', reason: 'empty' });
+  const plan = planTextInsertion({ cli: 'claude', text: '\n\nA\n\nB\n\n' });
+  if (plan.kind !== 'paste') throw new Error('missing paste');
+  assert.equal(plan.data, '\x1b[200~```\rA\r\rB\r```\x1b[201~', '中间的空行是内容的一部分');
+});
+
+test('中文、全角标点、行尾空格：内容不变，行尾空格剥掉', () => {
+  const plan = planTextInsertion({ cli: 'omp', text: '把端口换成 8080 就能看到。   \n硬刷一下（⌘⇧R）' });
+  if (plan.kind !== 'paste') throw new Error('missing paste');
+  assert.equal(plan.data, '\x1b[200~```\r把端口换成 8080 就能看到。\r硬刷一下（⌘⇧R）\r```\x1b[201~');
+});
+
+test('fenced:false 时不加围栏——留给「就想粘原文」那条路', () => {
+  const plan = planTextInsertion({ cli: 'claude', text: 'a\nb', fenced: false });
+  if (plan.kind !== 'paste') throw new Error('missing paste');
+  assert.equal(plan.data, '\x1b[200~a\rb\x1b[201~');
+});
+
+test('opencode 会折叠成占位符，界面得知道', () => {
+  const plan = planTextInsertion({ cli: 'opencode', text: 'x' });
+  if (plan.kind !== 'paste') throw new Error('missing paste');
+  assert.equal(plan.presentation, 'collapsed');
 });

@@ -4,7 +4,8 @@ import type { Draft } from "../../library/client";
 import { library } from "../../library/runtime";
 import { message } from "../../library/api";
 import { useWorkspace } from "../../../shared/store";
-import { getTerminalHandle, subscribeSelection } from "../public";
+import { getTerminalHandle, sendToSession, subscribeSelection } from "../public";
+import { planTextInsertion } from "@roost/cli-adapters";
 import { t } from "@roost/i18n";
 
 export type SaveBarState = { text: string; x: number; y: number };
@@ -13,7 +14,11 @@ export type SaveBarState = { text: string; x: number; y: number };
 export function useTerminalSelection(sessionId: string) {
   const { sessions } = useWorkspace("sessions");
   const [saveBar, setSaveBar] = useState<SaveBarState | null>(null);
-  const [savedTick, setSavedTick] = useState(false);
+  /*
+    底部那条一闪而过的提示。原来是个 boolean、只会说「已保存」；现在「粘到对话框」也要用它
+    报结果（成功几行 / 为什么没发），所以改成直接存要说的那句话。
+  */
+  const [flash, setFlash] = useState<string | null>(null);
   const saving = useRef(false);
   const pending = useRef<{ text: string; snippet: boolean; draft: Draft } | null>(null);
   const savedTimer = useRef<number | null>(null);
@@ -43,11 +48,38 @@ export function useTerminalSelection(sessionId: string) {
     setSaveBar({ text, x, y: y + 10 });
   }
 
-  function flashSaved() {
+  function say(message: string, ms = 1200) {
     setSaveBar(null);
-    setSavedTick(true);
+    setFlash(message);
     if (savedTimer.current !== null) window.clearTimeout(savedTimer.current);
-    savedTimer.current = window.setTimeout(() => setSavedTick(false), 1200);
+    savedTimer.current = window.setTimeout(() => setFlash(null), ms);
+  }
+  const flashSaved = () => say(t.misc.selection.saved);
+
+  /*
+    把选中的文本括号粘贴进 CLI 的输入框，用 ``` 包起来，**不替用户按回车**。
+
+    这条路**不碰剪贴板**：`navigator.clipboard.readText()` 在非安全源（我们就是 http）
+    根本不可用，而 xterm 的选区在内存里，本来就拿得到。这也正是「复制粘贴很麻烦」的解法。
+
+    能不能发由 `planTextInsertion` 说了算——它只认在真 PTY 里量过多行粘贴的 CLI。
+    为什么这么保守见 cli-adapters 里 `multilinePaste` 的注释：猜错一次就是把人写了一半的
+    话连发好几条。
+  */
+  function pasteToCli(text: string) {
+    const cli = sessions.find(s => s.id === sessionId)?.cli ?? null;
+    const plan = planTextInsertion({ cli, text });
+    if (plan.kind !== "paste") {
+      say(plan.reason === "unmeasured-cli" ? t.misc.selection.pasteUnmeasured(cli ?? "?")
+        : plan.reason === "empty" ? t.misc.selection.pasteFailed
+        : t.misc.selection.pasteNoCli, 2200);
+      return;
+    }
+    if (sendToSession(sessionId, plan.data) !== "sent") { say(t.misc.selection.pasteFailed, 2200); return; }
+    // 折叠型（opencode）显示的是占位符，不说一声容易以为没成功。
+    say(plan.presentation === "collapsed"
+      ? t.misc.selection.pastedCollapsed(plan.lines)
+      : t.misc.selection.pasted(plan.lines));
   }
 
   async function saveNote(text: string, snippet: boolean) {
@@ -91,18 +123,21 @@ export function useTerminalSelection(sessionId: string) {
     }
   }
 
-  return { saveBar, savedTick, readSelection, saveNote, saveToFile };
+  return { saveBar, flash, readSelection, saveNote, saveToFile, pasteToCli };
 }
 
 export function SelectionSaveBar({
   x,
   y,
+  onToCli,
   onNote,
   onSnippet,
   onFile,
 }: {
   x: number;
   y: number;
+  /** 右键是同一个动作的快捷方式；这个按钮是它在触屏和「不知道有右键」时的入口。 */
+  onToCli: () => void;
   onNote: () => void;
   onSnippet: () => void;
   onFile: () => void;
@@ -128,6 +163,14 @@ export function SelectionSaveBar({
     >
       <button
         type="button"
+        className="whitespace-nowrap rounded-md px-2 py-1 text-body text-bar-text hover:bg-bar-text/10"
+        onClick={onToCli}
+      >
+        {t.misc.selection.toCli}
+      </button>
+      <span aria-hidden className="h-4 w-px bg-bar-text/15" />
+      <button
+        type="button"
         className="whitespace-nowrap rounded-md px-2 py-1 text-body text-bar-text/85 hover:bg-bar-text/10"
         onClick={onNote}
       >
@@ -151,10 +194,10 @@ export function SelectionSaveBar({
   );
 }
 
-export function SavedTick() {
+export function SavedTick({ text }: { text: string }) {
   return (
-    <div className="fixed bottom-4 left-1/2 z-30 -translate-x-1/2 rounded-lg border border-bar-text/10 bg-bar px-3 py-1.5 text-body text-bar-text shadow-pop">
-      {t.misc.selection.saved}
+    <div role="status" className="fixed bottom-4 left-1/2 z-30 -translate-x-1/2 rounded-lg border border-bar-text/10 bg-bar px-3 py-1.5 text-body text-bar-text shadow-pop">
+      {text}
     </div>
   );
 }

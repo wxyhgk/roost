@@ -17,6 +17,26 @@ export type CliAdapter = Readonly<{
    * qwen、grok 本机没装）一律留空。
    */
   clearInputKey?: string;
+  /**
+   * 把**多行**文本括号粘贴进输入框，会发生什么。**没量过的一律留空**，和 `clearInputKey`
+   * 同一条纪律，理由也一样：代价不对称。
+   *
+   * 贴图走的是同一条括号粘贴，但那是**单行**。多行的失败模式完全不同——如果一个 TUI 把
+   * 粘贴内容里的 `\r` 当成回车键，一段 N 行的文本就是 N 次提交，把人写了一半的话连发
+   * 好几条，**收不回来**。所以这里不复用 `imageStrategy`，必须单独量。
+   *
+   * - `literal`   —— N 行原样躺进输入框，不提交
+   * - `collapsed` —— 不提交，但折叠成一个占位符（内容留着，用户看不见原文）
+   *
+   * 量法：真 PTY 里起这个 CLI，送 `ESC[200~ 行1 CR 行2 CR 行3 ESC[201~`，**之后不按任何键**，
+   * 用 @xterm/headless 重建屏幕看三行在哪。2026-09-21 实测：
+   *
+   * - claude 2.1.278 → literal（中文、全角括号、``` 围栏都完好）
+   * - omp 18.1.18 → literal（末行尾那个多出来的字符是它的行内补全提示，不是内容被改）
+   * - opencode 1.18.31 → collapsed（显示成 `[Pasted ~3 lines]`）
+   * - codex 0.154.0 → **没量到**：本机它落在登录流程里，进不到输入框。所以留空。
+   */
+  multilinePaste?: "literal" | "collapsed";
 }>;
 
 /** readline 的 kill-line。上面三家实测都是它。 */
@@ -24,10 +44,10 @@ const CTRL_U = "\u0015";
 
 const adapters: readonly CliAdapter[] = Object.freeze([
   { id: "qwen", name: "Qwen Code", imageStrategy: "bracketed-path", verifiedVersions: Object.freeze(["0.21.14"]) },
-  { id: "claude", name: "Claude Code", imageStrategy: "bracketed-path", verifiedVersions: Object.freeze([]), clearInputKey: CTRL_U },
+  { id: "claude", name: "Claude Code", imageStrategy: "bracketed-path", verifiedVersions: Object.freeze([]), clearInputKey: CTRL_U, multilinePaste: "literal" },
   { id: "codex", name: "Codex", imageStrategy: "bracketed-path", verifiedVersions: Object.freeze([]) },
   { id: "grok", name: "Grok", imageStrategy: "bracketed-path", verifiedVersions: Object.freeze([]) },
-  { id: "opencode", name: "OpenCode", imageStrategy: "bracketed-path", verifiedVersions: Object.freeze([]), clearInputKey: CTRL_U },
+  { id: "opencode", name: "OpenCode", imageStrategy: "bracketed-path", verifiedVersions: Object.freeze([]), clearInputKey: CTRL_U, multilinePaste: "collapsed" },
   /*
     omp 一直在 registry 里（它原生就发 OSC 777 那套事件），但**不在这张表里**，于是
     贴图走到 `getCliAdapter` 就是 unknown-cli：图片传上去了，插入那一步直接报「认不出
@@ -37,7 +57,7 @@ const adapters: readonly CliAdapter[] = Object.freeze([
     `ESC[200~` 开头、`ESC[201~` 结尾，路径要以 `/`、`~/`、`file://`、UNC 或盘符开头，
     扩展名匹配 `/\.(?:png|jpe?g|gif|webp)$/i`——和我们发出去的那一串逐条对得上。
   */
-  { id: "omp", name: "Oh My Pi", imageStrategy: "bracketed-path", verifiedVersions: Object.freeze(["18.1.18"]), clearInputKey: CTRL_U },
+  { id: "omp", name: "Oh My Pi", imageStrategy: "bracketed-path", verifiedVersions: Object.freeze(["18.1.18"]), clearInputKey: CTRL_U, multilinePaste: "literal" },
 ].map(adapter => Object.freeze(adapter)) as CliAdapter[]);
 
 export function listCliAdapters(): readonly CliAdapter[] { return adapters; }
@@ -98,6 +118,52 @@ export function planImageInsertion(input: { cli: string | null; path: string; ve
     kind: "paste", cli: adapter.id, strategy: adapter.imageStrategy,
     data: `\x1b[200~${payload}\x1b[201~`,
     verification: verified ? "verified" : "unverified", requiresConfirmation: false,
+  };
+}
+
+/** 围栏至少三个反引号；内容里已经有更长的连续反引号时要比它再长一个（CommonMark 的规则）。 */
+export function fenceFor(text: string): string {
+  const longest = (text.match(/`+/g) ?? []).reduce((n, run) => Math.max(n, run.length), 0);
+  return "`".repeat(Math.max(3, longest + 1));
+}
+
+export type TextInsertion =
+  | { kind: "unsupported"; reason: "unknown-cli" | "unmeasured-cli" | "empty" }
+  | { kind: "paste"; cli: CliKind; data: string; lines: number;
+      /** 用户会看到原文，还是一个占位符。界面据此决定要不要自己回显一下。 */
+      presentation: "literal" | "collapsed" };
+
+/**
+ * 把一段选中的文本插进 CLI 的输入框，**不提交**。
+ *
+ * 和 `planImageInsertion` 同一条路（括号粘贴、不带回车），但多了三件事：
+ *
+ * 1. **只认量过的 CLI**（`multilinePaste`）。没量过就不做——见那个字段的注释。
+ * 2. **剥掉所有 C0/C1 控制字符。** 这不只是卫生问题，是**注入防护**：内容里如果混进一个
+ *    真正的 `ESC`，后面跟 `[201~` 就会提前结束这次括号粘贴，剩下的字节会被 TUI 当**按键**
+ *    处理。终端屏幕上本来不该出现裸 ESC（它被解析器吃掉了），但这条路的输入来自选区，
+ *    不值得赌。
+ * 3. **换行统一成 `\r`。** xterm 的选区给的是 `\n`，而真实终端粘贴发的是 `\r`，TUI 的
+ *    括号粘贴解析器认的也是 `\r`。
+ */
+export function planTextInsertion(input: { cli: string | null; text: string; fenced?: boolean }): TextInsertion {
+  const adapter = getCliAdapter(input.cli);
+  if (!adapter) return { kind: "unsupported", reason: "unknown-cli" };
+  if (!adapter.multilinePaste) return { kind: "unsupported", reason: "unmeasured-cli" };
+  const lines = input.text
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    // 控制字符已经不含 \n 了（上一步切掉了），所以这里剥干净是安全的。
+    .map(line => line.replace(/[\u0000-\u001f\u007f-\u009f]/g, "").replace(/\s+$/, ""));
+  while (lines.length && !lines[0]) lines.shift();
+  while (lines.length && !lines[lines.length - 1]) lines.pop();
+  if (!lines.length) return { kind: "unsupported", reason: "empty" };
+  const body = input.fenced === false ? lines : [fenceFor(lines.join("\n")), ...lines, fenceFor(lines.join("\n"))];
+  return {
+    kind: "paste", cli: adapter.id, lines: lines.length,
+    presentation: adapter.multilinePaste,
+    // 不带回车：塞进输入框，按不按发送由人决定。
+    data: `\x1b[200~${body.join("\r")}\x1b[201~`,
   };
 }
 

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { IconChevron } from "../../../shared/icons";
-import { ROOST_PATH_MIME, quoteShellPath, sendToSession } from "../public";
+import { ROOST_PATH_MIME, getTerminalHandle, quoteShellPath, sendToSession } from "../public";
 import { useTerminal } from "../useTerminal";
 import { TerminalRecovery } from './TerminalRecovery';
 import { SavedTick, SelectionSaveBar, useTerminalSelection } from "./SelectionSaveBar";
@@ -54,7 +54,7 @@ export function TermView({ sessionId, active, onCwd, onCli }: Props) {
     dropImage,
     diagnostics, repaint, reloadView, viewIssue, viewers, inputNotice, dismissInputNotice, connectionError, interruptArmed,
   } = useTerminal(sessionId, active, onCwd, onCli);
-  const { saveBar, savedTick, readSelection, saveNote, saveToFile } = useTerminalSelection(sessionId);
+  const { saveBar, flash, readSelection, saveNote, saveToFile, pasteToCli } = useTerminalSelection(sessionId);
 
   const [dismissedHistoryFor, setDismissedHistoryFor] = useState<string | null>(() => seenHistoryNotices().includes(sessionId) ? sessionId : null);
   const [historyNoticeStartedAt, setHistoryNoticeStartedAt] = useState<number | null>(null);
@@ -110,6 +110,23 @@ export function TermView({ sessionId, active, onCwd, onCli }: Props) {
         e.preventDefault();
         e.stopPropagation();
         void dropImage(e.dataTransfer);
+      }}
+      /*
+        右键 = 把选中的文本粘到 CLI 的输入框（用 ``` 包起来，不替你按回车）。
+
+        **为什么是这个动作而不是「粘贴剪贴板」**：我们跑在 http 非安全源上，
+        `navigator.clipboard.readText()` 根本不可用，所以 Windows/Linux 终端那条
+        「右键即粘贴」的惯例在这里本来就实现不了。而选区在内存里随手就能拿——
+        于是右键改成这个方向：把**终端里选中的**送进对话框。
+
+        没有选区时不拦截，让系统菜单照常弹出来（要复制/检查元素的人还找得到）。
+        xterm 那边的 `rightClickSelectsWord` 已经关掉了，否则这一下会先把选区毁了。
+      */
+      onContextMenu={(e) => {
+        const text = getTerminalHandle(sessionId)?.getSelection() ?? "";
+        if (!text.trim()) return;
+        e.preventDefault();
+        pasteToCli(text);
       }}
       onMouseUp={(e) => {
         if (e.button !== 0) return;
@@ -252,12 +269,13 @@ export function TermView({ sessionId, active, onCwd, onCli }: Props) {
         <SelectionSaveBar
           x={saveBar.x}
           y={saveBar.y}
+          onToCli={() => pasteToCli(saveBar.text)}
           onNote={() => saveNote(saveBar.text, false)}
           onSnippet={() => saveNote(saveBar.text, true)}
           onFile={() => void saveToFile(saveBar.text)}
         />
       )}
-      {active && savedTick && <SavedTick />}
+      {active && flash && <SavedTick text={flash} />}
       {active && touch.on && (
         <TouchSelectionBar
           state={touch}

@@ -293,6 +293,12 @@ export const misc = {
     saveSnippet: "Save snippet",
     saveFile: "Save file",
     saved: "Saved",
+    toCli: "Paste to prompt",
+    pasted: (lines: number) => `Pasted ${lines} lines into the prompt`,
+    pastedCollapsed: (lines: number) => `Pasted ${lines} lines (the prompt shows a placeholder)`,
+    pasteUnmeasured: (cli: string) => `Multi-line paste is not verified on ${cli} yet`,
+    pasteNoCli: "No CLI detected in this session",
+    pasteFailed: "Not sent — check the connection",
   },
 
   shell: {
