@@ -1,5 +1,6 @@
 import type { RecordChange } from "./query";
-import { content, LibraryError, message, request, same, uid, type Content, type Kind, type Page, type RecordData, type Transport } from "./api";
+import { uid } from "../../shared/uid";
+import { content, LibraryError, message, request, same, type Content, type Kind, type Page, type RecordData, type Transport } from "./api";
 import { t, type Messages } from "@roost/i18n";
 /** 草稿保存状态机的标识。显示文案在 t.library.saveState，键即标识。 */
 export type SaveState = keyof Messages["library"]["saveState"];

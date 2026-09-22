@@ -4,7 +4,7 @@ import { ApiError } from "../../shared/api/errors";
 import { useCliIdentity } from "../../shared/ui/SessionLogo";
 import { useWorkspace } from "../../shared/store";
 import { writeClipboard } from "../../shared/clipboard";
-import { formatTime } from "../notes/notes";
+import { formatTime } from "../../shared/datetime";
 import { t } from "@roost/i18n";
 
 /**

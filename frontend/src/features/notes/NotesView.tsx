@@ -5,7 +5,8 @@ import { IconCopy, IconPlus, IconTerminal, IconTrash } from "../../shared/icons"
 import { sendToSession } from "../terminal/public";
 import { useWorkspace } from "../../shared/store";
 import { IconButton } from "../../shared/ui/IconButton";
-import { formatTime, snippetFilename, SNIPPET_LANGS } from "./notes";
+import { snippetFilename, SNIPPET_LANGS } from "./notes";
+import { formatTime } from "../../shared/datetime";
 import { Toast } from "../../shared/ui/Toast";
 import { useLibraryDraft, usePendingLibrary, useLibraryList } from "../library/hooks";
 import { message, type Kind } from "../library/api";

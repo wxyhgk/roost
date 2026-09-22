@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { XMarkIcon, BookmarkIcon } from '@heroicons/react/24/outline';
 import { t } from '@roost/i18n';
-import { uid } from '../library/api';
+import { uid } from "../../shared/uid";
 import { writeClipboard } from '../../shared/clipboard';
 import { fetchBookmarkConversation, type Bookmark, type BookmarkGroup } from '../../shared/api/bookmarks';
 import type { Conversation } from '../../shared/api/conversations';

@@ -65,6 +65,22 @@ const errors = [];
   同一批文件在下面出现两次是有原因的：一次是逐边检查（直接 import react），一次是可达性
   检查（经由中转到达 react）。两者必须看同一批文件，否则就是一个只挡正面的门。
 */
+/*
+  **library 唯一能越过自己目录的去处。**
+
+  下面那条规则的实现比它的错误信息严得多：它禁的是「引用自己目录之外的任何相对路径」，
+  而不只是 UI/workspace/terminal。那份严格是 library 能保持叶子的真正原因，所以不能因为
+  一次需要就整条放宽成「可以引 shared」——那等于把 shared/store、shared/ui 一起放进来。
+
+  改成一张点名单，**而且这张名单是可验证的**：文件末尾会检查每一项自己有没有 import。
+  一个 import 都没有的模块，library 引它之后仍然是叶子——这是能证明的，不是约定。
+  哪天有人往 `shared/uid.ts` 里加一行 import，这里当场红。
+
+  `uid` 进这张单子的理由：它是 RFC 4122 v4 生成器，和「资料库」没有任何关系，却因为住在
+  library 里而逼得 bookmarks、conversations 整个特性去认识资料库。
+*/
+const LIBRARY_LEAF_IMPORTS = ['shared/uid.ts'];
+
 /** 状态内核：必须能脱离 React 跑。 */
 const STATE_CORE_FILES = [
   'features/library/api.ts',
@@ -172,7 +188,8 @@ for (const owner of owners) {
         if (owner === 'frontend') {
           const from = relative(resolve(base, 'src'), path).split(sep).join('/');
           const to = relative(resolve(base, 'src'), target).split(sep).join('/');
-          if (from.startsWith('features/library/') && !to.startsWith('features/library/')) reason = 'library must not depend on UI, workspace or terminal';
+          if (from.startsWith('features/library/') && !to.startsWith('features/library/')
+              && !LIBRARY_LEAF_IMPORTS.some(f => to === f || to === bare(f))) reason = 'library may only import its own directory or a proven-leaf shared module';
           /*
             **共享层不许反过来依赖特性。** 一个共享模块只要引用了某个特性，它就不再是共享的
             了，而是那个特性的一部分，只是名字骗人。`store/` 同理：工作区状态是所有特性的
@@ -358,6 +375,21 @@ if (existsSync(frontendSrc)) {
   引用存在性检查守得住「改了一半」，守不住「改得很干净」。所以这里显式钉住锚点：
   它们比规则本身更该被守着。
 */
+/*
+  **点名单里的每一项必须自己是叶子。** 这条把上面那个例外从「约定」变成「能证明的事」：
+  library 引一个零依赖的模块之后仍然是叶子。有人往里面加 import，这里当场红，而不是让
+  library 悄悄长出一条传递依赖。
+*/
+{
+  const src = resolve(root, 'frontend/src');
+  const ANY_IMPORT = /(?:\bfrom\s*|(?<![\w"'-])import\s*(?:\(\s*)?|\brequire\s*\(\s*)["'`][^"'`]+["'`]/;
+  for (const leaf of LIBRARY_LEAF_IMPORTS) {
+    const file = resolve(src, leaf);
+    if (!existsSync(file)) { errors.push(`${leaf}: LIBRARY_LEAF_IMPORTS 指向的文件不存在`); continue; }
+    if (ANY_IMPORT.test(readFileSync(file, 'utf8'))) errors.push(`frontend/src/${leaf}: library 的例外必须自己零依赖，它现在有 import 了`);
+  }
+}
+
 for (const anchor of [
   'frontend/src/features/terminal/public.ts',
   'frontend/src/features/session-status/public.ts',

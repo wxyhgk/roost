@@ -2,7 +2,7 @@ import { BookmarkIcon } from '@heroicons/react/24/outline';
 import type { Conversation } from '../../shared/api/conversations';
 import { t } from '@roost/i18n';
 import { bookmarks, useBookmarks } from './useBookmarks';
-import { uid } from '../library/api';
+import { uid } from "../../shared/uid";
 
 export function BookmarkButton({ conversation, groupId = null }: { conversation: Conversation; groupId?: string | null }) {
   const state = useBookmarks();

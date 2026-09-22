@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { cancelDelivery, fetchInbox, fetchPeerMessage, sendToConversation, type PeerDetail } from "../../shared/api/conversations";
 import { ApiError } from "../../shared/api/errors";
 import { MAX_PEER_TEXT_BYTES, pendingOutgoing, textBytes } from "./outgoing";
-import { uid } from "../library/api";
+import { uid } from "../../shared/uid";
 import { t } from "@roost/i18n";
 
 /**

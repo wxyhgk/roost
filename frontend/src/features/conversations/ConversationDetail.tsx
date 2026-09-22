@@ -21,7 +21,7 @@ import { useWorkspace } from "../../shared/store";
 import { useOutgoing } from "./useOutgoing";
 import { ConversationMeta } from "./ConversationMeta";
 import { Empty } from "../../shared/ui/Empty";
-import { formatTime } from "../notes/notes";
+import { formatTime } from "../../shared/datetime";
 import { t } from "@roost/i18n";
 import { BookmarkButton } from '../bookmarks/BookmarkButton';
 
