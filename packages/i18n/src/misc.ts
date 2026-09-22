@@ -303,6 +303,29 @@ export const misc = {
           lifecycleUnavailable: "这个 CLI 没给出可靠的完成信号",
           transcriptUnavailable: "拿不到这个会话的转录文件",
           transportUnavailable: "拿不到这个 CLI 的输入通道",
+          /*
+            下面这些是 2026-09-22 补的。此前它们全都掉进 `queuedOther`，于是用户看到的是
+            「暂时不能投递（acceptance_uncertain）」——一个原样漏出来的内部标识符。
+            上面那段注释写着「这是个封闭集合，没有理由不逐条给说法」，而它又漂了一次，
+            所以这回配了一条扫源码的用例：谁新加一个理由却不给说法，测试直接挂。
+
+            「不确定」那一族的措辞都要守住同一条线：**不劝重发**。写没写进去分不清时，
+            重发的代价是同一句话提交两次，那比等一等糟得多。
+          */
+          acceptanceUncertain: "前面有一条还没确认，先不发新的",
+          acceptanceUncertainHint: "上一条已经写进终端，但还没等到 CLI 的确认。去终端看一眼那条在不在，处理完这条会自己接着发。",
+          awaitingPasteEcho: "正文已经贴进去，正在等终端回显",
+          acceptanceTimeout: "写进去了，但等不到 CLI 的确认",
+          acceptanceTimeoutHint: "正文很可能已经提交。**不会自动重发**——重发可能让同一句话提交两次。去终端确认一下。",
+          targetChanged: "写入前目标终端换掉了",
+          writeBoundaryUnknown: "写到一半失去了确定性",
+          writeBoundaryUnknownHint: "无法确定写进去多少，所以保留这条、不自动重发。",
+          writeFailed: "往终端写入失败",
+          userCancelled: "你取消了这一条",
+          daemonRestarted: "终端服务重启了，这条没有写出去",
+          submissionBoundaryUnknown: "提交到一半被打断，不确定写没写进去",
+          commandEvidenceMismatch: "证据对不上，确认不了这条的去向",
+          submissionUncertain: "不确定有没有提交成功",
         },
         queuedOther: (reason: string) => `暂时不能投递（${reason}）`,
         dispatching: "正在提交，等待回执",

@@ -30,9 +30,24 @@ function build() {
     awaiting_user_submit: t.misc.conversations.detail.send.awaitingUserSubmit,
     lifecycle_unavailable: r.lifecycleUnavailable, transcript_unavailable: r.transcriptUnavailable,
     transport_unavailable: r.transportUnavailable,
+    /*
+      2026-09-22 补的一批。此前它们全掉进 `queuedOther`，用户看到的是
+      「暂时不能投递（acceptance_uncertain）」——原样漏出来的内部标识符。
+      上面那段注释说这是个封闭集合，而它漂了；现在有 `delivery-reason-coverage.test.ts`
+      扫源码守着，新加一个理由却不给说法会直接把测试挂掉。
+    */
+    acceptance_uncertain: r.acceptanceUncertain, awaiting_paste_echo: r.awaitingPasteEcho,
+    acceptance_timeout: r.acceptanceTimeout, target_changed: r.targetChanged,
+    peer_target_changed: r.targetChanged, write_boundary_unknown: r.writeBoundaryUnknown,
+    write_failed: r.writeFailed, daemon_restarted: r.daemonRestarted, user_cancelled: r.userCancelled,
+    submission_boundary_unknown: r.submissionBoundaryUnknown,
+    command_evidence_mismatch: r.commandEvidenceMismatch,
+    submission_uncertain: r.submissionUncertain,
   });
   Object.assign(HINT, { disabled: r.disabledHint, unsupported_version: r.unsupportedVersionHint,
     foreground_not_cli: r.foregroundNotCliHint,
+    acceptance_uncertain: r.acceptanceUncertainHint, acceptance_timeout: r.acceptanceTimeoutHint,
+    write_boundary_unknown: r.writeBoundaryUnknownHint,
     awaiting_user_submit: t.misc.conversations.detail.send.awaitingUserSubmitHint });
 }
 
