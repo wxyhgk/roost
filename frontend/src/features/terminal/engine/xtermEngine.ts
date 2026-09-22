@@ -172,6 +172,10 @@ export function mountXterm(host: HTMLElement, theme: TermTheme, onFileLink?: (li
 
       代价是失去 mac 上的右键选词。换来的是右键有一个明确得多的用途，见 TermView 的
       onContextMenu。
+
+      2026-09-21 在真浏览器里验过：右键之后选区还在、输入法候选框位置没跑偏（我们的 IME
+      锚点用 CSS 变量加 !important，压得住 xterm 右键时写的 style.left/top）、没有选区时
+      系统菜单照常弹出来。
     */
     rightClickSelectsWord: false,
     theme,

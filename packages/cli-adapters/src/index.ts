@@ -25,9 +25,8 @@ export type CliAdapter = Readonly<{
    * 粘贴内容里的 `\r` 当成回车键，一段 N 行的文本就是 N 次提交，把人写了一半的话连发
    * 好几条，**收不回来**。所以这里不复用 `imageStrategy`，必须单独量。
    *
-   * - `literal`    —— N 行原样躺进输入框，不提交
-   * - `collapsed`  —— 不提交，但折叠成一个占位符（内容留着，用户看不见原文）
-   * - `unverified` —— **本机量不到，开着等人工验**。界面会提醒使用者留意「有没有被自动发出去」
+   * - `literal`   —— N 行原样躺进输入框，不提交
+   * - `collapsed` —— 不提交，但折叠成一个占位符（内容留着，用户看不见原文）
    *
    * 量法：真 PTY 里起这个 CLI，送 `ESC[200~ 行1 CR 行2 CR 行3 ESC[201~`，**之后不按任何键**，
    * 用 @xterm/headless 重建屏幕看三行在哪。2026-09-21 实测：
@@ -35,12 +34,11 @@ export type CliAdapter = Readonly<{
    * - claude 2.1.278 → literal（中文、全角括号、``` 围栏都完好）
    * - omp 18.1.18 → literal（末行尾那个多出来的字符是它的行内补全提示，不是内容被改）
    * - opencode 1.18.31 → collapsed（显示成 `[Pasted ~3 lines]`）
-   * - codex 0.154.0 → **量不到**：`codex login status` 在本机是 "Not logged in"，探针起来
-   *   就落进 OAuth 登录流程，进不到输入框。标成 `unverified` 而不是留空，是使用者明确要求
-   *   「先做，我自己测」——**表里不谎称量过**，界面也会跟着提醒。他验完之后按实测结果改成
-   *   `literal` 或 `collapsed`，或者出问题就删掉这一项。
+   * - codex 0.154.0 → literal。**这一条不是探针量的，是人工验的**：`codex login status` 在
+   *   本机是 "Not logged in"，探针一起来就落进 OAuth 登录流程，进不到输入框。所以由使用者
+   *   在真界面里试了一遍，确认没有被自动发出去。来源不同，照实记。
    */
-  multilinePaste?: "literal" | "collapsed" | "unverified";
+  multilinePaste?: "literal" | "collapsed";
 }>;
 
 /** readline 的 kill-line。上面三家实测都是它。 */
@@ -49,7 +47,7 @@ const CTRL_U = "\u0015";
 const adapters: readonly CliAdapter[] = Object.freeze([
   { id: "qwen", name: "Qwen Code", imageStrategy: "bracketed-path", verifiedVersions: Object.freeze(["0.21.14"]) },
   { id: "claude", name: "Claude Code", imageStrategy: "bracketed-path", verifiedVersions: Object.freeze([]), clearInputKey: CTRL_U, multilinePaste: "literal" },
-  { id: "codex", name: "Codex", imageStrategy: "bracketed-path", verifiedVersions: Object.freeze([]), multilinePaste: "unverified" },
+  { id: "codex", name: "Codex", imageStrategy: "bracketed-path", verifiedVersions: Object.freeze([]), multilinePaste: "literal" },
   { id: "grok", name: "Grok", imageStrategy: "bracketed-path", verifiedVersions: Object.freeze([]) },
   { id: "opencode", name: "OpenCode", imageStrategy: "bracketed-path", verifiedVersions: Object.freeze([]), clearInputKey: CTRL_U, multilinePaste: "collapsed" },
   /*
@@ -134,8 +132,8 @@ export function fenceFor(text: string): string {
 export type TextInsertion =
   | { kind: "unsupported"; reason: "unknown-cli" | "unmeasured-cli" | "empty" }
   | { kind: "paste"; cli: CliKind; data: string; lines: number;
-      /** 用户会看到原文、一个占位符，还是「这家没验过」。界面据此决定说什么。 */
-      presentation: "literal" | "collapsed" | "unverified" };
+      /** 用户会看到原文，还是一个占位符。界面据此决定要不要多说一句。 */
+      presentation: "literal" | "collapsed" };
 
 /**
  * 把一段选中的文本插进 CLI 的输入框，**不提交**。
