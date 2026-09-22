@@ -1,6 +1,6 @@
 import { request } from "./request";
 import type { HistoryMessage, HistoryCoverage, Delivery } from "./conversationPayloads";
-import { stableRuntime } from "../runtime";
+import { socketUrl } from "../runtime";
 
 /**
  * 对话目录：独立于终端存在。终端关掉、CLI 退出，对话仍然留在这里可读。
@@ -159,9 +159,7 @@ export function connectConversationStream(
   cursor: string,
   handlers: ConversationStreamHandlers,
 ): () => void {
-  const url = new URL(`/api/conversations/${encodeURIComponent(conversationId)}/stream`,
-    stableRuntime ? "http://127.0.0.1:8787" : window.location.href);
-  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  const url = socketUrl(`/api/conversations/${encodeURIComponent(conversationId)}/stream`);
   url.searchParams.set("cursor", cursor);
   let disposed = false;
   let socket: WebSocket | null = null;

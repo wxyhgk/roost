@@ -1,4 +1,4 @@
-import { stableRuntime } from "../runtime";
+import { socketUrl } from "../runtime";
 
 /**
  * 订阅一个根目录下的文件变化。
@@ -28,8 +28,7 @@ export function watchFiles(root: string, onChange: () => void, onStopped?: () =>
 
   function connect() {
     if (disposed) return;
-    const url = new URL("/api/files/watch", stableRuntime ? "http://127.0.0.1:8787" : window.location.href);
-    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+    const url = socketUrl("/api/files/watch");
     url.searchParams.set("root", root);
     let current: WebSocket;
     try {

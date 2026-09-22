@@ -1,6 +1,6 @@
 import { createSessionStatusStore } from './store';
 import { connectSessionStatus } from './connection';
-import { stableRuntime } from '../../shared/runtime';
+import { socketUrl } from "../../shared/runtime";
 
 const KEY = 'roost-session-read-v1';
 let timer: ReturnType<typeof setTimeout> | undefined;
@@ -11,9 +11,7 @@ let users = 0, stop: (() => void) | undefined;
 export function startSessionStatus() {
   if (++users === 1) {
     // This optional business feed does not exist on the stable core API.
-    const url = new URL('/api/session-status', stableRuntime ? 'http://127.0.0.1:8787' : window.location.href);
-    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-    stop = connectSessionStatus(url.toString(), sessionStatus);
+    stop = connectSessionStatus(socketUrl('/api/session-status').toString(), sessionStatus);
     window.addEventListener('pagehide', flush);
   }
   let released = false;

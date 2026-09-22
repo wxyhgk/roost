@@ -35,10 +35,21 @@ async function fetchCoreWorkspace(signal?: AbortSignal): Promise<WorkspaceSnapsh
   const response = await fetch(coreUrl('/api/core/sessions'), { cache: 'no-store', signal: signal ? AbortSignal.any([signal, deadline]) : deadline });
   if (!response.ok) throw Error(t.misc.session.coreUnavailable(response.status));
   const { sessions: live } = await response.json() as { sessions: Array<{ id: string; cwd: string; cli: Session['cli']; cliId?: string | null }> };
+  /*
+    **没有存过标题时留占位值，别在这里把目录名烤进去。**
+
+    原来这里写的是 `saved?.title ?? <cwd 的末段>`。看着人畜无害，后果是把标题**冻住**：
+    `sessionTitle()` 的规则是「标题为空、叫 Terminal、或叫 Session N 时跟着 cwd 走」，
+    而烤进去的目录名三样都不是，于是它原样返回。
+
+    实测出来的表现：同一个 `cd` 操作，dev 下标题跟着变，stable 下不动。没有报错，也没人
+    会联想到是这一行。`'Terminal'` 是存储层新建会话时的默认值（workspace-store/sessions.ts），
+    写同一个值等于说「这里没有人取过名字」，剩下的交给 `sessionTitle()` 这唯一一处规则。
+  */
   const sessions: Session[] = live.map(item => {
     const saved = metadata?.sessions.find(s => s.id === item.id);
     return { ...saved, id: item.id, cwd: item.cwd, cli: item.cli, cliId: item.cliId, closed: false,
-      title: saved?.title ?? item.cwd.replaceAll('\\', '/').split('/').filter(Boolean).at(-1) ?? item.id, projectId: saved?.projectId ?? null };
+      title: saved?.title ?? 'Terminal', projectId: saved?.projectId ?? null };
   });
   return { sessions, projects: metadata?.projects ?? [], selectedId: sessions.find(s => s.id === metadata?.selectedId)?.id ?? sessions[0]?.id ?? null,
     expandedProjectIds: metadata?.expandedProjectIds ?? [], pinnedSessionIds: metadata?.pinnedSessionIds ?? [],

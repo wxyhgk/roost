@@ -4,7 +4,7 @@ import type { Metric } from '@roost/server-monitor/types';
 import { useWorkspace } from '../shared/store';
 import { getTerminalStatus, getTerminalLatency, subscribeTerminalStatus } from '../features/terminal/public';
 import { useServerMonitor } from '../features/server-monitor/store';
-import { bytes } from '../features/server-monitor/format';
+import { bytes, compactBytes as compact } from '../shared/bytes';
 import type { MonitorTab } from '../features/server-monitor/navigation';
 import { SubscriptionSwitcher } from '../features/subscriptions/SubscriptionSwitcher';
 import { stableRuntime } from '../shared/runtime';
@@ -12,12 +12,6 @@ import { t } from '@roost/i18n';
 import '../features/server-monitor/monitor.css';
 import './statusBar.css';
 
-function compact(value: number | null | undefined) {
-  if (value == null || !Number.isFinite(value) || value < 0) return '—';
-  const power = Math.min(4, Math.floor(Math.log2(Math.max(1, value)) / 10));
-  const n = value / 1024 ** power;
-  return `${n.toFixed(power && n < 10 ? 1 : 0)}${['B', 'K', 'M', 'G', 'T'][power]}`;
-}
 
 /*
   `monitorVisible`：服务器状态面板正开着。

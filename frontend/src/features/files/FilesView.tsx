@@ -1,4 +1,6 @@
 import { ArrowUpIcon, ListBulletIcon, QueueListIcon } from "@heroicons/react/24/outline";
+import { basename } from "../../shared/path";
+import { bytes } from "../../shared/bytes";
 import type { Session } from "../../shared/types";
 import { useCallback, useEffect, useRef, useState, type DragEvent as ReactDragEvent, useMemo } from "react";
 import { createPath } from "../../shared/api";
@@ -8,7 +10,7 @@ import { IconButton } from "../../shared/ui/IconButton";
 import { Empty } from "../../shared/ui/Empty";
 import { watchFiles } from "../../shared/api/fileWatch";
 import { useUploadQueue } from "./useUploadQueue";
-import { collectDropEntries, formatBytes, readDropTree, type DropTree } from "./dropUpload";
+import { collectDropEntries, readDropTree, type DropTree } from "./dropUpload";
 import { t } from "@roost/i18n";
 import { useBrowseLocation } from "./useBrowseLocation";
 import { Tree } from "./Tree";
@@ -230,7 +232,7 @@ function SessionFiles({ session }: { session: Session }) {
             <ArrowUpIcon className="size-4" />
           </button>
           <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto text-body">
-            {[{ name: session.cwd.replaceAll('\\', '/').split("/").filter(Boolean).at(-1) || "/", path: "" },
+            {[{ name: basename(session.cwd) || "/", path: "" },
               ...directory.split("/").filter(Boolean).map((name, i, parts) => ({ name, path: parts.slice(0, i + 1).join("/") }))].map((crumb, i) => (
               <span key={crumb.path} className="flex shrink-0 items-center gap-1">
                 {i > 0 && <span className="text-text-dim">/</span>}
@@ -323,7 +325,7 @@ function SessionFiles({ session }: { session: Session }) {
         <div role="alert" className="flex shrink-0 flex-col gap-1 border-b border-border bg-bg-raised px-2.5 py-1.5 text-caption text-text">
           <div className="flex items-center gap-2">
             <span className="min-w-0 flex-1 truncate">
-              {t.files.upload.confirmTitle(plan.tree.files.length, formatBytes(plan.tree.totalBytes))}
+              {t.files.upload.confirmTitle(plan.tree.files.length, bytes(plan.tree.totalBytes))}
               {plan.tree.hidden > 0 && ` · ${t.files.upload.confirmHidden(plan.tree.hidden)}`}
             </span>
             <button className="shrink-0 rounded px-2 py-0.5 text-accent hover:bg-bg-hover"

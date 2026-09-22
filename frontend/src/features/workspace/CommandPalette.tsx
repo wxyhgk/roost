@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { basename } from "../../shared/path";
 import { type Item, type WalkFile, matchFile, matchItem, walkFiles } from "./commandSearch";
 import { useWorkspace } from "../../shared/store";
 import { useLibraryList } from "../library/public";
@@ -127,7 +128,7 @@ export function CommandPalette({ open, onClose, onShowView }: Props) {
 
     return [
       { label: t.palette.sections.sessions, items: sessionItems },
-      { label: cwd ? t.palette.sections.filesIn(cwd.replaceAll('\\', '/').split("/").pop() ?? cwd) : t.palette.sections.files, items: fileItems, loading: filesLoading, hint: !cwd ? t.palette.hints.needSession : !q ? t.palette.hints.typeToSearch : undefined },
+      { label: cwd ? t.palette.sections.filesIn(basename(cwd) || cwd) : t.palette.sections.files, items: fileItems, loading: filesLoading, hint: !cwd ? t.palette.hints.needSession : !q ? t.palette.hints.typeToSearch : undefined },
       { label: t.palette.sections.notes, items: noteItems, loading: notes.loading, hint: notes.error, more: notes.nextCursor ? notes.more : undefined, retry: notes.error ? notes.refresh : undefined },
       { label: t.palette.sections.snippets, items: snippetItems, loading: snippets.loading, hint: snippets.error, more: snippets.nextCursor ? snippets.more : undefined, retry: snippets.error ? snippets.refresh : undefined },
     ];

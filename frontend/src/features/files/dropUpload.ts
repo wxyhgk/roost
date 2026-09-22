@@ -15,14 +15,6 @@
      浏览器上对拖放根的表示并不一致。
 */
 
-/** 给确认框用的人话尺寸。确认框要回答的是「这值不值得等」，不是精确到字节。 */
-export function formatBytes(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ["KB", "MB", "GB"];
-  let value = bytes / 1024, unit = 0;
-  while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit++; }
-  return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`;
-}
 
 /** 我们只用到 FileSystemEntry 的这一小块；写出来是为了不把整个 DOM 类型拖进签名。 */
 type Entry = {

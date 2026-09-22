@@ -1,10 +1,5 @@
-export function bytes(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value) || value < 0) return '—';
-  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
-  let n = value, i = 0;
-  while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
-  return `${n.toFixed(i ? n >= 100 ? 0 : 1 : 0)} ${units[i]}`;
-}
+// 刻度只有一份，见 shared/bytes.ts。这里再导出是为了让监控面板的格式化都从一个地方进。
+export { bytes } from '../../shared/bytes';
 export const percentage = (n: number | null | undefined) => n == null || !Number.isFinite(n) ? '—' : `${n.toFixed(1)}%`;
 export function uptime(seconds: number) {
   const n = Math.max(0, Math.floor(seconds));
