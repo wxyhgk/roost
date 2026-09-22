@@ -296,6 +296,7 @@ export const misc = {
     toCli: "Paste to prompt",
     pasted: (lines: number) => `Pasted ${lines} lines into the prompt`,
     pastedCollapsed: (lines: number) => `Pasted ${lines} lines (the prompt shows a placeholder)`,
+    pastedUnverified: (lines: number) => `Pasted ${lines} lines · unverified CLI, watch for an auto-send`,
     pasteUnmeasured: (cli: string) => `Multi-line paste is not verified on ${cli} yet`,
     pasteNoCli: "No CLI detected in this session",
     pasteFailed: "Not sent — check the connection",

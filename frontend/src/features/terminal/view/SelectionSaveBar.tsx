@@ -76,10 +76,16 @@ export function useTerminalSelection(sessionId: string) {
       return;
     }
     if (sendToSession(sessionId, plan.data) !== "sent") { say(t.misc.selection.pasteFailed, 2200); return; }
-    // 折叠型（opencode）显示的是占位符，不说一声容易以为没成功。
-    say(plan.presentation === "collapsed"
-      ? t.misc.selection.pastedCollapsed(plan.lines)
-      : t.misc.selection.pasted(plan.lines));
+    /*
+      三种说法对应三种实测结果（见 cli-adapters 的 multilinePaste）：
+      - collapsed（opencode）显示的是占位符，不说一声容易以为没成功
+      - unverified（codex）本机量不到，得点明「盯什么」——失败模式是它把换行当回车自己发出去
+      - literal 就是正常那句
+    */
+    say(plan.presentation === "collapsed" ? t.misc.selection.pastedCollapsed(plan.lines)
+      : plan.presentation === "unverified" ? t.misc.selection.pastedUnverified(plan.lines)
+      : t.misc.selection.pasted(plan.lines),
+      plan.presentation === "unverified" ? 3000 : 1200);
   }
 
   async function saveNote(text: string, snippet: boolean) {

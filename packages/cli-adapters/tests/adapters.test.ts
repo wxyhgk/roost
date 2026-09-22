@@ -103,16 +103,23 @@ test('只有实测过的 CLI 才带清空键，而且必须是 Ctrl+U', () => {
   把选中的文本括号粘贴进输入框。和贴图同一条路，但多行的代价完全不同——
   见 `multilinePaste` 那个字段的注释。
 */
-test('只有在真 PTY 里量过多行粘贴的 CLI 才开这条路', () => {
-  const measured = listCliAdapters().filter(a => a.multilinePaste);
-  assert.deepEqual(measured.map(a => a.id).sort(), ['claude', 'omp', 'opencode'],
-    '加一家之前先量：送三行进去，之后不按任何键，看它有没有自己提交');
-  // codex 本机落在登录流程里进不到输入框；qwen/grok 没装。没量到就不开。
-  assert.deepEqual(listCliAdapters().filter(a => !a.multilinePaste).map(a => a.id).sort(), ['codex', 'grok', 'qwen']);
+test('量过的标成实测结果，量不到又要开的必须标 unverified', () => {
+  const byId = Object.fromEntries(listCliAdapters().map(a => [a.id, a.multilinePaste]));
+  // 这三家是在真 PTY 里量出来的，值就是当时看到的样子。
+  assert.equal(byId.claude, 'literal');
+  assert.equal(byId.omp, 'literal');
+  assert.equal(byId.opencode, 'collapsed');
+  /*
+    codex 本机 `codex login status` 是 "Not logged in"，探针进不到输入框。开着是使用者的
+    决定（「先做，我自己测」），所以**标 unverified 而不是冒充 literal**——界面会跟着提醒。
+  */
+  assert.equal(byId.codex, 'unverified');
+  // 没装、也没人要求开的，留空。
+  assert.deepEqual(listCliAdapters().filter(a => !a.multilinePaste).map(a => a.id).sort(), ['grok', 'qwen']);
 });
 
-test('没量过的 CLI 一个字节都不发', () => {
-  for (const cli of ['codex', 'qwen', 'grok']) {
+test('没量过又没标 unverified 的 CLI，一个字节都不发', () => {
+  for (const cli of ['qwen', 'grok']) {
     assert.deepEqual(planTextInsertion({ cli, text: 'hello' }), { kind: 'unsupported', reason: 'unmeasured-cli' }, cli);
   }
   assert.deepEqual(planTextInsertion({ cli: null, text: 'hello' }), { kind: 'unsupported', reason: 'unknown-cli' });
@@ -180,4 +187,12 @@ test('opencode 会折叠成占位符，界面得知道', () => {
   const plan = planTextInsertion({ cli: 'opencode', text: 'x' });
   if (plan.kind !== 'paste') throw new Error('missing paste');
   assert.equal(plan.presentation, 'collapsed');
+});
+
+test('codex 发的字节和量过的那几家一模一样，只是界面要说「没验过」', () => {
+  const codex = planTextInsertion({ cli: 'codex', text: 'a\nb' });
+  const claude = planTextInsertion({ cli: 'claude', text: 'a\nb' });
+  if (codex.kind !== 'paste' || claude.kind !== 'paste') throw new Error('missing paste');
+  assert.equal(codex.data, claude.data, '没验过不等于换一套发法——只是提示不同');
+  assert.equal(codex.presentation, 'unverified');
 });

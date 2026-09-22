@@ -333,6 +333,11 @@ export const misc = {
     pasted: (lines: number) => `已粘 ${lines} 行到对话框`,
     /** 折叠型（opencode）：内容进去了，但它显示的是占位符，得说一声免得以为没成功。 */
     pastedCollapsed: (lines: number) => `已粘 ${lines} 行（对话框显示为折叠占位符）`,
+    /**
+     * 发了，但这家 CLI 的多行粘贴**本机没量到**（codex：探针进不到输入框）。
+     * 这句话要具体到「盯什么」——失败模式是它把每个换行当回车，于是自己发了出去。
+     */
+    pastedUnverified: (lines: number) => `已粘 ${lines} 行 · 这家没验过，留意有没有被自动发出去`,
     /** 没在真 PTY 里量过这家 CLI 的多行粘贴，不敢发——理由见 cli-adapters 的 multilinePaste。 */
     pasteUnmeasured: (cli: string) => `还没在 ${cli} 上验证过多行粘贴，先不发`,
     pasteNoCli: "没认出正在跑的 CLI，先不发",
