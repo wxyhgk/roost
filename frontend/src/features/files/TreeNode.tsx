@@ -381,7 +381,23 @@ function NodeMenu({
   const createIn = (kind: NewKind) => {
     onClose();
     onNavigate?.(node.path);
-    folder.create(node.path, kind);
+    /*
+      **等菜单把焦点还完再挂输入框。**
+
+      菜单用的是 floating-ui 的 `FloatingFocusManager`，它带 `returnFocus`——关闭时把
+      焦点还给触发它的那一行。而那次归还是在 `queueMicrotask` 里做的（见
+      `@floating-ui/react` 里 `getFirstTabbableElement(returnElement)` 那段），**晚于**
+      React 这一轮提交，也就晚于新建行 `autoFocus` 拿到焦点。
+
+      于是：输入框刚拿到焦点 → 菜单把焦点抢回那一行 → 输入框失焦 → `InlineRename` 的
+      onBlur 判定为「编辑结束」→ `NewEntryRow` 当成取消 → 行当场消失。用户看到的就是
+      「点了没反应」。（而且因为名字是空串，那次 blur 连提交都不会做：
+      `draft.trim() || value` 等于 value，`next !== value` 不成立。）
+
+      `setTimeout(0)` 是宏任务，跨过整批微任务，所以归还先发生、输入框后拿焦点。
+      不用 `queueMicrotask`：我们的微任务排在点击处理器里，**早于**它那一个，没用。
+    */
+    setTimeout(() => folder.create(node.path, kind), 0);
   };
 
   async function copy(text: string) {

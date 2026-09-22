@@ -238,10 +238,12 @@ export function Tree({
         </ul>}
       </div>
       {blankMenu && (
+        /* 这里的 setTimeout 和 TreeNode 里那个是同一个理由：菜单关闭时会异步把焦点
+           还回去，早挂的输入框会被它抢走焦点并当场自我取消。见 TreeNode.createIn。 */
         <Menu x={blankMenu.x} y={blankMenu.y} onClose={closeBlankMenu}>
-          <MenuItem label={t.files.menu.newFile} onClick={() => { closeBlankMenu(); folder.create(directory, "file"); }} />
-          <MenuItem label={t.files.menu.newFolder} onClick={() => { closeBlankMenu(); folder.create(directory, "dir"); }} />
-          <MenuItem label={t.files.menu.newMolecule} onClick={() => { closeBlankMenu(); folder.create(directory, "mol"); }} />
+          <MenuItem label={t.files.menu.newFile} onClick={() => { closeBlankMenu(); setTimeout(() => folder.create(directory, "file"), 0); }} />
+          <MenuItem label={t.files.menu.newFolder} onClick={() => { closeBlankMenu(); setTimeout(() => folder.create(directory, "dir"), 0); }} />
+          <MenuItem label={t.files.menu.newMolecule} onClick={() => { closeBlankMenu(); setTimeout(() => folder.create(directory, "mol"), 0); }} />
           <MenuItem label={t.files.menu.uploadHere} onClick={() => { closeBlankMenu(); folder.upload(directory); }} />
           <MenuSeparator />
           <MenuItem label={t.files.menu.refresh} onClick={() => { closeBlankMenu(); onMutated(); }} />

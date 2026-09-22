@@ -4,6 +4,8 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { backendScript, caddyfile, plan, servicePlist } from '../../scripts/install-service.mjs';
 
@@ -77,6 +79,61 @@ test('--secure-cookies 时不注入放行明文 HTTP 的变量', macOnly, async 
   assert.equal(on.EnvironmentVariables.ROOST_AUTH_INSECURE_HTTP, '1');
   const off = await parse(plan({ ...options, insecureHttp: false }).services[0].plist);
   assert.equal('ROOST_AUTH_INSECURE_HTTP' in off.EnvironmentVariables, false);
+});
+
+/*
+  「从网页把消息写进终端」这条通道。
+
+  它让守护进程可以往一条活着的 PTY 里粘贴文本并补回车——也就是**能替用户打字**。写入本身
+  有层层门禁（输入框空、画面稳、权限弹窗不写、绝不自动批准），但那些是写入**时**的判据；
+  「有没有这个能力」是另一回事，所以必须是显式开关，而且默认关。
+
+  这里钉两件：默认关，以及**只给 terminal 一个服务**。后端和 Caddy 拿到它没有任何用处，
+  而一个这种分量的开关出现在不需要它的进程里，以后查「谁有这个能力」会多出假线索。
+*/
+test('--gui-send 默认关，而且只给 terminal 服务', macOnly, async () => {
+  const off = plan(options).services;
+  for (const service of off) {
+    const { EnvironmentVariables: env } = await parse(service.plist);
+    assert.equal('ROOST_CLAUDE_GUI_SEND' in env, false, `${service.name} 默认不该有这个能力`);
+  }
+
+  const on = plan({ ...options, guiSend: true }).services;
+  const holders = [];
+  for (const service of on) {
+    const { EnvironmentVariables: env } = await parse(service.plist);
+    if (env.ROOST_CLAUDE_GUI_SEND === '1') holders.push(service.name);
+  }
+  assert.deepEqual(holders, ['terminal'], '只有守护进程会往 PTY 写字节，别的服务不该拿到这个开关');
+});
+
+/*
+  **「默认关」这条性质住在命令行解析里，不在 `plan()` 里**，所以必须真的把脚本跑起来才测得到。
+
+  上面那两条用例直接调 `plan()`，绕过了参数解析——变异测试当场戳穿：把
+  `flags.has('gui-send')` 改成 `true`，它们照样全绿。而这正是最不能错的一条：这个开关
+  给的是「替用户往终端里打字」的能力，默认必须是关的。
+*/
+test('默认不开这个能力——真跑一遍脚本，不绕过参数解析', () => {
+  const script = fileURLToPath(new URL('../../scripts/install-service.mjs', import.meta.url));
+  const run = (...args) => spawnSync(process.execPath, [script, '--dry-run', ...args], { encoding: 'utf8' });
+
+  const off = run();
+  assert.equal(off.status, 0, off.stderr);
+  assert.equal(off.stdout.includes('ROOST_CLAUDE_GUI_SEND'), false, '不给参数时绝不能出现这个变量');
+
+  const on = run('--gui-send');
+  assert.equal(on.status, 0, on.stderr);
+  // 三个服务的 plist 都在输出里，只该命中一次。
+  assert.equal((on.stdout.match(/ROOST_CLAUDE_GUI_SEND/g) ?? []).length, 1, '只有 terminal 服务该拿到它');
+});
+
+test('打开 gui-send 不影响其余环境变量', macOnly, async () => {
+  const before = (await parse(plan(options).services[0].plist)).EnvironmentVariables;
+  const after = (await parse(plan({ ...options, guiSend: true }).services[0].plist)).EnvironmentVariables;
+  // 新增一个键，其余逐字不变——开关不该顺手改别的东西。
+  assert.deepEqual(Object.keys(after).filter(k => k !== 'ROOST_CLAUDE_GUI_SEND').sort(), Object.keys(before).sort());
+  for (const key of Object.keys(before)) assert.equal(after[key], before[key], key);
 });
 
 test('plist 里的值转义 XML，含 & 和 < 的路径不会把文件写坏', macOnly, async () => {

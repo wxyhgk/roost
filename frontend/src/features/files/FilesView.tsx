@@ -407,7 +407,8 @@ function SessionFiles({ session }: { session: Session }) {
               ["mol", t.files.menu.newMolecule],
             ] as const satisfies readonly (readonly [NewKind, string])[]
           ).map(([kind, label]) => (
-            <MenuItem key={kind} label={label} onClick={() => { setNewMenu(null); folder.create(directory, kind); }} />
+            <MenuItem key={kind} label={label} /* 同上：菜单异步归还焦点，输入框要等它。见 TreeNode.createIn。 */
+            onClick={() => { setNewMenu(null); setTimeout(() => folder.create(directory, kind), 0); }} />
           ))}
         </Menu>
       )}

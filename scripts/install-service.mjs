@@ -11,6 +11,8 @@
 //   node scripts/install-service.mjs --status    看三个服务现在什么状态
 //   node scripts/install-service.mjs --uninstall 卸载（不动数据目录）
 //
+//   --gui-send  打开「从网页把消息写进终端」这条通道（默认关，只影响 terminal 服务）
+//
 // 常用开关：--port 8080 --backend-port 8787 --origins http://a,http://b
 //           --data-dir ~/.roost --caddy /path/to/caddy --secure-cookies
 import { execFile } from 'node:child_process';
@@ -160,7 +162,7 @@ export function servicePath(nodeBin, inherited) {
 }
 
 export function plan(options) {
-  const { node, repo, dataDir, installDir, port, backendPort, origins, insecureHttp, shell, caddy, pathEntries } = options;
+  const { node, repo, dataDir, installDir, port, backendPort, origins, insecureHttp, guiSend, shell, caddy, pathEntries } = options;
   const logs = join(dataDir, 'logs');
   const env = {
     PATH: servicePath(dirname(node), pathEntries),
@@ -179,10 +181,19 @@ export function plan(options) {
       { path: startBackend, content: backendScript(node, repo), mode: 0o700 },
     ],
     services: [
-      { name: 'terminal', label: 'com.roost.terminal', args: [node, '--import', 'tsx', 'deploy/terminal-owner.mts'] },
+      /*
+        `ROOST_CLAUDE_GUI_SEND` **只给 terminal 这一个服务**，不进共用的 env。
+
+        读它的是守护进程里的 AI 命令 owner（`terminal-daemon/src/owner.ts`），也只有它会
+        往 PTY 写字节。后端和 Caddy 拿到这个变量没有任何用处，而一个「允许往用户终端里
+        打字」的开关，出现在不需要它的进程环境里本身就是噪音——以后查「谁有这个能力」时
+        会多两个假线索。
+      */
+      { name: 'terminal', label: 'com.roost.terminal', args: [node, '--import', 'tsx', 'deploy/terminal-owner.mts'],
+        env: guiSend ? { ROOST_CLAUDE_GUI_SEND: '1' } : undefined },
       { name: 'backend', label: 'com.roost.backend', args: ['/bin/sh', startBackend] },
       { name: 'web', label: 'com.roost.web', args: [caddy, 'run', '--config', caddyConfig, '--adapter', 'caddyfile'] },
-    ].map(s => ({ ...s, plist: servicePlist({ label: s.label, args: s.args, workingDirectory: repo, env, logPath: join(logs, `${s.name}.log`) }) })),
+    ].map(s => ({ ...s, plist: servicePlist({ label: s.label, args: s.args, workingDirectory: repo, env: { ...env, ...s.env }, logPath: join(logs, `${s.name}.log`) }) })),
   };
 }
 
@@ -246,8 +257,16 @@ async function main() {
     的话登录直接不可用。但它确实降低了安全性，所以要说出来，并且给一个关掉的开关。
   */
   const insecureHttp = !flags.has('secure-cookies');
+  /*
+    `--gui-send` 打开「从网页把消息写进终端」这条通道，默认关。
+
+    它让守护进程可以往一条活着的 PTY 里粘贴文本并补一个回车。写入本身有层层门禁
+    （输入框必须空着、画面必须稳定、权限弹窗一律不写、绝不自动批准），但这些是**写入时**
+    的判据；**有没有这个能力**是另一回事，所以做成显式开关，而不是默认给。
+  */
+  const guiSend = flags.has('gui-send');
   const options = {
-    node: process.execPath, repo: REPO, dataDir, installDir, port, backendPort, origins, insecureHttp,
+    node: process.execPath, repo: REPO, dataDir, installDir, port, backendPort, origins, insecureHttp, guiSend,
     shell: process.env.SHELL || '/bin/zsh',
     caddy: await findCaddy(values.get('caddy')),
     pathEntries: process.env.PATH ?? '',
