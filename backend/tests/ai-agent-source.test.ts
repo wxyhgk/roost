@@ -7,7 +7,7 @@ import { latestPty } from "./helpers/fake-pty.ts";
 import { createWorkspaceStore } from "@roost/workspace-store";
 const { createTerminalRuntime } = await import("@roost/terminal-runtime");
 import { createAiSessionBridge } from "@roost/ai-session-bridge";
-import { createAiAgentSource, projectAgentEvent } from "../src/ai-agent-source.ts";
+import { createAiAgentSource, followsToLivePty, projectAgentEvent } from "../src/ai-agent-source.ts";
 
 test("live OSC notifications bind native identity, persist messages/state, and never replay screen output as messages", async () => {
   const dir = mkdtempSync(join(tmpdir(), "ai-source-"));
@@ -249,4 +249,145 @@ test("external mutation between replay pages stops the bounded pass after its ow
       assert.equal(f.rebounds(), 1);
     } finally { f.close(); }
   }
+});
+
+/*
+  **同一段对话换了一条 PTY，绑定要跟过去。**
+
+  绑定记的 `terminalInstanceId` 是 PTY 进程的身份，而它是 `replay.ts` 里当场 randomUUID
+  生成、不落盘的——守护进程一重启全部换新。绑定却把它当成不可变的键，于是 PTY 一换代
+  绑定就永久失联：新实例上的事件在到达绑定之前就被「实例号不符」丢掉，界面从此停更，
+  而且没有任何自动路径能把它拉回来。
+
+  实测过：一台机器上七条绑定，凡是终端换过 PTY 代的全部卡死、没换过的全部正常，
+  相关性 100%。手工调一次换绑接口能救回来，但寿命只到下一次守护进程重启为止。
+
+  **判据是 native 会话 id**，不是进程号：`claude --resume` 的全部意义就是让同一段对话
+  活过进程的死亡，所以 CLI 自己报的那个 id 才是这段对话的身份。上面那条用例钉的是
+  相反的一半——换了 PTY **又换了 native**，那是另一段对话，绝不能认领。两条合起来才完整。
+*/
+test("同一个 native 会话换到新的 PTY 上时，绑定跟着走", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "ai-source-follow-"));
+  const store = createWorkspaceStore({ dataDir: dir });
+  const runtime = createTerminalRuntime({ defaultCwd: dir, shell: "/bin/sh", env: {}, historyStore: store });
+  store.upsertSession({ id: "web", cwd: dir });
+  await runtime.ensureSession("web", dir);
+  const getSession = runtime.getSession;
+  runtime.getSession = id => { const live = getSession(id); return live ? { ...live, cli: "omp" } : undefined; };
+  const bridge = createAiSessionBridge({ storage: store.aiSessions });
+  const source = createAiAgentSource(store, runtime, bridge);
+  const send = (event: object) => latestPty().emitData("\x1b]777;notify;warp://cli-agent;" + JSON.stringify(event) + "\x07");
+  try {
+    send({ event: "session_start", session_id: "native" });
+    const firstInstance = runtime.getSession("web")!.instanceId;
+    assert.equal(bridge.get("web")?.terminalInstanceId, firstInstance);
+
+    // 换一条 PTY：守护进程重启、会话 resume、终端重开，都是这个形状。
+    await runtime.killSession("web");
+    await runtime.ensureSession("web", dir);
+    const secondInstance = runtime.getSession("web")!.instanceId;
+    assert.notEqual(secondInstance, firstInstance, "新 PTY 必须是新实例，否则这条用例什么都没测");
+
+    /*
+      先 refresh 一次再发事件。PTY 退出时运行时会把订阅者整份抹掉，要等 source 重新订上
+      才收得到——生产里那是 250ms 定时器做的，这里显式调一次，免得测试去睡一觉。
+    */
+    source.refresh();
+    // CLI 在新进程里报出**同一个** native 会话——`--resume` 之后就是这样。
+    send({ event: "session_start", session_id: "native" });
+
+    assert.equal(bridge.get("web")?.nativeSessionId, "native", "还是同一段对话");
+    assert.equal(bridge.get("web")?.terminalInstanceId, secondInstance,
+      "绑定必须跟到当前活着的 PTY 上——否则它再也收不到任何事件");
+    assert.notEqual(bridge.get("web")?.state, "offline", "跟过去之后不该还停在 offline");
+  } finally { source.dispose(); runtime.dispose(); store.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+/*
+  「能不能跟到新 PTY 上」这四条判据，逐条钉住。
+
+  端到端驱动不出全部四条——`live.instanceId === instance` 那条只在**重放**路径上才有区别
+  （实时路径里这两个值恒等），而 `sessionId` 那条本来有一条端到端用例，却因为一个时序坑
+  变成了空过：`killSession` 会把该会话的订阅者整份抹掉，那条用例在重建 PTY 之后没等
+  重新订阅就发事件，于是事件根本没到，断言是「因为什么都没发生」才通过的。
+
+  变异测试戳穿了这两处：把「native 必须相同」和「必须是活着的 PTY」删掉，全套照样绿。
+  所以判据提成纯函数直接测——每一条删掉都要有人喊。
+*/
+const liveSession = (instanceId: string, cli: string) => ({ instanceId, cli } as never);
+const bound = (instanceId: string, cliId: string, nativeSessionId: string) =>
+  ({ terminalInstanceId: instanceId, cliId, nativeSessionId } as never);
+const agentEvent = (agent: object, terminalInstanceId?: string) =>
+  ({ type: "agent", agent, terminalInstanceId } as never);
+
+test("跟到新 PTY 的四条判据：少一条都会认错对话", () => {
+  const old = bound("dead", "claude", "native-1");
+
+  // 基线：同一家 CLI、同一个 native、事件来自此刻活着的那条 PTY。
+  assert.equal(followsToLivePty(old, liveSession("live", "claude"), "live",
+    agentEvent({ event: "session_start", sessionId: "native-1" })), true);
+
+  /*
+    ① 只跟到**此刻活着**的那条 PTY。少了它，一条早就死掉的 PTY 的迟到重放事件也能
+    把绑定拽走——而那条 PTY 里跑的东西早就不在了。
+  */
+  assert.equal(followsToLivePty(old, liveSession("live", "claude"), "another-dead",
+    agentEvent({ event: "session_start", sessionId: "native-1" }, "another-dead")), false,
+    "事件来自一条不是当前活着的 PTY，不许跟过去");
+  assert.equal(followsToLivePty(old, undefined, "live",
+    agentEvent({ event: "session_start", sessionId: "native-1" })), false, "没有活着的 PTY 时不许跟");
+
+  /*
+    ② 同一个 native 会话。这是和「a replacement must not be consumed」的分界线：
+    换了 PTY **又换了 native**，那是另一段对话，认领它等于把两段对话拼成一段。
+  */
+  assert.equal(followsToLivePty(old, liveSession("live", "claude"), "live",
+    agentEvent({ event: "session_start", sessionId: "native-2" })), false,
+    "换了 PTY 又换了 native——那是另一段对话");
+  assert.equal(followsToLivePty(old, liveSession("live", "claude"), "live",
+    agentEvent({ event: "session_start" })), false, "没报 native 就没有证据，不许跟");
+
+  /* ③ 同一家 CLI。跨 CLI 的收养另有一条更严的路（要求同一条 PTY、显式标签、连续日志）。 */
+  assert.equal(followsToLivePty(old, liveSession("live", "codex"), "live",
+    agentEvent({ event: "session_start", sessionId: "native-1" })), false, "换了 CLI 不走这条路");
+  assert.equal(followsToLivePty(old, liveSession("live", "claude"), "live",
+    agentEvent({ event: "session_start", sessionId: "native-1", agent: "codex" })), false,
+    "事件自带的标签和绑定的 CLI 对不上——那是同一条日志里别人的尾巴");
+
+  /* ④ 事件本身要能确立身份。未知事件、纯状态事件都不行。 */
+  assert.equal(followsToLivePty(old, liveSession("live", "claude"), "live",
+    agentEvent({ event: "tasks_updated", sessionId: "native-1" })), false, "确立不了身份的事件不算证据");
+});
+
+/*
+  端到端的反面：换了 PTY **又换了 native**，绑定必须原地不动。
+
+  这一条原本存在于上面那条长用例的末尾，但它踩了订阅被抹掉的时序坑，实际是空过的
+  （变异测试发现）。这里按正确时序重写一遍——先 refresh 重新订上，再发事件。
+*/
+test("换了 PTY 又换了 native：绑定不许跟过去", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "ai-source-nofollow-"));
+  const store = createWorkspaceStore({ dataDir: dir });
+  const runtime = createTerminalRuntime({ defaultCwd: dir, shell: "/bin/sh", env: {}, historyStore: store });
+  store.upsertSession({ id: "web", cwd: dir });
+  await runtime.ensureSession("web", dir);
+  const getSession = runtime.getSession;
+  runtime.getSession = id => { const live = getSession(id); return live ? { ...live, cli: "omp" } : undefined; };
+  const bridge = createAiSessionBridge({ storage: store.aiSessions });
+  const source = createAiAgentSource(store, runtime, bridge);
+  const send = (event: object) => latestPty().emitData("\x1b]777;notify;warp://cli-agent;" + JSON.stringify(event) + "\x07");
+  try {
+    send({ event: "session_start", session_id: "native" });
+    const first = runtime.getSession("web")!.instanceId;
+
+    await runtime.killSession("web");
+    await runtime.ensureSession("web", dir);
+    source.refresh();
+    // 新 PTY 里是**另一段**对话。
+    send({ event: "session_start", session_id: "replacement" });
+
+    const binding = bridge.get("web");
+    assert.equal(binding?.nativeSessionId, "native", "绝不能把另一段对话认领过来");
+    assert.equal(binding?.terminalInstanceId, first, "绑定该原地不动，等人工决定");
+  } finally { source.dispose(); runtime.dispose(); store.close(); rmSync(dir, { recursive: true, force: true }); }
 });

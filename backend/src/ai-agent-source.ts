@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { AiSessionBridge, Binding, BridgeState, BridgeEvent } from "@roost/ai-session-bridge";
-import type { TerminalService, TerminalEvent } from "@roost/terminal-runtime";
+import type { TerminalService, TerminalEvent, TerminalSession } from "@roost/terminal-runtime";
 import type { WorkspaceStore } from "@roost/workspace-store";
 import type { AgentEvent } from "@roost/terminal-protocol";
 import { AiIdentityError, canEstablishAgentIdentity, readIdentityCandidate } from "./ai-identity";
@@ -26,6 +26,14 @@ export function projectAgentEvent(agent: AgentEvent, current: BridgeState): Omit
     data: { source: "osc777", sourceEvent: agent.event, summary: agent.summary,
       toolName: agent.toolName, toolInputPreview: agent.toolInputPreview, errorType: agent.errorType },
   };
+}
+
+export function followsToLivePty(old: Binding, live: TerminalSession | undefined, instance: string,
+  event: Extract<TerminalEvent, { type: "agent" }>) {
+    return live?.instanceId === instance && live.cli === old.cliId
+    && canEstablishAgentIdentity(event.agent.event)
+    && !!event.agent.sessionId && event.agent.sessionId === old.nativeSessionId
+    && (event.agent.agent === undefined || event.agent.agent === old.cliId);
 }
 
 /** Agent notifications and durable daemon replay share one projection path. */
@@ -70,12 +78,45 @@ export function createAiAgentSource(store: WorkspaceStore, runtime: TerminalServ
     return next;
   }
 
+  /*
+    **同一段对话换到了一条新的 PTY 上——绑定要跟过去。**
+
+    绑定记的 `terminalInstanceId` 是 PTY **进程**的身份，而它在 `terminal-runtime/replay.ts`
+    里当场 randomUUID 生成、**不落盘**：守护进程一重启，每条 PTY 都换新号。绑定却把它当成
+    不可变的键，于是换一次代就永久失联——新实例上的事件全被下面那道门丢掉，界面从此停更，
+    而且没有任何自动路径能把它拉回来。实测：一台机器七条绑定，换过代的全死、没换过的全活。
+
+    跟过去的判据是 **CLI 自己报的 native 会话 id**，不是进程号。`claude --resume` 的全部
+    意义就是让同一段对话活过进程的死亡，所以那个 id 才是这段对话的身份；进程号只能回答
+    「是不是同一个进程」，它从来就没有能力回答「是不是同一段对话」。
+
+    四条缺一不可，每一条都在堵一种具体的错认：
+
+    1. `live.instanceId === instance` —— 只跟到**此刻活着**的那条 PTY。少了它，一条早就
+       死掉的 PTY 的迟到事件也能把绑定拽走。
+    2. `live.cli === old.cliId` —— 同一家 CLI。跨 CLI 的收养另有一条更严的路（要求同一条
+       PTY、显式 owner 标签、连续日志），不走这里。
+    3. 事件本身能确立身份，且 `sessionId` 和绑定记的**完全相同** —— 这是和
+       「a replacement must not be consumed」那条的分界线：换了 PTY **又换了 native**，
+       那是另一段对话，绝不能认领（`ai-agent-source.test.ts` 里有用例钉着）。
+    4. 事件若自带 `agent` 标签，必须和绑定的 CLI 一致 —— 挡住同一条日志里上一个 CLI 的尾巴。
+
+    搬家走 `adopt`（也就是 `bridge.rebind`）而不是原地改字段：新 PTY 的日志 seq 从 1 重新
+    开始，旧游标跨日志没有意义，必须连同 generation 一起翻篇。这也正是归档设计里写的那句
+    「PTY 重建：即使恢复相同 nativeId 也新开绑定代」。
+  */
+
   function processAgent(id: string, event: Extract<TerminalEvent, { type: "agent" }>, gap = false, historical = false, ordered = false) {
-    const old = bridge.get(id);
+    let old = bridge.get(id);
     const live = connected() ? runtime.getSession(id) : undefined;
     const instance = event.terminalInstanceId ?? live?.instanceId;
     if (!instance) return;
-    if (old && old.terminalInstanceId !== instance) return;
+    if (old && old.terminalInstanceId !== instance) {
+      if (!followsToLivePty(old, live, instance, event)) return;
+      const moved = adopt(id, old, instance, old.nativeSessionId, event.sourceSeq, event.agent.transcriptPath);
+      if (!moved) return;
+      old = moved;
+    }
     if (!old && (!live?.cli || live.instanceId !== instance)) return;
     // Replay notifications may be duplicated or arrive late: check before comparing identity.
     if (old && event.sourceSeq && event.sourceSeq <= bridge.source(id).cursor) return;
@@ -315,13 +356,35 @@ export function createAiAgentSource(store: WorkspaceStore, runtime: TerminalServ
     for (const id of ids) {
       if (!subscriptions.has(id)) subscriptions.set(id, runtime.subscribe(id, event => guarded(() => {
         if (disposed) return;
-        if (event.type === "exit") { offline(id); void pump(id); }
+        if (event.type === "exit") {
+          offline(id);
+          void pump(id);
+          /*
+            **PTY 退出时运行时会把这个会话的订阅者整份抹掉**
+            （`terminal-runtime/index.ts` 的 `killSession` 里那句 `listeners.delete(id)`），
+            而上面只在 `!subscriptions.has(id)` 时才重新订阅——记录还留着一个已经失效的
+            取消函数，于是**永远不会重订**。终端重开之后，这个会话的 agent 事件再也到不了，
+            对话面板从此静默，而且看不出是为什么。
+
+            所以退出时把记录一并丢掉，下一拍 `refresh` 自然会重新订上。
+            那个旧的取消函数调不调都无所谓（它指向的集合已经没了），不调省一次无谓操作。
+          */
+          subscriptions.delete(id);
+        }
         else if (event.type === "agent") {
           if (replaySupported()) void pump(id);
           else if (connected()) {
             const live = runtime.getSession(id), old = bridge.get(id);
             if (!live?.cli) return;
-            if (old && (old.terminalInstanceId !== live.instanceId || old.cliId !== live.cli)) { offline(id); return; }
+            /*
+              这道门和 `processAgent` 里那道是同一件事的两份实现——**只改一处等于没改**。
+              实时这条路在这里就早退了，`processAgent` 根本没机会看到事件。
+
+              所以「能不能跟到新 PTY 上」这个判断只能有一份（`followsToLivePty`），两边共用；
+              跟不过去时才照旧下线。
+            */
+            if (old && (old.terminalInstanceId !== live.instanceId || old.cliId !== live.cli)
+                && !followsToLivePty(old, live, live.instanceId, event)) { offline(id); return; }
             // Unknown legacy events cannot establish a binding.
             if (!projectAgentEvent(event.agent, old?.state ?? "binding")) return;
             // 实时路径同样要把「需要人工换绑」记进诊断：否则绑定悄悄下线，
