@@ -50,7 +50,8 @@ function label(delivery: Delivery) {
   const s = t.misc.conversations.detail.send;
   switch (delivery.state) {
     case "queued": return queuedText(delivery.reason);
-    case "dispatching": return s.dispatching;
+    // 认领之后还可能卡在门口。有原因就说出来——没有原因才是「正在提交」。
+    case "dispatching": return delivery.reason ? s.dispatchingBlocked(queuedText(delivery.reason)) : s.dispatching;
     case "accepted": return s.accepted;
     // P2：正文进了输入框但我们没按回车。它和「不知道写没写进去」是两件事，要分开说。
     case "uncertain": return delivery.reason === "awaiting_user_submit" ? s.awaitingUserSubmit : s.uncertain;
@@ -70,7 +71,7 @@ export function PendingMessage({ detail, onCancel, onRetry, onJump, readOnly = f
   const s = t.misc.conversations.detail.send;
   const hint = detail.delivery.state === "uncertain"
       ? (detail.delivery.reason === "awaiting_user_submit" ? s.awaitingUserSubmitHint : s.uncertainHint)
-    : detail.delivery.state === "queued" ? queuedHint(detail.delivery.reason) : null;
+    : detail.delivery.state === "queued" || detail.delivery.state === "dispatching" ? queuedHint(detail.delivery.reason) : null;
   return (
     <div className="rounded-md border border-border bg-bg-raised px-2 py-1.5">
       <div className="truncate text-caption text-text-dim">{detail.message.preview ?? detail.message.text}</div>

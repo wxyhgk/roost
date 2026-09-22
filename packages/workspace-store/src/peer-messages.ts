@@ -147,7 +147,27 @@ export function createPeerMessages(db:DatabaseSync) {
         if(used)fail(409,"receipt_conflict");state="accepted";
       } else if(command.status==="uncertain")state="uncertain";
       else if(command.status==="failed"||command.status==="cancelled")state=command.writtenAt===null?(command.status==="failed"?"failed":"cancelled"):"uncertain";
-      else return delivery(d);
+      else {
+        /*
+          命令还在排队：没有定论，**但说得出在等什么**。
+
+          这里原来直接 return，把上面刚算出来的 `command.reason` 丢掉了，于是投递从认领
+          那一刻起就停在 `dispatching` 且 `reason` 恒为 NULL，界面只能说一句「正在提交，
+          等待回执」——等谁、等什么，一个字都没有。实测撞到过：一条消息在 CLI 忙的时候
+          被认领，之后命令连续 28 次拿到 `busy`，而界面 8 分钟里一直是那句没有信息量的话。
+
+          **状态不能跟着退回 `queued`。** 认领是持久的、正文已经落进命令里，而 `cancel`
+          只允许 `queued`——退回去就等于把「已提交但还没写」重新开放给取消，那条路会造成
+          同一句话提交两次。所以这里只写 `reason`，一个字段。
+
+          只在真的变了才写：`busy` 会稳定持续几分钟，每 250ms 涨一次 revision 会把
+          乐观并发的重试打光（前端换绑就是这么撞上 409 的）。
+        */
+        if(d.state!=="dispatching"||d.reason===(reason??null))return delivery(d);
+        db.prepare("UPDATE peer_deliveries SET reason=?,revision=revision+1,updated_at=? WHERE id=? AND state='dispatching'")
+          .run(reason===null||reason===undefined?null:String(reason).slice(0,200),Date.now(),d.id);
+        return getDelivery(d.id);
+      }
       if(d.state===state&&d.reason===reason)return delivery(d);
       db.prepare(`UPDATE peer_deliveries SET state=?,reason=?,revision=revision+1,updated_at=?,accepted_native_message_id=?,accepted_at=? WHERE id=?`)
         .run(state,reason,Date.now(),state==="accepted"?command.nativeMessageId:null,state==="accepted"?Date.now():null,d.id);

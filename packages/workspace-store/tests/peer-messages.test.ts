@@ -146,3 +146,51 @@ test('send transaction rolls back envelope and delivery together and old writers
     assert.equal(f.peer.get(saved.message.id).delivery.state,'queued');
   }finally{db.close();}
 });
+
+/*
+  认领之后卡在门口：状态留在 dispatching，但**原因要能传上去**。
+
+  实测撞到的：一条消息在 CLI 忙的时候被认领，命令连续拿到 `busy` 二十多次，投递却从
+  认领那一刻起 `reason` 恒为 NULL——界面只能说「正在提交，等待回执」，等谁、等什么，
+  八分钟里一个字都没有。原因在 `finishFromCommand` 里：命令还在 queued 时直接 return，
+  刚算出来的 `command.reason` 被丢掉。
+*/
+test('命令还在排队时，投递保持 dispatching 但带上原因',t=>{
+  const f=fixture(t),{delivery}=f.send('A','B');
+  const claimed=f.peer.claimDelivery(delivery.id,f.B.run,'hello');
+  assert.equal(claimed.state,'dispatching');
+  const c=f.command(claimed);
+  assert.equal(f.peer.finishFromCommand(claimed.id,c).reason,null,'刚入队、还没有原因时不写');
+
+  // CLI 忙：命令停在 queued，原因要能被读到。
+  const busy=f.store.aiCommands.update(c.webSessionId,c.requestId,['queued'],{reason:'busy'})!;
+  const waiting=f.peer.finishFromCommand(claimed.id,busy);
+  assert.equal(waiting.state,'dispatching','状态不能退回 queued——退回去就重新开放了取消，会造成重复提交');
+  assert.equal(waiting.reason,'busy','界面要说得出在等什么');
+
+  // 原因没变就不许涨 revision：busy 会持续几分钟，每 250ms 涨一次会把乐观并发打光。
+  const again=f.peer.finishFromCommand(claimed.id,busy);
+  assert.equal(again.revision,waiting.revision,'原因没变时必须是 no-op');
+
+  // 原因变了要跟上。
+  const dialog=f.store.aiCommands.update(c.webSessionId,c.requestId,['queued'],{reason:'dialog'})!;
+  const moved=f.peer.finishFromCommand(claimed.id,dialog);
+  assert.equal(moved.reason,'dialog');
+  assert.ok(moved.revision>waiting.revision,'原因变了要涨 revision，否则订阅方看不到');
+
+  // 门开了：命令真的被接收，照常走到 accepted，原因清空。
+  const accepted=f.store.aiCommands.update(c.webSessionId,c.requestId,['queued'],
+    {status:'accepted',reason:null,nativeMessageId:'native-msg-1',writtenAt:Date.now()})!;
+  const done=f.peer.finishFromCommand(claimed.id,accepted);
+  assert.equal(done.state,'accepted');
+  assert.equal(done.reason,null);
+});
+
+test('取消仍然只对 queued 开放——卡在门口的不能撤',t=>{
+  const f=fixture(t),{delivery}=f.send('A','B');
+  const claimed=f.peer.claimDelivery(delivery.id,f.B.run,'hello');
+  f.command(claimed);
+  const busy=f.store.aiCommands.update(claimed.commandSessionId!,claimed.commandRequestId,['queued'],{reason:'busy'})!;
+  assert.equal(f.peer.finishFromCommand(claimed.id,busy).reason,'busy');
+  assert.throws(()=>f.peer.cancel(claimed.id),code('already_dispatching'),'带上原因之后也绝不能变得可取消');
+});

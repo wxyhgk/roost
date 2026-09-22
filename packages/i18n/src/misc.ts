@@ -306,6 +306,13 @@ export const misc = {
         },
         queuedOther: (reason: string) => `暂时不能投递（${reason}）`,
         dispatching: "正在提交，等待回执",
+        /*
+          认领之后、写进去之前，这条消息可能在门口等很久（CLI 正忙、终端里有选择框、
+          前台是别的程序）。上面那句话一个字都没说在等什么，实测有一条等了八分钟。
+          原因用的是排队那一套词表——**同一个封闭集合**，没必要再造一份。
+          前缀「已提交」是要紧的：这一格不能取消了，措辞不能让人以为还能撤。
+        */
+        dispatchingBlocked: (reason: string) => `已提交，${reason}`,
         accepted: "CLI 已接收",
         acceptedHint: "已进入 CLI 的原生输入，不代表任务已完成。",
         /**

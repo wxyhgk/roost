@@ -44,7 +44,10 @@ export function viewOf(delivery: Delivery): OutgoingView {
         jumpToTerminal: reason === "terminal_draft" || reason === "dialog" };
     case "dispatching":
       // 已进入提交流程但还没有回执。**不是已接收**，也不允许自动重发。
-      return { ...base, pending: true };
+      //
+      // 但它可能卡在门口不动：选择框和草稿都要你回终端处理，和 queued 那一格是同一件事，
+      // 没有理由在这里把入口收走——卡住的原因一样，能做的事也一样。
+      return { ...base, pending: true, jumpToTerminal: reason === "terminal_draft" || reason === "dialog" };
     case "uncertain":
       // 可能已经写进去了。保留这条请求，绝不自动换 requestId 重发——
       // 那会造成同一句话提交两次。
