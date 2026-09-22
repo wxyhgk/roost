@@ -56,3 +56,43 @@ test('裸 shell 在前台时是 null，不是 undefined', () => {
   const rows = [row(100, 1, 100, 100, '/bin/zsh -l')];
   assert.equal(foregroundCli(100, rows), null);
 });
+
+/*
+  前台组的组长是 roost 自己的启动壳，CLI 是它同组的子进程。
+
+  这不是假想：2026-09-22 在这台机器上实测，PTY 的 shell tpgid=72699，而 72699 是
+  `node .../roost-cli-launch-XXXX/launch.mjs`，claude 是 72703，pgid 同为 72699。壳必须活着接 SIGINT
+  （claude-launch.ts），所以它不能 exec 掉自己让 CLI 当组长。
+
+  只看组长的话，「前台是不是 CLI」在自家终端里**恒为否**——从网页发出的消息永远卡在最后
+  一道闸上，界面说「终端里现在是别的程序在前台」，而那个别的程序就是我们自己。
+*/
+test('前台组的组长是我们自己的启动壳时，要认出组里的 CLI', () => {
+  const rows = [
+    row(100, 1, 100, 200, '/bin/zsh -i -l -c'),
+    row(200, 100, 200, 200, '/path/node /var/folders/xx/roost-cli-launch-AbCdEf/launch.mjs'),
+    row(300, 200, 200, 200, 'claude --resume 3749983a'),
+  ];
+  assert.equal(foregroundCli(100, rows), 'claude', '同一个前台组里有 CLI，字节就是给它的');
+});
+
+test('扩大到组内查找，不会放宽 vim / less 那道防线', () => {
+  // 作业控制把 vim 拉到前台时，它**自己是一个新的进程组**；扫那个组只有它自己。
+  const rows = [
+    row(100, 1, 100, 300, '/bin/zsh -i -l -c'),
+    row(200, 100, 200, 300, '/path/node /var/folders/xx/roost-cli-launch-AbCdEf/launch.mjs'),
+    row(250, 200, 200, 300, 'claude'),
+    row(300, 250, 300, 300, 'vim /tmp/COMMIT_EDITMSG'),
+  ];
+  assert.equal(foregroundCli(100, rows), null, 'claude 在别的组里，键盘归 vim');
+});
+
+test('前台组里一个认得出的 CLI 都没有，仍然是「确定不是」', () => {
+  const rows = [
+    row(100, 1, 100, 200, '/bin/zsh -i -l -c'),
+    row(200, 100, 200, 200, '/path/node /var/folders/xx/roost-cli-launch-AbCdEf/launch.mjs'),
+    row(300, 200, 200, 200, 'npm run dev'),
+  ];
+  assert.equal(foregroundCli(100, rows), null);
+  assert.notEqual(foregroundCli(100, rows), undefined, '这是「确定不是」，不是「判断不了」');
+});

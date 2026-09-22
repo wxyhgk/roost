@@ -149,9 +149,34 @@ export function foregroundCli(ptyPid: number, rows: ProcRow[], definitions?: rea
   const shell = rows.find(row => row.pid === ptyPid);
   // tpgid 为 -1 表示该终端当前没有前台进程组，那时写进去的字节没有确定的收件人。
   if (!shell || !Number.isInteger(shell.tpgid) || (shell.tpgid as number) <= 0) return undefined;
-  const leader = rows.find(row => row.pid === shell.tpgid);
+  const group = shell.tpgid as number;
+  const leader = rows.find(row => row.pid === group);
   if (!leader) return undefined;
-  return (definitions ? detectConfiguredCli(leader.args, definitions) : detectCli(leader.args)) ?? null;
+  const detect = (args: string) => (definitions ? detectConfiguredCli(args, definitions) : detectCli(args)) ?? null;
+  const direct = detect(leader.args);
+  if (direct) return direct;
+  /*
+    组长不是 CLI 时，在**同一个前台进程组里**再找一遍。
+
+    只看组长会漏掉一种情况，而那种情况正是 roost 自己造成的：我们的启动壳是一个 node 脚本，
+    CLI 是它的子进程，两者在同一个进程组里，**组长是壳不是 CLI**。壳必须活着（要接 SIGINT
+    转给 CLI，见 claude-launch.ts），所以不能 exec 掉自己让 CLI 当组长。
+
+    结果是「前台是不是 CLI」这一问在自家终端里恒为否，从网页发出的消息永远卡在最后一道闸上，
+    界面说「终端里现在是别的程序在前台」——而那个「别的程序」就是我们自己。
+    2026-09-22 实测：PTY 的 shell tpgid=72699，72699 是启动壳，claude 是 72703，同组不同长。
+
+    **这不会放宽 vim / less 那道防线。** 内核按进程组投递键盘字节，而 vim、less 这些被
+    作业控制拉到前台的程序**自己就是一个新的进程组**（实测见用例）——扫它那个组只会扫到
+    它自己，照样返回 null。这里扩大的只是「同一个组内谁在读」这一层，而那一层的风险在只看
+    组长时就已经存在了（CLI 当组长、却在同组里起了个分页器，老判据一样会说「是 CLI」）。
+  */
+  for (const row of rows) {
+    if (row.pid === leader.pid || row.pgid !== group) continue;
+    const cli = detect(row.args);
+    if (cli) return cli;
+  }
+  return null;
 }
 
 /**
