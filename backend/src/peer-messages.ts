@@ -61,8 +61,21 @@ export function createConversationMessagingHandler(store: WorkspaceStore) {
         const body = await readJson(req, cancel ? 1024 : 128 * 1024);
         if (cancel) {
           fields(body, []);
-          json(res, 200, cancel[2] === 'dismiss' ? store.peerMessages.dismiss(id)
-            : cancel[2] === 'remove' ? store.peerMessages.remove(id) : store.peerMessages.cancel(id));
+          const changed = cancel[2] === 'dismiss' ? store.peerMessages.dismiss(id)
+            : cancel[2] === 'remove' ? store.peerMessages.remove(id) : store.peerMessages.cancel(id);
+          /*
+            **返回整条（消息 + 投递），不是光一个投递。**
+
+            store 那三个函数返回的都是 `PeerDelivery`，而调用方按 `{message, delivery}` 用：
+            前端 `merge()` 拿 `detail.message.id` 去替换列表里那一条。返回里没有 `message`
+            时它读 undefined.id，异常抛在 render 里，被 ErrorBoundary 接住——**整个右侧面板
+            一起变成降级文案**，而不是只坏掉那一个按钮。
+
+            实测撞到（2026-09-23）：点「移除」当场白屏报
+            `Cannot read properties of undefined (reading 'id')`。cancel 和 dismiss
+            一直是同样的形状，只是很少有人连着点，所以一直没暴露。
+          */
+          json(res, 200, store.peerMessages.get(changed.messageId));
         } else {
           fields(body, ['requestId', 'text', 'inReplyTo']);
           const requestId = identifier(body.requestId, 'requestId');

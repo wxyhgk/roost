@@ -48,8 +48,21 @@ test('HTTP queues durable user mail, rejects sender impersonation, preserves ide
   // dismiss 只给状态不明的：排队中的走它必须 409，而同一条走 cancel 是 200——这一对能分辨路由接到了哪里。
   response=await f.request('/api/peer-deliveries/'+saved.delivery.id+'/dismiss','POST',{});assert.equal(response.status,409);assert.equal((await response.json()).error.code,'not_uncertain');
   assert.equal((await f.request('/api/peer-deliveries/'+saved.delivery.id+'/dismiss')).status,405);
-  const cancelled=await(await f.request('/api/peer-deliveries/'+saved.delivery.id+'/cancel','POST',{})).json();assert.equal(cancelled.state,'cancelled');
+  const cancelled=await(await f.request('/api/peer-deliveries/'+saved.delivery.id+'/cancel','POST',{})).json();
+  /*
+    **返回的是整条（消息 + 投递）**，不是光一个投递。调用方按 `{message, delivery}` 用——
+    前端 merge 拿 `detail.message.id` 去替换列表里那一条；少了 message 就读 undefined.id，
+    异常抛在 render 里被 ErrorBoundary 接住，**整个右侧面板**一起降级。
+    2026-09-23 点「移除」当场白屏，而这条用例当时正把错的形状当成契约钉着。
+  */
+  assert.equal(cancelled.delivery.state,'cancelled');
+  assert.equal(cancelled.message.id,saved.message.id,'必须带上消息本身');
   assert.equal((await(await f.request('/api/peer-messages/'+saved.message.id)).json()).delivery.state,'cancelled');
+  // 终态的出口：移除。三个出口（cancel / dismiss / remove）返回同一个形状。
+  const removed=await(await f.request('/api/peer-deliveries/'+saved.delivery.id+'/remove','POST',{})).json();
+  assert.equal(removed.delivery.reason,'user_removed');
+  assert.equal(removed.delivery.state,'cancelled','移除不改状态');
+  assert.equal(removed.message.id,saved.message.id);
   f.store.deleteSessionRecord('terminal');
   assert.equal((await(await f.request(url)).json()).items.length,1);
   assert.equal((await f.request(url,'POST',{requestId:'offline',text:'read later'})).status,202);
