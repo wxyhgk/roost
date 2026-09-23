@@ -238,6 +238,18 @@ export function dismissDelivery(deliveryId: string) {
   });
 }
 
+/**
+ * 往这个终端里的 CLI 直接打一句话：贴进去、看见它、按回车。结果只描述这一句。
+ * 见 terminal-daemon/src/direct-input.ts。
+ */
+export function typeIntoTerminal(terminalId: string, text: string) {
+  return request<import("@roost/terminal-protocol").DirectInputResult>(`/api/ai-sessions/${encodeURIComponent(terminalId)}/type`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+}
+
 export function fetchPeerMessage(messageId: string, signal?: AbortSignal) {
   return request<PeerDetail>(`/api/peer-messages/${encodeURIComponent(messageId)}`, readOptions(signal));
 }

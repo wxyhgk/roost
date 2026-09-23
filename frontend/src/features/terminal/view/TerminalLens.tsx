@@ -14,6 +14,7 @@ import { fetchConversation, listConversations, type Conversation } from "../../.
   渲染结果，那比晚一拍出现更糟。组件在加载完之前根本不挂，切换时只是一次极短的空白。
 */
 const ConversationDetail = lazy(() => import("../../conversations/ConversationDetail").then(m => ({ default: m.ConversationDetail })));
+const LensComposer = lazy(() => import("../../conversations/LensComposer"));
 import type { Lens } from "../../../shared/view";
 import { sendBlock, type SendBlock } from "../../conversations/sendability";
 import { useSessionActivity } from "../../session-status/public";
@@ -99,6 +100,11 @@ export function ConversationLens({ terminalId, conversationId, current }: { term
   }
   const active = selected || conversationId;
   const blocked = sendBlock({ selectedHistory: !!selected, current, state, cliId });
+  /*
+    输入框往这个终端里打字：终端活着、前台是 AI CLI、而且没在翻历史，就给。
+    **不再要求身份核对通过**（`unbound` 也给）——打字只认终端，不认对话，见 useDirectSend。
+  */
+  const sendTarget = blocked === null || blocked === "unbound" ? terminalId : null;
   return <div className="flex min-h-0 flex-1 flex-col">
     <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-2.5 py-2 text-caption text-text-dim">
       <label className="flex min-w-0 flex-1 items-center gap-2"><span className="shrink-0">{t.bookmarks.terminalHistory}</span><select aria-label={t.bookmarks.terminalHistory} value={selected} onChange={event => setSelected(event.target.value)} className="min-w-0 flex-1 rounded border border-border bg-bg p-1 text-text"><option value="">{current ? t.bookmarks.followCurrent : t.bookmarks.latestHistory}</option>{selected && !items.some(item => item.id === selected) && <option value={selected}>{t.bookmarks.readingHistory}</option>}{items.map(item => <option key={item.id} value={item.id}>{item.source.cliId} · {item.title} · {new Date(item.lastMessageAt ?? item.createdAt).toLocaleString()}</option>)}</select></label>
@@ -106,11 +112,15 @@ export function ConversationLens({ terminalId, conversationId, current }: { term
     </div>
     {error && <p role="status" className="px-3 text-caption text-text-dim">{t.bookmarks.historyFailed}</p>}
     {active && !current && !selected && <p className="border-b border-border px-3 py-1.5 text-caption text-text-dim">{t.bookmarks.historyFallback}</p>}
-    {active ? <ConversationContent key={active} conversationId={active} readOnly={!!selected || !current} blocked={blocked} terminalId={terminalId} /> : <p role="status" className="p-4 text-caption text-text-dim">{loading ? t.bookmarks.loading : t.bookmarks.noTerminalHistory}</p>}
+    {active ? <ConversationContent key={active} conversationId={active} readOnly={!!selected || !current} blocked={blocked} terminalId={terminalId} sendTarget={sendTarget} /> : <>
+      <p role="status" className="p-4 text-caption text-text-dim">{loading ? t.bookmarks.loading : t.bookmarks.noTerminalHistory}</p>
+      <div className="flex-1" />
+      {sendTarget && <Suspense fallback={null}><LensComposer terminalId={sendTarget} /></Suspense>}
+    </>}
   </div>;
 }
 
-function ConversationContent({ conversationId, readOnly, blocked, terminalId }: { conversationId: string; readOnly: boolean; blocked: SendBlock | null; terminalId: string }) {
+function ConversationContent({ conversationId, readOnly, blocked, terminalId, sendTarget }: { conversationId: string; readOnly: boolean; blocked: SendBlock | null; terminalId: string; sendTarget: string | null }) {
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [error, setError] = useState(false);
   const [retry, setRetry] = useState(0);
@@ -124,5 +134,5 @@ function ConversationContent({ conversationId, readOnly, blocked, terminalId }: 
   }, [conversationId, retry]);
   if (error) return <button className="p-4 text-caption text-text-dim" onClick={() => setRetry(value => value + 1)}>{t.bookmarks.historyFailed} · {t.bookmarks.retry}</button>;
   if (!conversation) return <div className="px-2.5 py-2 text-caption text-text-dim">{t.terminal.lens.resolving}</div>;
-  return <Suspense fallback={null}><ConversationDetail key={conversation.id} conversation={conversation} readOnly={readOnly} blocked={blocked} terminalId={terminalId} /></Suspense>;
+  return <Suspense fallback={null}><ConversationDetail key={conversation.id} conversation={conversation} readOnly={readOnly} blocked={blocked} terminalId={terminalId} sendTarget={sendTarget} /></Suspense>;
 }

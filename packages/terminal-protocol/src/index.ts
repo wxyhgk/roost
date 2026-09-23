@@ -155,3 +155,4 @@ export function parseClientMessage(raw: string): ClientMessage {
 
 export type { AgentJournalEvent, AgentReplay } from "./agent-replay";
 export * from './ai-commands.ts';
+export * from './direct-input.ts';

@@ -36,6 +36,9 @@ const { Terminal } = headless;
  */
 const SCROLLBACK_ROWS = 2000;
 
+export type ScreenRow = { text: string; wrapped: boolean };
+export type ScreenView = { rows: ScreenRow[]; cursorX: number; cursorY: number };
+
 export type ScreenSnapshot = {
   data: string;
   /** 这份快照对应到哪个 seq。**在途还没解析完的块要接在它后面**，不能丢也不能重放。 */
@@ -144,6 +147,28 @@ export function createScreenStore(options?: { scrollback?: number }) {
         const data = screen.serializer.serialize({ scrollback });
         if (!data) return null;
         return { data, seq: screen.parsedSeq, cols: screen.terminal.cols, rows: screen.terminal.rows };
+      } catch { return null; }
+    },
+
+    /**
+     * 此刻屏幕上**看得见的那几行**，外加光标位置。拿不准就返回 null。
+     *
+     * 给「往 CLI 里打字」用：按回车之前要看一眼底部是不是一个选择框，贴完之后要看一眼
+     * 正文出没出现。读的是已解析的网格，和 snapshot 一样不等写队列——调用方要的正是
+     * 「解析到哪算哪」，它自己会轮询。
+     *
+     * `wrapped` 是终端自己折的行（接着上一行），拼正文时要接回去，不能当换行。
+     */
+    view(id: string): ScreenView | null {
+      const screen = screens.get(id);
+      if (!screen || screen.broken) return null;
+      try {
+        const buffer = screen.terminal.buffer.active, rows: ScreenRow[] = [];
+        for (let y = 0; y < screen.terminal.rows; y++) {
+          const line = buffer.getLine(buffer.baseY + y);
+          rows.push({ text: line?.translateToString(true) ?? "", wrapped: line?.isWrapped ?? false });
+        }
+        return { rows, cursorX: buffer.cursorX, cursorY: buffer.cursorY };
       } catch { return null; }
     },
 

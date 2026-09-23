@@ -11,6 +11,7 @@ import { createAgentEventScanner, CLI_AGENT_PROTOCOL_VERSION,
   CLI_AGENT_PROTOCOL_VERSION_ENV, CLI_AGENT_CLIENT_VERSION_ENV } from "@roost/terminal-protocol";
 import { createReplayStore, type ReplayStorage } from "./replay";
 import { createScreenStore } from "./screen";
+export type { ScreenView, ScreenRow } from "./screen";
 import { batchCwds, cliForPid, pidCwdLinux, processTable } from "./processes";
 
 export type { ReplayStorage } from "./replay";
@@ -314,6 +315,8 @@ export function createTerminalRuntime(options: TerminalRuntimeOptions) {
     setSnapshot: (id: string, data: string, instanceId: string, seq: number) =>
       replay.setSnapshot(id, data, instanceId, seq),
     flush: (id: string) => replay.flush(id),
+    /** 此刻看得见的画面，见 screen.ts 的 view()。 */
+    screenView: (id: string) => screen.view(id),
   };
 }
 
@@ -335,7 +338,7 @@ export type ConversationRuntime = {
 };
 
 /** Gateway-facing operations may cross a process boundary. */
-export type TerminalService = Omit<TerminalRuntime, 'ensureSession'|'killSession'|'resume'|'flush'|'setSnapshot'> & {
+export type TerminalService = Omit<TerminalRuntime, 'ensureSession'|'killSession'|'resume'|'flush'|'setSnapshot'|'screenView'> & {
   resolveConversationRuntime?: (conversationId: string) => Promise<ConversationRuntime>;
   resolveTerminalConversation?: (terminalId: string) => Promise<ConversationRuntime>;
   ensureSession: (...args:Parameters<TerminalRuntime['ensureSession']>) => TerminalSession | Promise<TerminalSession>;
@@ -348,6 +351,8 @@ export type TerminalService = Omit<TerminalRuntime, 'ensureSession'|'killSession
   commandControl?: (id:string)=>Promise<import('@roost/terminal-protocol').AiControl>;
   enqueueCommand?: (id:string,input:import('@roost/terminal-protocol').AiCommandInput)=>Promise<import('@roost/terminal-protocol').AiCommand>;
   cancelCommand?: (id:string,requestId:string)=>Promise<import('@roost/terminal-protocol').AiCommand>;
+  /** 往终端里的 CLI 直接打一句话，见 terminal-daemon/src/direct-input.ts。 */
+  typeText?: (id:string,text:string)=>Promise<import('@roost/terminal-protocol').DirectInputResult>;
   writeProtocolResponse?: (id:string,data:string)=>void;
   ownerPid?: number;
   listSessions?: () => TerminalSession[];

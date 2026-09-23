@@ -84,6 +84,7 @@ export async function connectTerminalDaemon(socketPath:string):Promise<TerminalS
     commandControl:id=>commands?call('commandControl',[id]):Promise.resolve({supported:false,reason:'unsupported_daemon',inputEpoch:0,queue:[],composer:null}),
     enqueueCommand:(id,input)=>commands?call('enqueueCommand',[id,input]):Promise.reject(new Error('unsupported_daemon')),
     cancelCommand:(id,requestId)=>commands?call('cancelCommand',[id,requestId]):Promise.reject(new Error('unsupported_daemon')),
+    typeText:(id,text)=>call('typeText',[id,text]),
     writeProtocolResponse:(id,data)=>notify('writeSession',[id,data,true]),
     get ownerPid(){return ownerPid},
     isConnected:()=>connected&&!disposed,

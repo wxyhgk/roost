@@ -1,6 +1,7 @@
 import { createSubscriptionsHandler } from './subscriptions/handler';
 import { createServerMonitorHandler } from './server-monitor';
 import { createAiCommandHandler, commandControl } from './ai-commands';
+import { createDirectInputHandler } from './direct-input';
 import { createClaudeObserver } from "./claude-observer";
 import { AiIdentityError, readIdentityCandidate } from "./ai-identity";
 import { createFileUploadHandler } from "./file-upload";
@@ -78,6 +79,7 @@ export function createBackendServer({ store, runtime, workspaceRoot, access, aut
   const allowedFileRoot = createFileAccess(store, runtime);
   const handleFileUpload = createFileUploadHandler();
   const handleAiCommands = createAiCommandHandler(store,runtime);
+  const handleDirectInput = createDirectInputHandler(store,runtime);
   const conversationMessaging = createConversationMessagingHandler(store);
   const sessionStatus = createSessionStatus(store, runtime);
   const fileWatcher = process.platform === 'darwin' ? createIsolatedFileWatcher() : createFileWatcher();
@@ -177,6 +179,7 @@ export function createBackendServer({ store, runtime, workspaceRoot, access, aut
       json(res, 200, sessionStatus.snapshot()); return;
     }
     if (await handleAiCommands(req,res,url)) return;
+    if (await handleDirectInput(req,res,url)) return;
     if (await conversationMessaging.handle(req, res, url)) return;
     if (await handleConversations(req, res, url, store.conversations)) return;
     if (await handleConversationRuntime(req, res, url, store, runtime)) return;

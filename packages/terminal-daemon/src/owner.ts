@@ -3,6 +3,7 @@ import { realpathSync } from 'node:fs';
 import { relative, isAbsolute } from 'node:path';
 import { protectWindowsPipe } from './windows-security.ts';
 import { createAiCommandOwner } from './ai-command-owner.ts';
+import { createDirectInput } from './direct-input.ts';
 import { createPeerDeliveryOwner } from './peer-delivery.ts';
 import { ensureCodexRuntime } from './codex-launch.ts';
 import { observeCodexThread } from './codex-observation.ts';
@@ -11,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { createClaudeLaunch } from './claude-launch.ts';
 import { createServer, type Socket } from 'node:net';
 import { chmod } from 'node:fs/promises';
-import { createTerminalRuntime } from '@roost/terminal-runtime';
+import { createTerminalRuntime, foregroundCli, processTable } from '@roost/terminal-runtime';
 import { createWorkspaceStore } from '@roost/workspace-store';
 import { sanitizeAgentTasks } from '@roost/terminal-protocol';
 import { send, read, replayResultByteBudget } from './wire.ts';
@@ -52,6 +53,21 @@ export async function startTerminalOwner(options: {socketPath:string; dataDir:st
   const sessions = () => [...watching.keys()].flatMap(id => runtime.getSession(id) ?? []);
   const broadcast = (message:unknown) => { for (const socket of clients) send(socket, message); };
   const commands = createAiCommandOwner({store,runtime,ownerId,recoverOnCreate:false,enabled:process.env.ROOST_CLAUDE_GUI_SEND==='1',qwenEnabled:process.env.ROOST_QWEN_GUI_SEND==='1',changed:command=>broadcast({type:'event',id:command.webSessionId,event:{type:'command-status',command}})});
+  /*
+    网页往终端里打字走这一条（见 direct-input.ts 顶上为什么推倒了 commands 那条路）。
+    写入仍然经过 commands.write：旧的输入追踪（epoch / lastInput）照样能看见这些字节，
+    agent 之间互发消息还在用那一套，别让它以为终端里没人动过。
+  */
+  const direct = createDirectInput({
+    session: id => runtime.getSession(id),
+    view: id => runtime.screenView(id),
+    write: (id, data) => commands.write(id, data, false),
+    foreground: async id => {
+      const pid = runtime.getSession(id)?.pid;
+      if (!Number.isInteger(pid) || pid! <= 0) return undefined;
+      return foregroundCli(pid!, await processTable());
+    },
+  });
   const peers = createPeerDeliveryOwner({store,runtime,commands,ownerId});
   let ready = false;
   const hello = (socket:Socket) => send(socket,{type:'hello',version:1,capabilities:['agent-event-replay-v1','ai-command-v1','peer-messages-v1','conversation-runtime-v1','terminal-conversation-v1','bounded-replay-v1'],pid:process.pid,sessions:sessions()});
@@ -256,6 +272,16 @@ export async function startTerminalOwner(options: {socketPath:string; dataDir:st
           case 'commandControl': result=commands.control(id); break;
           case 'enqueueCommand': result=commands.enqueue(id,args[1]); break;
           case 'cancelCommand': result=commands.cancel(id,args[1]); break;
+          case 'typeText': {
+            /*
+              要等一两秒（贴 → 等回显 → 回车），而这里的分发是同步的：switch 一结束就回复。
+              所以它自己回复，不走下面那条统一的 send。
+            */
+            void direct.type(id,args[1]).then(
+              value=>{if(requestId)send(socket,{type:'reply',requestId,result:value});},
+              error=>{if(requestId)send(socket,{type:'reply',requestId,error:error instanceof Error?error.message:'terminal operation failed',status:(error as any)?.status,code:(error as any)?.code});});
+            return;
+          }
           case 'resizeSession': runtime.resizeSession(id,args[1],args[2]); commands.resize(id,args[1],args[2]); break;
           case 'setSnapshot': result=runtime.setSnapshot(id,args[1],args[2],args[3]); break;
           case 'flush': result=runtime.flush(id); break;

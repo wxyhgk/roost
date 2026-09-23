@@ -140,3 +140,20 @@ for (const [name, data] of [
     assert.deepEqual(grid(restored), grid(live), 'incremental output landed differently after restoration');
   });
 }
+
+/*
+  view() 给「往 CLI 里打字」用：按回车前看一眼底部，贴完之后看一眼正文出没出现。
+  两件事都要的是**最底下那一屏**，不是回滚区；折行要能接回去，否则一段长正文会被当成两段。
+*/
+test("view returns the bottom screen, not the scrollback, and marks rows the terminal wrapped", async () => {
+  const screen = createScreenStore();
+  const lines = Array.from({ length: 30 }, (_, i) => `line ${i}`).join("\r\n");
+  screen.write("v", "i1", lines + "\r\n" + "x".repeat(15) + "\r\n❯ 最后一行", 1, 10, 5);
+  await parsedTo(screen, "v", 1);
+  const view = screen.view("v")!;
+  assert.equal(view.rows.length, 5);
+  assert.deepEqual(view.rows.map(row => row.text), ["line 28", "line 29", "xxxxxxxxxx", "xxxxx", "❯ 最后一行"]);
+  assert.deepEqual(view.rows.map(row => row.wrapped), [false, false, false, true, false], "第四行是终端把第三行折下来的");
+  assert.equal(view.cursorY, 4);
+  assert.equal(screen.view("missing"), null);
+});

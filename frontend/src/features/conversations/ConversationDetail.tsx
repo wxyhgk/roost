@@ -23,6 +23,7 @@ import { useSessionActivity } from "../session-status/public";
 import { createSession } from "../../shared/api/session";
 import { useWorkspace } from "../../shared/store";
 import { useOutgoing } from "./useOutgoing";
+import { useDirectSend } from "./useDirectSend";
 import { ConversationMeta } from "./ConversationMeta";
 import { Empty } from "../../shared/ui/Empty";
 import { formatTime } from "../../shared/datetime";
@@ -35,7 +36,7 @@ import { BookmarkButton } from '../bookmarks/BookmarkButton';
  * 打开它不会启动任何 CLI，也不会继续生成——所以这里没有「恢复并继续」按钮。
  * run 非空时给一个「跳到终端」的入口，为空就照常读历史，两种情况都完整可用。
  */
-export function ConversationDetail({ conversation: initial, onBack, onJumpToTerminal, readOnly = false, blocked = null, terminalId }: {
+export function ConversationDetail({ conversation: initial, onBack, onJumpToTerminal, readOnly = false, blocked = null, terminalId, sendTarget }: {
   conversation: Conversation;
   /** 目录里进来才有「返回列表」；中间栏是这个终端的固定视角，没有可返回的列表。 */
   onBack?: () => void;
@@ -45,6 +46,14 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
   blocked?: SendBlock | null;
   /** 从终端侧进来时才有；目录和书签里没有终端上下文。 */
   terminalId?: string;
+  /**
+   * 输入框往哪个终端里打字。
+   *
+   * 终端侧（GUI 镜头）明确给：终端活着、前台是 AI CLI 就给，**不再要求身份核对通过**——
+   * 打字只认终端，不认「这是哪个对话」（见 useDirectSend）。给 null 就是明确不给输入框。
+   * 不传（目录里进来）就退回这条对话记着的那个终端，只读时不给。
+   */
+  sendTarget?: string | null;
 }) {
   // 改标题/分组会返回新的记录（含新 revision），本地跟着走，
   // 否则下一次修改会拿着过期的 revision 撞 409。
@@ -151,6 +160,8 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
 
   const gap = history.coverage?.hasGap === true;
   const jumpTarget = typeof run?.webSessionId === "string" ? run.webSessionId : null;
+  const sendTo = sendTarget !== undefined ? sendTarget : !readOnly ? jumpTarget : null;
+  const direct = useDirectSend(sendTo);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -212,9 +223,11 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
         </ul>
       </div>
 
-      {/* 没有在跑的终端时不给输入框：投递不出去，摆一个能打字的框只会让人白写一段。 */}
-      {jumpTarget && !readOnly ? <ConversationComposer outgoing={outgoing} terminalId={terminalId} />
-        : <SendBlocked blocked={blocked} readOnly={readOnly} conversation={conversation} terminalId={terminalId} />}
+      {/* 没有能打字的终端时不给输入框：发不出去，摆一个能打字的框只会让人白写一段。 */}
+      {sendTo ? <>
+        {blocked === "unbound" && terminalId && <StaleHistory terminalId={terminalId} />}
+        <ConversationComposer send={direct} onJump={() => onJumpToTerminal?.(sendTo)} />
+      </> : <SendBlocked blocked={blocked} readOnly={readOnly} conversation={conversation} terminalId={terminalId} />}
     </div>
   );
 }
@@ -228,6 +241,22 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
  * 这样也避免了「终端已关闭」这类常驻横幅：对多数已归档的对话来说那是常态，
  * 天天挂在那里只是噪音，而真正想跳的时候你自然会点。
  */
+/**
+ * 这里显示的对话记录，可能不是终端里正在跑的那一段。
+ *
+ * 绑定过期（`unbound`）以前意味着「发不出去」，所以它住在 SendBlocked 里。现在打字只认
+ * 终端、不认对话，它不再挡发送——但**这里显示的历史**仍然是按绑定找的，可能是旧的那一段，
+ * 发出去的话会出现在终端里正在跑的那一段里，而不是这里。所以说一句，并把重绑按钮留着。
+ */
+function StaleHistory({ terminalId }: { terminalId: string }) {
+  return (
+    <div className="shrink-0 border-t border-border px-2.5 py-1.5 text-caption text-text-dim">
+      <p>{t.misc.conversations.detail.send.direct.staleHistory}</p>
+      <RebindBinding terminalId={terminalId} />
+    </div>
+  );
+}
+
 /**
  * 发不出去时，说清楚「为什么」和「怎么办」。
  *
