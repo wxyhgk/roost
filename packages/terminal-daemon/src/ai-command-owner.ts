@@ -239,8 +239,24 @@ const PASTE_ECHO_MS=2000;
    const blocked=reason(id);if(blocked){if(c.reason!==blocked)update(c,{reason:blocked});return;}
    const epoch=s.epoch,screen=s.screen.inspect(),b=binding(id);
    if(!b?.transcriptPath){if(c.reason!=='transcript_unavailable')update(c,{reason:'transcript_unavailable'});return;}
+   /*
+     回执基线：写之前先量一次转录文件有多大，之后只从这个位置往后找那条 user 记录。
+
+     **文件不在就不能写。** 这里原来把 ENOENT 当成「新会话，转录还没建，从 0 算起」放行。
+     那个推断在一种情况下是错的，而且实测反复撞到：CLI 刚重启时绑定里的转录路径会短暂
+     指向一个还不存在的文件（随后才被纠正）。那一刻按 0 立了基线，等路径纠正回来，
+     证据扫描就得从一个 50MB 文件的**开头**读起——每拍 256KB，而验收窗口只有 10 秒，
+     必然超时。超时的命令又会按「一条悬着挡住后面全部」的规矩堵死这个对话的后续消息。
+
+     实测 2026-09-23：两次重启之后各撞一次，transcriptOffset 都是 0，而文件当时是 50MB。
+
+     「转录还没建」这个理由在这条路上其实不成立：能走到这里说明钩子已经通了
+     （`reason()` 要求 `s.version`，那是钩子填的），而 CLI 建转录比发钩子更早。
+     所以文件不在只说明**我们手上的路径不对**，那就等它被纠正，别写一条注定验不了的命令。
+   */
    let offset=0,identity:string|null=null;
-   try{const info=await stat(b.transcriptPath);if(!info.isFile())return;offset=info.size;identity=fileIdentity(info);}catch(e){if((e as NodeJS.ErrnoException).code!=='ENOENT')return;}
+   try{const info=await stat(b.transcriptPath);if(!info.isFile())return;offset=info.size;identity=fileIdentity(info);}
+   catch{if(c.reason!=='transcript_unavailable')update(c,{reason:'transcript_unavailable'});return;}
    /*
      前台归属闸：**我们写进去的字节到底会被谁收到。**
 

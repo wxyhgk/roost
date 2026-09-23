@@ -354,3 +354,33 @@ test('裁剪只吃首尾空白，别人的正文照样对不上',async t=>{
  f.owner.hook('s',{event:'UserPromptSubmit',sessionId:'native',prompt:'看看当前'},8);
  assert.equal(f.store.aiCommands.get('s','r')?.hookSeq,null,'是子串也不行——必须是同一句话');
 });
+
+/*
+  转录文件不在时，一个字节都不写。
+
+  这里原来把 ENOENT 当成「新会话，转录还没建，从 0 算起」放行。实测反复撞到它是错的：
+  CLI 刚重启时绑定里的转录路径会短暂指向一个还不存在的文件，随后才被纠正。那一刻按 0
+  立了基线，等路径纠正回来，证据扫描要从一个 50MB 文件的开头读起——每拍 256KB，而验收
+  窗口只有 10 秒，必然超时；超时的命令再按「一条悬着挡住后面全部」把这个对话堵死。
+
+  2026-09-23 两次重启之后各撞一次，transcriptOffset 都是 0，而文件当时是 50MB。
+*/
+test('转录文件不在时不写，也不去立一个假基线',async t=>{
+ const f=await fixture(t);
+ await f.display();
+ await rm(f.path);
+ f.owner.enqueue('s',f.input('r','这条不该被写出去'));
+ await f.owner.pump('s');
+ assert.deepEqual(f.writes,[],'拿不到基线就一个字节都不写');
+ const c=f.store.aiCommands.get('s','r');
+ assert.equal(c?.status,'queued','命令留着，等路径被纠正');
+ assert.equal(c?.reason,'transcript_unavailable','要说得出为什么');
+ assert.equal(c?.transcriptOffset,null,'绝不能记下一个假的 0');
+
+ // 文件回来之后照常写，基线是当时的真实大小。
+ await writeFile(f.path,'x'.repeat(1234));
+ await f.display();
+ await f.owner.pump('s');
+ assert.equal(f.writes.length,1,'路径正常之后就该写');
+ assert.equal(f.store.aiCommands.get('s','r')?.transcriptOffset,1234,'基线要是文件当时的大小');
+});
