@@ -41,6 +41,9 @@ function emittedReasons(): Set<string> {
     // 命令自己记的原因，经 finishFromCommand 传到投递上。
     ...all(owner, /reason:'([a-z_]+)'/g),
     ...all(read('packages/workspace-store/src/ai-commands.ts'), /reason:'([a-z_]+)'/g),
+    // 认领失败里说得出口的那几种（peer-delivery.ts 的 CLAIM_REASONS）。
+    ...all(read('packages/terminal-daemon/src/peer-delivery.ts'),
+      /CLAIM_REASONS[\s\S]*?\[([\s\S]*?)\]/g).flatMap(list => [...list.matchAll(/'([a-z_]+)'/g)].map(m => m[1])),
     // 投递排队与不确定态。
     ...all(read('packages/terminal-daemon/src/peer-delivery.ts'), /setQueuedReason\([^,]+,\s*"([a-z_]+)"/g),
     ...all(read('packages/terminal-daemon/src/peer-delivery.ts'), /markUncertain\([^,]+,\s*"([a-z_]+)"/g),

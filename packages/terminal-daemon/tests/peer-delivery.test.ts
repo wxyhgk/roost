@@ -250,3 +250,73 @@ test('有在跑的 run 时不乱标：该说什么原因还说什么原因',t=>{
   // busy 是主循环给的说法；孤儿扫描不能把它盖成 offline。
   assert.equal(f.store.peerMessages.get(message.message.id).delivery.reason,'busy');
 });
+
+/*
+  收件箱里卡着一条没定论的消息时，后面那些要**说得出为什么**。
+
+  `claimDelivery` 在收件人有更早的、或者未解决的投递时抛 409 recipient_blocked。原来这个
+  异常被外层的 `catch {}` 吞掉，投递原地不动、保留着上一轮写下的旧原因——而
+  `setQueuedReason` 只在原因变化时才写库，于是界面上那句话可能是几分钟前的。
+
+  实测撞到：收件箱里有一条 uncertain 的旧消息（用户点了取消，但它已经写进过终端，所以
+  只能是「不确定」），后面四条被永久挡住，而界面一直说「CLI 正在处理上一轮，排队等待」。
+  那 24 秒里闸其实是全开的（reason=null、队列空），pump 跑了约 96 次，一次都没成，
+  也一个字都没说。
+
+  recipient_blocked 尤其不能沉默：它**不会自己好**，得有人去处理前面那条。
+*/
+test('前面有一条没定论时，后面的投递要记下 recipient_blocked',t=>{
+  const f=fixture(t),owner=f.owner();
+  owner.start();
+  f.controls.set('B',{supported:true,reason:null});
+
+  /*
+    第一条走到 dispatching，然后把它变成实测里那个形状：**命令已经收场（不在活动队列里），
+    投递却停在 uncertain**——用户点了取消，但正文写进过终端，所以只能是「不确定」。
+    这一步很要紧：命令还在队列里时 pump 会先被 command_pending 短路，根本走不到认领。
+  */
+  const first=f.send('first');owner.pump();
+  assert.equal(f.store.peerMessages.get(first.message.id).delivery.state,'dispatching');
+  const command=f.enqueues[0]!;
+  f.store.aiCommands.update(command.terminal,command.input.requestId,['queued'],
+    {status:'cancelled',reason:'user_cancelled',writtenAt:Date.now()});
+  f.store.peerMessages.finishFromCommand(f.store.peerMessages.get(first.message.id).delivery.id,
+    f.store.aiCommands.get(command.terminal,command.input.requestId)!);
+  assert.equal(f.store.peerMessages.get(first.message.id).delivery.state,'uncertain','写过就只能是不确定');
+  assert.equal(f.store.aiCommands.active(command.terminal).length,0,'命令已收场，闸是全开的');
+
+  // 第二条必然被挡：收件人还有一条没定论。
+  const second=f.send('second');owner.pump();
+  const blocked=f.store.peerMessages.get(second.message.id).delivery;
+  assert.equal(blocked.state,'queued','挡住了，但不该消失');
+  assert.equal(blocked.reason,'recipient_blocked','必须说出为什么，而不是留着上一轮的旧原因');
+  assert.equal(f.enqueues.length,1,'只有第一条真的写出去了');
+
+  // 原因没变就不该反复涨 revision：pump 每 250ms 跑一次。
+  const revision=f.store.peerMessages.get(second.message.id).delivery.revision;
+  owner.pump();owner.pump();
+  assert.equal(f.store.peerMessages.get(second.message.id).delivery.revision,revision,'原因没变时是 no-op');
+});
+
+test('认领失败时冒出没见过的错误码，不许原样显示给用户',t=>{
+  /*
+    名单是**白名单**，不是照单全收：这些字符串会原样走到界面上，所以只放出已经写过说法的
+    那几种。冒出一个没见过的码时宁可什么都不说——留着上一轮的原因难看，但比在界面上
+    甩一个内部标识符强，那正是这一轮修的那个毛病。
+  */
+  const f=fixture(t);
+  let thrown=0;
+  const store={...f.store,peerMessages:{...f.store.peerMessages,
+    claimDelivery(){thrown++;throw Object.assign(new Error('boom'),{code:'a_code_nobody_wrote_a_sentence_for'});}}};
+  const owner=createPeerDeliveryOwner({store:store as any,runtime:{getSession:(id:string)=>f.live.get(id)} as any,
+    commands:{control:()=>({supported:true,reason:null,inputEpoch:0,queue:[]}),enqueue:()=>assert.fail('认领都没成，不该去写命令')} as any,
+    ownerId:'owner'});
+  t.after(()=>owner.dispose());
+  owner.start();
+  const message=f.send('unknown-code');
+  owner.pump();
+  assert.ok(thrown>0,'这一轮确实走到了认领');
+  const delivery=f.store.peerMessages.get(message.message.id).delivery;
+  assert.equal(delivery.state,'queued');
+  assert.notEqual(delivery.reason,'a_code_nobody_wrote_a_sentence_for','名单外的码不许落到投递上');
+});

@@ -40,6 +40,8 @@ function build() {
     acceptance_timeout: r.acceptanceTimeout, target_changed: r.targetChanged,
     peer_target_changed: r.targetChanged, write_boundary_unknown: r.writeBoundaryUnknown,
     write_failed: r.writeFailed, daemon_restarted: r.daemonRestarted, user_cancelled: r.userCancelled,
+    recipient_blocked: r.recipientBlocked, already_dispatching: r.alreadyDispatching,
+    run_unavailable: r.runUnavailable,
     user_dismissed: r.userDismissed,
     submission_boundary_unknown: r.submissionBoundaryUnknown,
     command_evidence_mismatch: r.commandEvidenceMismatch,
@@ -48,6 +50,7 @@ function build() {
   Object.assign(HINT, { disabled: r.disabledHint, unsupported_version: r.unsupportedVersionHint,
     foreground_not_cli: r.foregroundNotCliHint,
     acceptance_uncertain: r.acceptanceUncertainHint, acceptance_timeout: r.acceptanceTimeoutHint,
+    recipient_blocked: r.recipientBlockedHint,
     write_boundary_unknown: r.writeBoundaryUnknownHint,
     awaiting_user_submit: t.misc.conversations.detail.send.awaitingUserSubmitHint });
 }

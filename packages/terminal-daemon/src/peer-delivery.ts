@@ -15,6 +15,11 @@ export function createPeerDeliveryOwner(options: {
   ownerId: string;
 }) {
   const { store, runtime, commands, ownerId } = options;
+  /*
+    认领失败里**说得出口**的那几种。逐个列出来而不是照单全收，是因为这些字符串会原样
+    显示给用户，必须每一个都有说法（`frontend/.../deliveryReason.ts`，那边有用例扫这份名单）。
+  */
+  const CLAIM_REASONS = new Set(['recipient_blocked', 'already_dispatching', 'run_unavailable', 'conversation_trashed']);
   let started = false, disposed = false, pumping = false;
   let timer: ReturnType<typeof setInterval> | undefined;
   let pendingAfter = 0;
@@ -90,7 +95,27 @@ export function createPeerDeliveryOwner(options: {
           const input = commandInput(delivery, run);
           try { validateAiCommandInput(input); }
           catch { store.peerMessages.setQueuedReason(delivery.id, "message_not_submittable"); continue; }
-          const claimed = store.peerMessages.claimDelivery(delivery.id, run, input.text);
+          /*
+            认领失败**必须留痕**。
+
+            这里原来只有一句 `claimDelivery(...)`，失败时异常被外层那个 `catch {}` 吞掉，
+            投递原地不动、保留着上一轮写下的旧原因——而 `setQueuedReason` 只在原因变化时
+            才写库，于是界面上那句话可能是几分钟前的，和真实原因毫无关系。
+
+            实测撞到：收件箱里有一条 `uncertain` 的旧消息（用户点了取消，但它已经写进过
+            终端，所以只能是「不确定」）。`claimDelivery` 的 recipient_blocked 会因此**永远**
+            失败，后面四条消息被永久挡住，而界面一直说「CLI 正在处理上一轮，排队等待」。
+            实测那 24 秒里闸是全开的（reason=null、队列空），pump 跑了约 96 次，一次都没成。
+
+            recipient_blocked 尤其要说出来，因为它**不会自己好**：得有人去处理前面那条。
+          */
+          let claimed;
+          try { claimed = store.peerMessages.claimDelivery(delivery.id, run, input.text); }
+          catch (error) {
+            const code = (error as { code?: string })?.code;
+            if (code && CLAIM_REASONS.has(code)) store.peerMessages.setQueuedReason(delivery.id, code);
+            continue;
+          }
           // No await between final control check, durable claim and enqueue. The
           // command owner revalidates identity again and owns the actual write.
           try {
