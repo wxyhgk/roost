@@ -113,6 +113,37 @@ export const terminal = {
     jumpToBottom: "跳转到底部",
   },
 
+  /*
+    手机上的终端按键栏。软键盘打不出 Esc，也打不出 Shift+Tab，没有这一栏在手机上连退出
+    AI CLI 都退不出来。键面符号（Esc / ⇧⇥ / ↑ …）在 keys.ts 里当数据，不在这儿——
+    那些是终端键的通用印刷，任何语言下都一样；这里只放读屏名称和按钮说明。
+  */
+  keyBar: {
+    label: "终端按键",
+    expand: "展开终端按键栏",
+    collapse: "收起终端按键栏",
+    /** 三态修饰键得说得出口，否则锁上了从界面上看不出来。 */
+    modifierHint: "轻点只对下一个键生效，长按锁定",
+    once: "生效一次",
+    locked: "已锁定",
+    keys: {
+      esc: "Esc",
+      shiftTab: "Shift+Tab",
+      minus: "减号",
+      home: "行首",
+      up: "上",
+      end: "行尾",
+      pageUp: "上一页",
+      tab: "Tab",
+      ctrl: "Ctrl",
+      alt: "Alt",
+      left: "左",
+      down: "下",
+      right: "右",
+      pageDown: "下一页",
+    },
+  },
+
   recovery: {
     checking: "正在检查可恢复的对话…",
     syncing: "对话信息正在同步。",

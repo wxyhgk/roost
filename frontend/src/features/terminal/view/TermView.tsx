@@ -5,6 +5,7 @@ import { useTerminal } from "../useTerminal";
 import { TerminalRecovery } from './TerminalRecovery';
 import { SavedTick, SelectionSaveBar, useTerminalSelection } from "./SelectionSaveBar";
 import { TouchSelectionBar, useTouchSelection } from "./TouchSelection";
+import { KeyBar, useKeyBar } from "./KeyBar";
 import type { CliKind } from "@roost/terminal-protocol";
 import { TerminalDiagnostics } from './TerminalDiagnostics';
 import { TerminalWatermark } from './TerminalWatermark';
@@ -36,6 +37,7 @@ const onGrid = (target: EventTarget | null) => target instanceof Element && targ
 
 export function TermView({ sessionId, active, onCwd, onCli }: Props) {
   const touch = useTouchSelection(sessionId);
+  const keyBar = useKeyBar(sessionId);
   // 轻点判定：按下的位置和抬起的位置差得远就是滑动（滚动），不是点。
   const tapStart = useRef<{ x: number; y: number } | null>(null);
   const {
@@ -234,8 +236,13 @@ export function TermView({ sessionId, active, onCwd, onCli }: Props) {
         就在那儿，一点就被弹回底部、刚翻到的位置也没了。贴图条的「取消」同样被压住。
 
         容器本身不吃事件，各自打开 pointer-events；顺序是自下而上，最常出现的在最下面。
+
+        底边**跟着按键栏抬**：键栏是固定在视口底部的一整条，不让开就会把这三样全盖住——
+        又正好是「跳到底部」和「选择文本」这两个手机上最常按的。12px 是原来的 `bottom-3`，
+        键栏没挂上时（桌面、或让位给选区工具条时）`height` 是 0，回到原样。
       */}
-      <div className="pointer-events-none absolute bottom-3 right-3 z-[8] flex max-w-[calc(100%-24px)] flex-col-reverse items-end gap-2">
+      <div className="pointer-events-none absolute right-3 z-[8] flex max-w-[calc(100%-24px)] flex-col-reverse items-end gap-2"
+        style={{ bottom: keyBar.height + 12 }}>
       {active && !atBottom && (
         <button
           type="button"
@@ -276,6 +283,13 @@ export function TermView({ sessionId, active, onCwd, onCli }: Props) {
         />
       )}
       {active && flash && <SavedTick text={flash} />}
+      {/*
+        按键栏和选区工具条**互斥**：两条都是 `fixed ... bottom-0` 的通栏，叠在一起必然
+        有一条被盖住一半。互斥而不是挪位，是因为选区模式下落在网格上的每一次轻点都在圈
+        范围（见 TouchSelection 顶部），方向键这时候既用不上、也会和圈选抢同一根手指。
+        退出选区模式键栏就回来。
+      */}
+      {active && keyBar.visible && !touch.on && <KeyBar state={keyBar} />}
       {active && touch.on && (
         <TouchSelectionBar
           state={touch}

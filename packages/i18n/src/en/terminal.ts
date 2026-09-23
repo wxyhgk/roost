@@ -110,6 +110,32 @@ export const terminal = {
     jumpToBottom: "Jump to bottom",
   },
 
+  /* 键面符号在 keys.ts 里当数据，两份语言包都不管它。 */
+  keyBar: {
+    label: "Terminal keys",
+    expand: "Show the terminal key bar",
+    collapse: "Hide the terminal key bar",
+    modifierHint: "Tap for the next key only, long-press to lock",
+    once: "for the next key",
+    locked: "locked",
+    keys: {
+      esc: "Esc",
+      shiftTab: "Shift+Tab",
+      minus: "Minus",
+      home: "Home",
+      up: "Up",
+      end: "End",
+      pageUp: "Page up",
+      tab: "Tab",
+      ctrl: "Ctrl",
+      alt: "Alt",
+      left: "Left",
+      down: "Down",
+      right: "Right",
+      pageDown: "Page down",
+    },
+  },
+
   recovery: {
     checking: "Checking for a conversation to resume…",
     syncing: "Conversation information is syncing.",

@@ -18,6 +18,7 @@ import { attachBrowserShortcutPassthrough, isMac } from "./keys";
 // Scrollback rows to attempt per snapshot, largest first; 0 keeps the viewport only.
 const SNAPSHOT_SCROLLBACK_STEPS = [2000, 500, 0];
 import { attachHostWheel } from "./wheel";
+import { attachHostTouchScroll } from "./touchScroll";
 import { pointToCell, selectionArgs } from "./touchSelect";
 import { attachAppearance } from "./appearance";
 import "@xterm/xterm/css/xterm.css";
@@ -285,18 +286,21 @@ export function mountXterm(host: HTMLElement, theme: TermTheme, onFileLink?: (li
     (term.element?.querySelector(".xterm-screen") as HTMLElement | null) ??
     term.element ??
     host;
-  const detachWheel = attachHostWheel(
-    host,
-    () => ({
-      cols: term.cols,
-      rows: term.rows,
-      mouseTracking:
-        dec.mouseTracking() || term.modes.mouseTrackingMode !== "none",
-      altScreen: dec.altScreen() || term.buffer.active.type === "alternate",
-      target: screen(),
-    }),
-    emit,
-  );
+  const scrollState = () => ({
+    cols: term.cols,
+    rows: term.rows,
+    mouseTracking:
+      dec.mouseTracking() || term.modes.mouseTrackingMode !== "none",
+    altScreen: dec.altScreen() || term.buffer.active.type === "alternate",
+    target: screen(),
+  });
+  const detachWheel = attachHostWheel(host, scrollState, emit);
+  /*
+    手指划屏走**同一个状态**，只是入口不同。xterm 6.0.0 自己的触摸滚动是死的
+    （见 touchScroll.ts 开头），所以这一路全由我们接管，连最后那条「滚回滚历史」
+    也要显式调 term.scrollLines——滚轮那条路上它是 xterm 自己做的。
+  */
+  const detachTouchScroll = attachHostTouchScroll(host, scrollState, emit, amount => term.scrollLines(amount));
 
   return {
     supportsSnapshot: true,
@@ -493,6 +497,7 @@ export function mountXterm(host: HTMLElement, theme: TermTheme, onFileLink?: (li
       detachIme();
       detachKeys();
       detachWheel();
+      detachTouchScroll();
       dataSub.dispose();
       host.removeEventListener('mousedown', onFileDown, true);
       host.removeEventListener('mousemove', onFileMove, true);

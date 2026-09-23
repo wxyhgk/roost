@@ -4,6 +4,7 @@ import type { Outgoing } from "./useOutgoing";
 // 复用资料库那份 uid：它带了非安全上下文的 fallback（http 访问时 crypto.randomUUID
 // 不存在），重写一份只会漏掉这个已经踩过的坑。
 import { t } from "@roost/i18n";
+import { useKeyboardInset } from "../../shared/useKeyboardInset";
 import { queuedHint, queuedText } from "./deliveryReason";
 import { useTuiComposer } from "./useTuiComposer";
 import { mirrorBlock, mirrorContent } from "./tuiMirror";
@@ -50,9 +51,23 @@ function TuiMirror({ terminalId }: { terminalId: string }) {
 export function ConversationComposer({ outgoing, terminalId }: { outgoing: Outgoing; terminalId?: string }) {
   const { text, setText, busy, error, submit } = outgoing;
   const overLimit = textBytes(text) > MAX_PEER_TEXT_BYTES;
+  const keyboardInset = useKeyboardInset();
 
   return (
-    <div className="flex shrink-0 flex-col gap-1.5 border-t border-border px-2.5 py-2">
+    /*
+      手机上软键盘弹起来会盖住发信框。让出的高度只加在**这一侧**的 `padding-bottom` 上：
+      发信区在 flex 列里本来就是 `shrink-0`，顶上那条 `flex-1` 的消息列表会自己缩。整个对话视图
+      是 `TerminalPane` 里一层 `absolute inset-0` 的覆盖层（见那里「GUI 盖在终端之上」那段），
+      所以这一截 padding 压根传不到终端容器上去，它的高度一个像素都没动——这正是
+      `keyboardInset.ts` 顶上那条铁律要的效果。
+
+      **是 padding 而不是 `position: fixed` / `transform`**：fixed 在 iOS 上以布局视口定位，
+      键盘弹起时它照样停在被遮住的地方（这就是各家 App 的「输入框藏在键盘底下」那个经典 bug）；
+      transform 则会把元素抬出正常流，上面的消息列表不知道它让了位，最后一条消息被盖住。
+      留在正常流里顶上来，两个问题都不存在。
+    */
+    <div style={keyboardInset > 0 ? { paddingBottom: `calc(0.5rem + ${keyboardInset}px)` } : undefined}
+      className="flex shrink-0 flex-col gap-1.5 border-t border-border px-2.5 py-2">
       {terminalId && <TuiMirror terminalId={terminalId} />}
       {error && <div role="alert" className="text-caption text-danger">{error}</div>}
       <div className="flex items-end gap-1.5">
