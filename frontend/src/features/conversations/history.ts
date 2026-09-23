@@ -72,6 +72,31 @@ export const isLongReply = (text: string) =>
   text.split("\n").length > COLLAPSE_LINES || text.length > COLLAPSE_CHARS;
 
 /**
+ * 折叠状态下**放进 DOM 的那一份**。
+ *
+ * 折叠原来只用 CSS 的 `line-clamp`——那只是视觉上裁掉，整段文字仍然进 DOM、仍然要完整
+ * 排版测量，浏览器才知道从哪一行裁。工具输出实测最大 556 KB，还带 `whitespace-pre-wrap`
+ * （长行换行，布局里最贵的一种）：四行的显示，全文的代价。一屏几十条这样的，就是卡的来源。
+ *
+ * 所以只给它足够填满那几行的量。上限取得很宽（8 KB）**是刻意的**：正常回复一个字都不会
+ * 被动到，只有病态的大块才会被截，视觉上和以前一模一样（`line-clamp` 照旧在外面兜着）。
+ * 按行数截会出错——`line-clamp` 数的是**渲染后**的行，一条超长的单行会折成好多行，
+ * 按源码行截反而会比以前显示得少。
+ *
+ * 展开时不截：那是用户明确要求看全文，一条而已。
+ */
+export const COLLAPSE_CLIP_CHARS = 8 * 1024;
+export const clipForCollapse = (text: string) =>
+  text.length > COLLAPSE_CLIP_CHARS ? text.slice(0, COLLAPSE_CLIP_CHARS) : text;
+
+/** 行数，不建中间数组——`split("\n").length` 在 556 KB 上每次渲染都要分配上万个字符串。 */
+export function countLines(text: string): number {
+  let lines = 1;
+  for (let i = text.indexOf("\n"); i >= 0; i = text.indexOf("\n", i + 1)) lines++;
+  return lines;
+}
+
+/**
  * 重新取快照时，屏幕上那份旧内容留不留。
  *
  * **两种情况长得一样，结论相反**：网关重启换了 epoch 是重取**同一段**对话，留着能避免

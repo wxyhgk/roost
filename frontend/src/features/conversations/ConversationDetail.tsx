@@ -12,7 +12,7 @@ import { ApiError } from "../../shared/api/errors";
 import { IconChevron } from "../../shared/icons";
 import { ToolView } from "./tools/registry";
 import { identifyTool, toolLabel } from "./tools/identify";
-import { emptyHistory, historyOnReload, isLongReply, mergeMessages, type HistoryState } from "./history";
+import { emptyHistory, historyOnReload, isLongReply, mergeMessages, type HistoryState, clipForCollapse, countLines } from "./history";
 import { startConversationRecovery } from "./recovery";
 
 import { ConversationComposer, PendingMessage } from "./ConversationComposer";
@@ -470,16 +470,19 @@ function TextBlock({ text: value, mine, role }: { text: string; mine: boolean; r
   const [expanded, setExpanded] = useState(false);
   const collapsible = !mine && isLongReply(value);
   const prose = !mine && role !== "tool";
+  const collapsed = collapsible && !expanded;
+  // 折叠时只把够填满那几行的一段放进 DOM，见 history.ts 的 clipForCollapse。
+  const shown = collapsed ? clipForCollapse(value) : value;
   return (
     <>
       <div className={`max-w-[92%] break-words rounded-lg px-2.5 py-1.5 text-body leading-[1.5] ${
         prose ? "" : "whitespace-pre-wrap"
       } ${mine ? "bg-bg-active text-text" : role === "tool" ? "bg-bg text-text-dim" : "bg-bg-raised text-text"
-      } ${collapsible && !expanded ? "line-clamp-4" : ""}`}>{prose ? <Prose value={value} /> : value}</div>
+      } ${collapsed ? "line-clamp-4" : ""}`}>{prose ? <Prose value={shown} /> : shown}</div>
       {collapsible && (
         <button type="button" aria-expanded={expanded} onClick={() => setExpanded(v => !v)}
           className="rounded px-1 py-0.5 text-caption text-text-dim hover:bg-bg-hover hover:text-text">
-          {expanded ? t.session.aiSync.collapse : t.session.aiSync.expand(value.split("\n").length)}
+          {expanded ? t.session.aiSync.collapse : t.session.aiSync.expand(countLines(value))}
         </button>
       )}
     </>
