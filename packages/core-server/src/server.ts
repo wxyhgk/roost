@@ -4,8 +4,8 @@ import { MAX_WS_BYTES, PROTOCOL_VERSION } from '@roost/terminal-protocol';
 import { createDaemonLink } from './daemon.ts';
 import { createCoreAccess } from './access.ts';
 import { attachTerminal } from './terminal.ts';
-export function createCoreServer(options:{socketPath:string;buildId?:string;allowedOrigins?:string[]}) {
-  const allowed=createCoreAccess(options.allowedOrigins),link=createDaemonLink(options.socketPath);
+export function createCoreServer(options:{socketPath:string;buildId?:string}) {
+  const allowed=createCoreAccess(),link=createDaemonLink(options.socketPath);
   const server=createServer((req,res)=>{
     const json=(status:number,body:unknown)=>{res.writeHead(status,{'content-type':'application/json','cache-control':'no-store','vary':'Origin'});res.end(JSON.stringify(body))};
     if(!allowed(req)){json(403,{error:'forbidden origin or host'});return}

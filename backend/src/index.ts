@@ -17,7 +17,6 @@ export async function startBackend(options: { auth?: AuthOptions } = {}) {
   try { store = createWorkspaceStore({ dataDir }); } catch (error) { runtime.dispose(); throw error; }
   let server;
   try { server = createBackendServer({ store, runtime, workspaceRoot, auth, monitorDataDir: dataDir, cliIcons: createCliIconStore(join(dataDir, "cli-icons")), attachments: createAttachmentStore({ directory: join(dataDir, "attachments") }), access: {
-    allowedOrigins: process.env.ROOST_ALLOWED_ORIGINS?.split(",").map(value => value.trim()).filter(Boolean),
   } }); } catch (error) { runtime.dispose(); store.close(); throw error; }
   let stopped = false;
   const stop = () => {

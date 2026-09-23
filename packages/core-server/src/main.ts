@@ -11,7 +11,7 @@ else {
   const socketPath=process.env.CORE_SOCKET_PATH??daemonSocketPath(await realpath(dataDir).catch(()=>dataDir));
   const host=process.env.CORE_HOST??'127.0.0.1',port=Number(process.env.CORE_PORT??8788);
   if(!['127.0.0.1','::1'].includes(host)||!Number.isInteger(port)||port<0||port>65535)throw new Error('invalid core loopback host or port');
-  const core=createCoreServer({socketPath,buildId,allowedOrigins:process.env.CORE_ALLOWED_ORIGINS?.split(',').map(value=>value.trim()).filter(Boolean)});
+  const core=createCoreServer({socketPath,buildId});
   const stop=()=>{void core.close().finally(()=>process.exit(0))};
   process.once('SIGTERM',stop);process.once('SIGINT',stop);
   core.server.once('error',error=>{console.error(error);void core.close().finally(()=>{process.exitCode=1})});

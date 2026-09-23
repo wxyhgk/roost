@@ -33,22 +33,52 @@ async function fixture(t: TestContext) {
   return { store, runtime, dir, port, base, sockets, request };
 }
 
-test('Origin and Host policy allows precise development origins and rejects ambiguous authority', () => {
-  const policy = createAccessPolicy({ allowedOrigins: ['https://dev.example.test'] });
-  const req = (host: string, origin?: string, extra = {}) => ({ headers: { host, ...(origin === undefined ? {} : { origin }), ...extra }, socket: { localPort: 8787 } }) as IncomingMessage;
-  for (const origin of ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:8787', 'https://dev.example.test', undefined]) {
-    const decision = policy(req('127.0.0.1:8787', origin)); assert.equal(decision.allowed, true);
-    assert.notEqual(decision.headers['access-control-allow-origin'], '*');
+/*
+  来源判定改成了「`Origin` 等于请求自己的 `Host`」，名单（`ROOST_ALLOWED_ORIGINS`）删掉了。
+  理由见 backend/src/access.ts：名单是为了绕过反向代理的端口错配才存在的，结果变成必须手工
+  维护，漏一个地址就是整个连不上。
+
+  **新判据比旧的严**：旧的把 `http://localhost:8787` 当成 `127.0.0.1:8787` 的自己人，而按
+  web 规范那是两个不同的来源。现在不认了。
+*/
+test('来源判定：同源放行，跨源一律拒绝，含糊的 authority 不认', () => {
+  const policy = createAccessPolicy();
+  // `method` 必须给：判定里「带 cookie 的非 GET/写操作」那一条要读它，缺了会被当成写操作。
+  const req = (host: string, origin?: string, extra = {}) => ({ method: 'GET', headers: { host, ...(origin === undefined ? {} : { origin }), ...extra }, socket: { localPort: 8787 } }) as IncomingMessage;
+
+  // 同源：不管是回环、局域网地址、Tailscale 地址还是域名，**一个字都不用配**。
+  for (const host of ['127.0.0.1:8787', '203.0.113.4:8080', '198.51.100.7:8080', 'roost.example.test']) {
+    assert.equal(policy(req(host, `http://${host}`)).allowed, true, `同源应放行：${host}`);
+    assert.equal(policy(req(host)).allowed, true, `同源 GET 不带 Origin 应放行：${host}`);
   }
-  for (const origin of ['https://evil.test', 'null', 'http://localhost:9999', 'http://localhost:5173/path', 'http://localhost:5173, https://evil.test']) {
-    assert.equal(policy(req('127.0.0.1:8787', origin)).allowed, false);
+  // 开发模式是真的跨源（vite 5173 → 后端 8787），只放行这两个写死的回环地址。
+  for (const origin of ['http://localhost:5173', 'http://127.0.0.1:5173']) {
+    assert.equal(policy(req('127.0.0.1:8787', origin)).allowed, true);
   }
-  for (const host of ['evil.test:8787', 'localhost.evil.test:8787', 'localhost:9999', 'user@localhost:8787', 'localhost:8787/path', 'localhost:8787#evil']) {
-    assert.equal(policy(req(host)).allowed, false);
+  // 跨源一律拒绝。`localhost:8787` 对 `127.0.0.1:8787` 也是跨源——旧实现认，现在不认。
+  for (const origin of ['https://evil.test', 'null', 'http://localhost:9999', 'http://localhost:8787',
+                        'http://127.0.0.1:5173/path', 'http://127.0.0.1:5173, https://evil.test']) {
+    assert.equal(policy(req('127.0.0.1:8787', origin)).allowed, false, `跨源应拒绝：${origin}`);
   }
-  assert.equal(policy(req('[::1]:8787')).allowed, true);
-  assert.equal(policy(req('localhost:8787', undefined, { 'sec-fetch-site': 'cross-site' })).allowed, false);
-  assert.throws(() => createAccessPolicy({ allowedOrigins: ['*'] }));
+  // 永远不回 `*`：带凭据的响应回通配符等于把门拆了。
+  const ok = policy(req('203.0.113.4:8080', 'http://203.0.113.4:8080'));
+  assert.notEqual(ok.headers['access-control-allow-origin'], '*');
+  assert.equal(ok.headers['access-control-allow-origin'], 'http://203.0.113.4:8080');
+
+  // 含糊的 authority 不认。
+  for (const host of ['user@localhost:8787', 'localhost:8787/path', 'localhost:8787#evil', 'local host:8787']) {
+    assert.equal(policy(req(host)).allowed, false, `含糊的 Host 应拒绝：${host}`);
+  }
+  assert.equal(policy(req('[::1]:8787', 'http://[::1]:8787')).allowed, true);
+
+  /*
+    **凭据和同源绑在一起**，这是整套判定的核心。带 cookie 的 WebSocket 升级和写操作，
+    浏览器必定发 Origin，所以跨源的一定被上面那组挡住；而这里钉的是另一半：不带 Origin
+    时，带着 cookie 的升级/写操作同样不放行——否则就成了绕过同源的后门。
+  */
+  assert.equal(policy(req('127.0.0.1:8787', undefined, { 'sec-fetch-site': 'cross-site' })).allowed, false);
+  assert.equal(policy(req('203.0.113.4:8080', undefined, { cookie: 'x=1', upgrade: 'websocket' })).allowed, false);
+  assert.equal(policy(req('203.0.113.4:8080', undefined, { cookie: 'x=1' })).allowed, true, '同源 GET 导航浏览器不发 Origin，取外壳必须能过');
 });
 
 test('untrusted HTTP reads, writes and preflights are rejected before workspace or PTY mutation', async t => {

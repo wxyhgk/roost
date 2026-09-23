@@ -14,11 +14,18 @@ async function until(fn:()=>boolean|Promise<boolean>){for(let i=0;i<200;i++){if(
 test('shared frontend connection and resume reconnect and refresh the original real PTY with unchanged PID',async()=>{
  const dir=await mkdtemp(join(tmpdir(),'roost-stable-contract-'));
  const daemon=await openTerminalDaemon({dataDir:dir,shell:'/bin/sh'});
- const core=createCoreServer({socketPath:daemonSocketPath(await realpath(dir)),allowedOrigins:['http://127.0.0.1:8789']});
+ const core=createCoreServer({socketPath:daemonSocketPath(await realpath(dir))});
  core.server.listen(0,'127.0.0.1');await once(core.server,'listening');
  const base=`http://127.0.0.1:${(core.server.address() as {port:number}).port}`;
  const previous=new Map<string,PropertyDescriptor|undefined>();
- class CoreSocket extends WebSocket { constructor(url:string){super(url,{origin:'http://127.0.0.1:8789'})} }
+
+ /*
+   浏览器发的 Origin 就是页面自己的地址，所以这里用 `base`。原来硬编码的是一个和真实端口
+   无关的 `http://127.0.0.1:8789`，再配一条 `allowedOrigins` 名单把它放行——**名单在这儿是
+   给测试开的后门**，而它放行的是一个真实浏览器永远不会发出的来源。来源判定改成同源比对
+   之后名单没了，这条也就必须照实模拟。
+ */
+ class CoreSocket extends WebSocket { constructor(url:string){super(url,{origin:base})} }
  for(const [key,value] of Object.entries({WebSocket:CoreSocket,window:{setTimeout,clearTimeout}})){
   previous.set(key,Object.getOwnPropertyDescriptor(globalThis,key));Object.defineProperty(globalThis,key,{value,configurable:true});
  }

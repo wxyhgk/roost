@@ -13,7 +13,7 @@
 //
 //   --gui-send  打开「从网页把消息写进终端」这条通道（默认关，只影响 terminal 服务）
 //
-// 常用开关：--port 8080 --backend-port 8787 --origins http://a,http://b
+// 常用开关：--port 8080 --backend-port 8787
 //           --data-dir ~/.roost --caddy /path/to/caddy --secure-cookies
 import { execFile } from 'node:child_process';
 import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
@@ -162,7 +162,7 @@ export function servicePath(nodeBin, inherited) {
 }
 
 export function plan(options) {
-  const { node, repo, dataDir, installDir, port, backendPort, origins, insecureHttp, guiSend, shell, caddy, pathEntries } = options;
+  const { node, repo, dataDir, installDir, port, backendPort, insecureHttp, guiSend, shell, caddy, pathEntries } = options;
   const logs = join(dataDir, 'logs');
   const env = {
     PATH: servicePath(dirname(node), pathEntries),
@@ -170,7 +170,6 @@ export function plan(options) {
     PORT: String(backendPort),
     SHELL: shell,
     ROOST_DATA_DIR: dataDir,
-    ROOST_ALLOWED_ORIGINS: origins.join(','),
     ...(insecureHttp ? { ROOST_AUTH_INSECURE_HTTP: '1' } : {}),
   };
   const startBackend = join(installDir, 'start-backend.sh');
@@ -251,7 +250,17 @@ async function main() {
   const installDir = resolve(expand(values.get('install-dir') ?? join(homedir(), '.local/share/roost')));
   const port = Number(values.get('port') ?? 8080);
   const backendPort = Number(values.get('backend-port') ?? 8787);
-  const origins = (values.get('origins') ?? `http://127.0.0.1:${port},http://localhost:${port}`).split(',').map(s => s.trim()).filter(Boolean);
+  /*
+    `--origins` 已经废弃：来源判定改成了「`Origin` 等于请求自己的 `Host`」，不再需要名单。
+    还接着这个开关只为不让老命令行报错——传了就说一声它没用了。
+
+    名单为什么被删：后端在反向代理后面，caddy 保留原始 `Host: <地址>:8080` 转给
+    127.0.0.1:8787，于是「Host 端口 === 本地端口」永远对不上，只能靠名单开后门。结果它
+    变成必须手工维护的东西——换网段、多一个 Tailscale 地址、以后加域名都要改；漏了就是
+    整个连不上而且报 403。2026-09-22 就这么坏过一次：一次安装重写 plist 丢了局域网地址，
+    页面打得开（静态外壳走 caddy）而所有 WebSocket 全挂。见 backend/src/access.ts。
+  */
+  if (values.get('origins')) console.warn('--origins 已废弃：来源判定改为同源比对，不再需要名单，这个值被忽略了');
   /*
     默认放行明文 HTTP。这是个本机工具，入口就是 http://localhost——要求 secure cookie
     的话登录直接不可用。但它确实降低了安全性，所以要说出来，并且给一个关掉的开关。
@@ -266,7 +275,7 @@ async function main() {
   */
   const guiSend = flags.has('gui-send');
   const options = {
-    node: process.execPath, repo: REPO, dataDir, installDir, port, backendPort, origins, insecureHttp, guiSend,
+    node: process.execPath, repo: REPO, dataDir, installDir, port, backendPort, insecureHttp, guiSend,
     shell: process.env.SHELL || '/bin/zsh',
     caddy: await findCaddy(values.get('caddy')),
     pathEntries: process.env.PATH ?? '',

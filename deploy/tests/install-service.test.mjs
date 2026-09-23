@@ -68,7 +68,8 @@ test('环境变量把数据目录、端口和来源传下去，node 排在 PATH 
   const { EnvironmentVariables: env } = await parse(plan(options).services[0].plist);
   assert.equal(env.ROOST_DATA_DIR, options.dataDir);
   assert.equal(env.PORT, '8787');
-  assert.equal(env.ROOST_ALLOWED_ORIGINS, 'http://127.0.0.1:8080,http://localhost:8080');
+  // 来源名单已经删掉：判定改成了「Origin 等于请求自己的 Host」，plist 里不该再有这个。
+  assert.equal('ROOST_ALLOWED_ORIGINS' in env, false);
   assert.equal(env.SHELL, '/bin/zsh');
   // 服务里跑的 node 必须是安装时那一个，不能撞上 PATH 上别的版本。
   assert.deepEqual(env.PATH.split(':'), ['/opt/node/bin', '/usr/bin', '/bin']);
