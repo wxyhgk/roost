@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test tests/*.test.ts"
+    "test": "node --import tsx --test tests/*.test.ts && node --import tsx --import ./tests/ui/register.mjs --test tests/ui/*.test.tsx"
   },
   "dependencies": {
     "@codemirror/lang-css": "^6.3.1",

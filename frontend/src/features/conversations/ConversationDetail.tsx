@@ -625,7 +625,13 @@ function CompactionItem({ text }: { text: string }) {
 }
 
 /* 一个回合从用户说话开始；边界靠上方的留白和一条细线，而不是给每条消息加框。 */
-function TranscriptItem({ item, showRole }: { item: Item; showRole: boolean }) {
+/**
+ * 一条转录条目。**纯展示**：只吃 item，不读任何 store、不发请求。
+ *
+ * 导出是为了能在 node 里直接渲染它（`tests/ui/`）——「数据都在、面板却不显示」
+ * 这一类毛病，只有真的渲染一遍才接得住。
+ */
+export function TranscriptItem({ item, showRole }: { item: Item; showRole: boolean }) {
   if (item.kind === "diff") return <li className="flex flex-col items-start"><TurnDiffItem diff={item.diff} /></li>;
   if (item.kind === "compaction") return <li className="flex flex-col items-stretch"><CompactionItem text={item.text} /></li>;
   if (item.kind === "context") return <li className="flex flex-col items-stretch"><ContextItem label={item.label} text={item.text} /></li>;

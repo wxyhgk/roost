@@ -134,6 +134,21 @@ node --import tsx scripts/observe.mjs s_xxx --capture claude-2-1-278-empty
 由 `real-screens.test.ts` 回放。**CLI 升级换了界面时靠这个发现**——上一次页脚措辞漂移
 让整条链静默停摆，而当时没有任何用例会失败。升级后重抓一帧，判定变了测试就会红。
 
+### 组件测试在 `frontend/tests/ui/`
+
+`tests/` 里那些是纯逻辑测试；`tests/ui/` 里的**真的把组件渲染一遍**，接的是别处接不住的
+一类毛病：**数据全都在，面板却不显示**。2026-09-23 撞过一次——用户自己的消息在库里、
+在接口里、在实时流里全都有，人在界面上就是看不到，而当时仓库里一个组件测试都没有。
+
+不引浏览器、不引新依赖：`react-dom/server` 的 `renderToString` 只跑渲染不跑副作用，
+所以这一层测的是**结构**（什么内容出现在 HTML 里、标成谁说的），样式和交互不归它管。
+
+两个前提写在文件里了：`.css` 的 import 由 `tests/ui/css-stub.mjs` 打桩（node 加载不了
+样式文件）；条目要套 `ThemeProvider` 才能渲染（代码高亮要读主题）。
+
+**从真管道走**：HistoryMessage → groupMessages → buildItems → 组件。手捏 Item 会绕过
+分组那一段，而分组正是最容易把消息吃掉的地方。
+
 ---
 
 ## 四、依赖边界是被强制的
