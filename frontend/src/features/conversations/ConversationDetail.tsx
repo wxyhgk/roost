@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Virtuoso } from "react-virtuoso";
 import { buildItems, groupMessages, MIN_GROUPED_TOOLS, type Item, type TurnDiff } from "./parts";
 import { renderMarkdown, useCodeHighlight } from "../../shared/markdown";
 import "katex/dist/katex.min.css";
-import { afterGesture, afterScroll, initialFollowIntent, isViewportScrollKey } from "../../shared/followBottom";
 import { useTheme } from "../../shared/theme";
 import {
   connectConversationStream, fetchMessage, fetchMessages, fetchSnapshot, locateRuntime,
@@ -61,7 +61,6 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
   const [conversation, setConversation] = useState(initial);
   useEffect(() => { setConversation(initial); }, [initial]);
   const [history, setHistory] = useState<HistoryState>(emptyHistory);
-  const listHost = useRef<HTMLDivElement>(null);
   const [run, setRun] = useState<SnapshotRun>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -92,8 +91,6 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
   }, [items]);
   const id = initial.id;
   const outgoing = useOutgoing(id);
-  // 待发消息也算「新内容」：发完要跟着滚到底，否则自己刚发的话在视野之外。
-  useFollowBottom(listHost, `${history.items.at(-1)?.messageId ?? ""}:${outgoing.pending.length}`);
 
   const loadedFor = useRef<string | null>(null);
   const olderRequest = useRef<AbortController | null>(null);
@@ -202,29 +199,26 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
 
       <ConversationMeta conversation={conversation} onChanged={setConversation} />
 
-      <div ref={listHost} className="min-h-0 flex-1 overflow-auto">
-        {loading && <div className="px-2.5 py-2 text-caption text-text-dim">{t.misc.conversations.detail.loading}</div>}
-        {error && <div role="alert" className="px-2.5 py-2 text-caption text-danger">{error}</div>}
-        {!loading && !error && history.items.length === 0 && <Empty title={t.misc.conversations.detail.noMessages} />}
-        {history.hasMore && history.olderCursor && (
-          <button type="button" onClick={() => void loadOlder()}
-            className="w-full px-2.5 py-2 text-caption text-text-dim hover:bg-bg-hover hover:text-text">
-            {t.misc.conversations.detail.loadOlder}
-          </button>
-        )}
-        <ul className="flex flex-col gap-2.5 px-2.5 py-2">
-          {items.map((item, i) => <TranscriptItem key={item.key} item={item} showRole={showRole[i]} />)}
-          {/* 对面正在干活：填掉「发完之后一片安静」那段空白，见 liveTurn.ts。 */}
-          {terminalId && <LiveTurnRow terminalId={terminalId} onJump={jumpTarget ? () => onJumpToTerminal?.(jumpTarget) : undefined} />}
-          {/* 待发的消息就在流的末尾——它会进 TUI、再从 transcript 回来，本来就属于这里。 */}
-          {outgoing.pending.map(item => (
-            <li key={item.message.id} className="flex flex-col items-end gap-1">
-              <PendingMessage readOnly={readOnly} detail={item} onCancel={outgoing.cancel} onDismiss={outgoing.dismiss} onRemove={outgoing.remove} onRetry={() => void outgoing.submit()}
-                onJump={jumpTarget ? () => onJumpToTerminal?.(jumpTarget) : undefined} />
-            </li>
-          ))}
-        </ul>
-      </div>
+      {/*
+        **只渲染看得见的那几屏。** 这条对话有一万多条消息，而原来是「往上翻一次加 30 条
+        DOM、且永不移除」——翻十几次就是几百条常驻，滚动时全都要参与布局。
+
+        底部锚定、变高测量、向上加载这三件事自己写很容易出错（尤其是「内容把视口顶走」
+        和「用户主动翻上去」要分开），所以用现成的：`followOutput="auto"` 只在用户本来
+        就在底部时才跟随，正是原来 `useFollowBottom` 手写的那条语义。
+      */}
+      <Virtuoso
+        className="min-h-0 flex-1"
+        data={items}
+        computeItemKey={(_, item) => item.key}
+        itemContent={(index, item) => <TranscriptItem item={item} showRole={showRole[index] ?? true} />}
+        followOutput="auto"
+        initialTopMostItemIndex={Math.max(0, items.length - 1)}
+        // 翻到顶就自动接着取更早的；那颗按钮留着当兜底（自动没触发时还能点）。
+        startReached={() => { if (history.hasMore && history.olderCursor) void loadOlder(); }}
+        components={TRANSCRIPT_COMPONENTS}
+        context={{ loading, error, history, loadOlder, terminalId, jumpTarget, onJumpToTerminal, outgoing, readOnly }}
+      />
 
       {/* 没有能打字的终端时不给输入框：发不出去，摆一个能打字的框只会让人白写一段。 */}
       {sendTo ? <>
@@ -234,6 +228,79 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
     </div>
   );
 }
+
+/*
+  虚拟化列表的容器与头尾。
+
+  **必须定义在组件外面。** 写成内联箭头函数的话，每次渲染都是一个新的组件标识，
+  Virtuoso 会把头尾整个卸载重建——状态丢失、还会闪。要拿到外面的数据就走 `context`，
+  这是它给的正规通道。
+
+  间距放在**每一行自己**身上（`pb-2.5`），不放在容器的 `gap` 上：虚拟化要逐行量高度，
+  而容器的 gap 不算进行高，滚动时会一点点对不齐。
+*/
+type ListContext = {
+  loading: boolean; error: string | null;
+  history: HistoryState;
+  loadOlder: () => void | Promise<void>;
+  terminalId?: string; jumpTarget: string | null;
+  onJumpToTerminal?: (id: string) => void;
+  outgoing: ReturnType<typeof useOutgoing>;
+  readOnly: boolean;
+};
+
+function TranscriptHeader({ context }: { context?: ListContext }) {
+  if (!context) return null;
+  const { loading, error, history, loadOlder } = context;
+  return (
+    <>
+      {loading && <div className="px-2.5 py-2 text-caption text-text-dim">{t.misc.conversations.detail.loading}</div>}
+      {error && <div role="alert" className="px-2.5 py-2 text-caption text-danger">{error}</div>}
+      {!loading && !error && history.items.length === 0 && <Empty title={t.misc.conversations.detail.noMessages} />}
+      {history.hasMore && history.olderCursor && (
+        <button type="button" onClick={() => void loadOlder()}
+          className="w-full px-2.5 py-2 text-caption text-text-dim hover:bg-bg-hover hover:text-text">
+          {t.misc.conversations.detail.loadOlder}
+        </button>
+      )}
+    </>
+  );
+}
+
+function TranscriptFooter({ context }: { context?: ListContext }) {
+  if (!context) return null;
+  const { terminalId, jumpTarget, onJumpToTerminal, outgoing, readOnly } = context;
+  const jump = jumpTarget ? () => onJumpToTerminal?.(jumpTarget) : undefined;
+  return (
+    <div className="flex flex-col gap-2.5 px-2.5 pb-2">
+      {/* 对面正在干活：填掉「发完之后一片安静」那段空白，见 liveTurn.ts。 */}
+      {terminalId && <LiveTurnRow terminalId={terminalId} onJump={jump} />}
+      {/* 待发的消息就在流的末尾——它会进 TUI、再从 transcript 回来，本来就属于这里。 */}
+      {outgoing.pending.map(item => (
+        <div key={item.message.id} className="flex flex-col items-end gap-1">
+          <PendingMessage readOnly={readOnly} detail={item} onCancel={outgoing.cancel} onDismiss={outgoing.dismiss}
+            onRemove={outgoing.remove} onRetry={() => void outgoing.submit()} onJump={jump} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/*
+  虚拟化列表的两层容器。
+
+  间距放在**每一行自己**身上（`pb-2.5`），不放在容器的 `gap` 上：虚拟化要逐行量高度，
+  而容器的 gap 不算进行高，滚动时会一点点对不齐。
+*/
+const TranscriptList = forwardRef<HTMLUListElement, { children?: React.ReactNode; style?: React.CSSProperties }>(
+  ({ children, ...rest }, ref) => <ul ref={ref} {...rest} className="px-2.5 py-2">{children}</ul>);
+TranscriptList.displayName = "TranscriptList";
+
+function TranscriptRow({ children, ...rest }: { children?: React.ReactNode }) {
+  return <li {...rest} className="pb-2.5">{children}</li>;
+}
+
+const TRANSCRIPT_COMPONENTS = { List: TranscriptList, Item: TranscriptRow, Header: TranscriptHeader, Footer: TranscriptFooter };
 
 /**
  * 对话流末尾那一行「对面正在处理…」。
@@ -245,7 +312,7 @@ function LiveTurnRow({ terminalId, onJump }: { terminalId: string; onJump?: () =
   const live = liveTurnOf(useSessionActivity(terminalId));
   if (!live) return null;
   return (
-    <li className="flex items-center gap-2 px-1 text-caption text-text-dim">
+    <div className="flex items-center gap-2 px-1 text-caption text-text-dim">
       <span className={`inline-block size-1.5 shrink-0 rounded-full ${
         live.kind === "failed" ? "bg-danger" : live.kind === "blocked" ? "bg-warning" : "bg-accent animate-pulse"
       }`} />
@@ -255,7 +322,7 @@ function LiveTurnRow({ terminalId, onJump }: { terminalId: string; onJump?: () =
           {t.misc.conversations.detail.live.goTerminal}
         </button>
       )}
-    </li>
+    </div>
   );
 }
 
@@ -490,39 +557,6 @@ function TextBlock({ text: value, mine, role }: { text: string; mine: boolean; r
 }
 
 
-/**
- * 新消息到了就跟着底部走——**除非用户自己翻上去了**。
- *
- * 判据不是「视口在不在底部」：内容会把视口顶走（首屏灌一批、Markdown 的代码高亮挂载后
- * 异步替换 `<pre>` 会改高度、图片加载同理）。把这些当成用户滚动，结果就是新消息来了不
- * 跟随，而且此后再没人拉回来。规则见 shared/followBottom，与终端共用一套。
- */
-function useFollowBottom(host: RefObject<HTMLElement | null>, dep: unknown) {
-  const intent = useRef(initialFollowIntent);
-  useEffect(() => {
-    const node = host.current;
-    if (!node) return;
-    const gesture = () => { intent.current = afterGesture(intent.current, Date.now()); };
-    const onScroll = () => {
-      const atBottom = node.scrollHeight - node.scrollTop - node.clientHeight <= 8;
-      intent.current = afterScroll(intent.current, atBottom, Date.now());
-    };
-    // 打字不算滚动：在输入框里敲字不该把用户从底部解除跟随。
-    const onKey = (event: KeyboardEvent) => { if (isViewportScrollKey(event)) gesture(); };
-    for (const type of ['wheel', 'pointerdown'] as const) node.addEventListener(type, gesture, { passive: true });
-    node.addEventListener('keydown', onKey, { passive: true });
-    node.addEventListener('scroll', onScroll, { passive: true });
-    return () => {
-      for (const type of ['wheel', 'pointerdown'] as const) node.removeEventListener(type, gesture);
-      node.removeEventListener('keydown', onKey);
-      node.removeEventListener('scroll', onScroll);
-    };
-  }, [host]);
-  useEffect(() => {
-    const node = host.current;
-    if (node && intent.current.wantsBottom) node.scrollTop = node.scrollHeight;
-  }, [host, dep]);
-}
 
 function roleName(role: string) {
   return role === "user" ? t.misc.conversations.detail.roleUser
@@ -662,12 +696,12 @@ function CompactionItem({ text }: { text: string }) {
  * 这一类毛病，只有真的渲染一遍才接得住。
  */
 export function TranscriptItem({ item, showRole }: { item: Item; showRole: boolean }) {
-  if (item.kind === "diff") return <li className="flex flex-col items-start"><TurnDiffItem diff={item.diff} /></li>;
-  if (item.kind === "compaction") return <li className="flex flex-col items-stretch"><CompactionItem text={item.text} /></li>;
-  if (item.kind === "context") return <li className="flex flex-col items-stretch"><ContextItem label={item.label} text={item.text} /></li>;
+  if (item.kind === "diff") return <div className="flex flex-col items-start"><TurnDiffItem diff={item.diff} /></div>;
+  if (item.kind === "compaction") return <div className="flex flex-col items-stretch"><CompactionItem text={item.text} /></div>;
+  if (item.kind === "context") return <div className="flex flex-col items-stretch"><ContextItem label={item.label} text={item.text} /></div>;
   const mine = item.role === "user";
   return (
-    <li className={`flex flex-col gap-1 ${item.turnStart ? "mt-3 border-t border-border/40 pt-3" : ""} ${
+    <div className={`flex flex-col gap-1 ${item.turnStart ? "mt-3 border-t border-border/40 pt-3" : ""} ${
       mine ? "items-end" : "items-start"}`}>
       <div className="flex items-center gap-2 text-caption text-text-dim">
         {/*
@@ -683,6 +717,6 @@ export function TranscriptItem({ item, showRole }: { item: Item; showRole: boole
       {item.kind === "tools"
         ? <ToolsItem item={item} />
         : <TextBlock text={item.text} mine={mine} role={item.role} />}
-    </li>
+    </div>
   );
 }
