@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { getTerminalHandle, subscribeSelection } from "../public";
 import type { Cell } from "../types";
 import { writeClipboard } from "../../../shared/clipboard";
+import { useKeyboardInset } from "../../../shared/useKeyboardInset";
 import { t } from "@roost/i18n";
 
 /**
@@ -80,6 +81,7 @@ export function TouchSelectionBar({
   onSaveSnippet: (text: string) => void;
   onSaveFile: (text: string) => void;
 }) {
+  const keyboardInset = useKeyboardInset();
   // 按钮用 text-body、上面那行提示留 text-caption：原来是 12 压着 11，差 1px 读不出主次。
   const button = "shrink-0 whitespace-nowrap rounded-md px-2.5 py-2 text-body text-bar-text/85 hover:bg-bar-text/10 disabled:opacity-40";
   const hint = state.copied === "ok" ? t.misc.selection.touch.copied
@@ -87,9 +89,22 @@ export function TouchSelectionBar({
     : !state.anchor ? t.misc.selection.touch.hintAnchor
     : t.misc.selection.touch.hintRange;
   return (
-    // 固定在可见视口底部，而不是跟着触点走：触屏没有光标，「在指尖旁边弹出」
-    // 只会被手指本身挡住；而且软键盘和地址栏会让任意定位频繁失准。
-    <div className="pointer-events-auto fixed inset-x-0 bottom-0 z-30 flex flex-col gap-1 border-t border-bar-text/10 bg-bar px-2 pb-[env(safe-area-inset-bottom)] pt-1.5 shadow-pop">
+    /*
+      固定在底部，而不是跟着触点走：触屏没有光标，「在指尖旁边弹出」只会被手指本身挡住。
+
+      **但 `bottom-0` 贴的是布局视口，不是看得见的那块。** iOS 上软键盘弹起来时布局视口
+      一点都不缩（缩的是 visual viewport），于是这条栏就整条待在键盘底下——而「敲了几行、
+      想把输出复制走」恰好是最常见的进入选区模式的路径，键盘那时多半还开着。
+
+      让位用 `padding-bottom` 而不是改 `bottom`：元素底边仍然钉在布局视口底部，只是自己
+      长高，内容被顶到键盘上方；多出来的那截背景藏在键盘后面，反正看不见。改 `bottom` 要
+      求我们自己去算那块看得见的区域在哪，而 `useKeyboardInset` 给的正是「被挡住多少」。
+
+      和安全区取 `max`：两者不会同时为正（iOS 在键盘弹起时把 safe-area-inset-bottom 报成
+      0），取大的那个等于「谁在挡就听谁的」，不必判断是哪一种。
+    */
+    <div style={{ paddingBottom: `max(env(safe-area-inset-bottom), ${keyboardInset}px)` }}
+      className="pointer-events-auto fixed inset-x-0 bottom-0 z-30 flex flex-col gap-1 border-t border-bar-text/10 bg-bar px-2 pt-1.5 shadow-pop">
       <div role="status" className={`px-1 text-caption ${state.copied === "fail" ? "text-danger" : "text-bar-dim"}`}>{hint}</div>
       <div className="flex items-center gap-1 overflow-x-auto">
         <button type="button" className={button} disabled={!state.hasRange} onClick={() => void state.copy()}>
