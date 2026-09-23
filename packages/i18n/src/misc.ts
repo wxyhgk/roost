@@ -166,6 +166,24 @@ export const misc = {
       gapDetail: (skipped: number) => `有 ${skipped} 条记录没能保存下来，下面不是完整记录。`,
       resynced: "连接已重建，历史已重新载入",
       disconnected: "实时同步已断开",
+      /*
+        对话面板里的「对面正在干活」。
+
+        之前这一格是空的：在这儿发完消息，面板就彻底安静，直到几秒后回复整块落下来——
+        而同一时间 TUI 里明显在动。于是「在网页发消息」感觉像是把对话**转交**给了终端，
+        而不是两个视图看同一段对话。实时信号本来一直在推（/api/session-status），
+        只是没人渲染。
+
+        **说不出细节时就只说状态**，别编。工具名和摘要只有 blocked 期间才有值。
+      */
+      live: {
+        working: "对面正在处理…",
+        workingTool: (tool: string) => `对面正在处理…（${tool}）`,
+        waitingPermission: "对面在等你批准一件事",
+        waitingQuestion: "对面在等你回答",
+        goTerminal: "去终端",
+        failed: "上一轮出错了",
+      },
       roleUser: "你",
       roleAssistant: "AI",
       roleTool: "工具",

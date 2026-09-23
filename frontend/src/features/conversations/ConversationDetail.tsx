@@ -20,6 +20,7 @@ import { shouldOfferRun, type SendBlock } from "./sendability";
 import { rebindWithRetry } from "./rebind";
 import { fetchAiBinding, rebindAiSession } from "../../shared/api/conversations";
 import { useSessionActivity } from "../session-status/public";
+import { liveTurnOf } from "./liveTurn";
 import { createSession } from "../../shared/api/session";
 import { useWorkspace } from "../../shared/store";
 import { useOutgoing } from "./useOutgoing";
@@ -213,6 +214,8 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
         )}
         <ul className="flex flex-col gap-2.5 px-2.5 py-2">
           {items.map((item, i) => <TranscriptItem key={item.key} item={item} showRole={showRole[i]} />)}
+          {/* 对面正在干活：填掉「发完之后一片安静」那段空白，见 liveTurn.ts。 */}
+          {terminalId && <LiveTurnRow terminalId={terminalId} onJump={jumpTarget ? () => onJumpToTerminal?.(jumpTarget) : undefined} />}
           {/* 待发的消息就在流的末尾——它会进 TUI、再从 transcript 回来，本来就属于这里。 */}
           {outgoing.pending.map(item => (
             <li key={item.message.id} className="flex flex-col items-end gap-1">
@@ -229,6 +232,30 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
         <ConversationComposer send={direct} onJump={() => onJumpToTerminal?.(sendTo)} />
       </> : <SendBlocked blocked={blocked} readOnly={readOnly} conversation={conversation} terminalId={terminalId} />}
     </div>
+  );
+}
+
+/**
+ * 对话流末尾那一行「对面正在处理…」。
+ *
+ * 判定全在 `liveTurn.ts` 里（纯函数，单独测）；这里只负责画，以及在需要你动手时给一个
+ * 去终端的入口。没什么可说的时候**整行不渲染**，不占位、不闪。
+ */
+function LiveTurnRow({ terminalId, onJump }: { terminalId: string; onJump?: () => void }) {
+  const live = liveTurnOf(useSessionActivity(terminalId));
+  if (!live) return null;
+  return (
+    <li className="flex items-center gap-2 px-1 text-caption text-text-dim">
+      <span className={`inline-block size-1.5 shrink-0 rounded-full ${
+        live.kind === "failed" ? "bg-danger" : live.kind === "blocked" ? "bg-warning" : "bg-accent animate-pulse"
+      }`} />
+      <span className="min-w-0 truncate">{live.text}</span>
+      {live.jump && onJump && (
+        <button type="button" className="shrink-0 rounded px-1.5 py-0.5 text-text hover:bg-bg-hover" onClick={onJump}>
+          {t.misc.conversations.detail.live.goTerminal}
+        </button>
+      )}
+    </li>
   );
 }
 
