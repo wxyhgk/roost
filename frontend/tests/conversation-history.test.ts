@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { COLLAPSE_CLIP_CHARS, clipForCollapse, countLines, emptyHistory, historyOnReload, isLongReply, mergeMessages, messageIdsFromChanges, type HistoryMessage } from "../src/features/conversations/history.ts";
+import { COLLAPSE_CLIP_CHARS, LONG_REPLY_CHARS, clipForCollapse, countLines, shouldCollapse, emptyHistory, historyOnReload, isLongReply, mergeMessages, messageIdsFromChanges, type HistoryMessage } from "../src/features/conversations/history.ts";
 
 const msg = (id: string, seq: number, revision = 1, content = "c" + id): HistoryMessage =>
   ({ messageId: id, historySeq: seq, sourceRevision: revision, bodyState: "stored", event: { role: "assistant", content } });
@@ -102,4 +102,27 @@ test('截断的量要足够填满折叠后的可见行数', () => {
 test('行数统计不建中间数组，结果和 split 一致', () => {
   for (const text of ['', 'a', 'a\nb', 'a\nb\nc\n', '\n\n\n'])
     assert.equal(countLines(text), text.split('\n').length, JSON.stringify(text));
+});
+
+/*
+  哪一条该默认折起来。
+
+  原来正文和工具输出共用一个阈值（4 行 / 240 字），于是 agent 的**每一条回复**都被切成
+  四行加一个「展开」，读一段话要点好几次。成熟的聊天界面不这么干：答案是全的，折起来的
+  是思考过程和工具输出。
+*/
+test('正文默认全展开，工具输出默认折起来', () => {
+  const reply = '第一行\n第二行\n第三行\n第四行\n第五行\n第六行';
+  assert.equal(shouldCollapse(reply, 'assistant'), false, 'agent 的回复不该被切成四行');
+  assert.equal(shouldCollapse(reply, 'tool'), true, '工具输出照旧折——它们基本是噪音');
+});
+
+test('正文长到病态时仍然折，否则 DOM 会被拖垮', () => {
+  const huge = 'x'.repeat(LONG_REPLY_CHARS + 1);
+  assert.equal(shouldCollapse(huge, 'assistant'), true);
+  assert.equal(shouldCollapse('x'.repeat(LONG_REPLY_CHARS - 1), 'assistant'), false, '到不了那个量级就别折');
+});
+
+test('短短的工具输出不该冒出一个没用的展开按钮', () => {
+  assert.equal(shouldCollapse('ok', 'tool'), false);
 });

@@ -1,5 +1,5 @@
 import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Virtuoso } from "react-virtuoso";
+import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { buildItems, groupMessages, MIN_GROUPED_TOOLS, type Item, type TurnDiff } from "./parts";
 import { renderMarkdown, useCodeHighlight } from "../../shared/markdown";
 import "katex/dist/katex.min.css";
@@ -12,7 +12,7 @@ import { ApiError } from "../../shared/api/errors";
 import { IconChevron } from "../../shared/icons";
 import { ToolView } from "./tools/registry";
 import { identifyTool, toolLabel } from "./tools/identify";
-import { emptyHistory, historyOnReload, isLongReply, mergeMessages, type HistoryState, clipForCollapse, countLines } from "./history";
+import { emptyHistory, historyOnReload, mergeMessages, shouldCollapse, type HistoryState, clipForCollapse, countLines } from "./history";
 import { startConversationRecovery } from "./recovery";
 
 import { ConversationComposer, PendingMessage } from "./ConversationComposer";
@@ -61,6 +61,14 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
   const [conversation, setConversation] = useState(initial);
   useEffect(() => { setConversation(initial); }, [initial]);
   const [history, setHistory] = useState<HistoryState>(emptyHistory);
+  const listRef = useRef<VirtuosoHandle>(null);
+  /*
+    前插补偿。向上加载会把更早的消息插到最前面，索引整体后移；不告诉虚拟化列表插了几条，
+    它会保持「同一个索引在顶部」，于是视口当场跳走。`firstItemIndex` 就是给这件事用的：
+    每前插 N 条就减 N，位置才稳得住。起点取一个大数，因为它只能往下走。
+  */
+  const [firstItemIndex, setFirstItemIndex] = useState(1_000_000);
+  const prepended = useRef(0);
   const [run, setRun] = useState<SnapshotRun>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -91,6 +99,29 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
   }, [items]);
   const id = initial.id;
   const outgoing = useOutgoing(id);
+
+  /*
+    **打开对话要落在底部。** `initialTopMostItemIndex` 只在挂载那一刻生效，而那时消息还没
+    取回来（列表是空的），于是它算出来是 0——打开对话停在最顶上，而且因为不在底部，
+    后面新来的消息也不会跟随。所以改成等第一页到了再滚一次。
+
+    只在**换了对话**之后的第一页滚：此后用户翻到哪儿是他自己的事，`followOutput="auto"`
+    只在他本来就在底部时才跟。
+  */
+  const settledFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!items.length || settledFor.current === id) return;
+    settledFor.current = id;
+    prepended.current = 0;
+    setFirstItemIndex(1_000_000);
+    listRef.current?.scrollToIndex({ index: items.length - 1, align: "end" });
+  }, [id, items.length]);
+
+  useEffect(() => {
+    if (!prepended.current) return;
+    setFirstItemIndex(value => value - prepended.current);
+    prepended.current = 0;
+  }, [history.items]);
 
   const loadedFor = useRef<string | null>(null);
   const olderRequest = useRef<AbortController | null>(null);
@@ -143,12 +174,12 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
     try {
       const page = await fetchMessages(id, history.olderCursor, 30, controller.signal);
       if (controller.signal.aborted) return;
-      setHistory(previous => ({
-        ...previous,
-        items: mergeMessages(previous.items, page.items),
-        olderCursor: page.nextCursor,
-        hasMore: page.hasMore,
-      }));
+      setHistory(previous => {
+        const items = mergeMessages(previous.items, page.items);
+        // 合并会去重，所以真正插进去的条数要量出来，不能拿这一页的长度当数。
+        prepended.current += items.length - previous.items.length;
+        return { ...previous, items, olderCursor: page.nextCursor, hasMore: page.hasMore };
+      });
     } catch (err) {
       if (!controller.signal.aborted) setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -208,12 +239,15 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
         就在底部时才跟随，正是原来 `useFollowBottom` 手写的那条语义。
       */}
       <Virtuoso
+        ref={listRef}
         className="min-h-0 flex-1"
+        // 消息少的时候也贴着底排，别浮在顶上留一大片空白。
+        alignToBottom
+        firstItemIndex={firstItemIndex}
         data={items}
         computeItemKey={(_, item) => item.key}
         itemContent={(index, item) => <TranscriptItem item={item} showRole={showRole[index] ?? true} />}
         followOutput="auto"
-        initialTopMostItemIndex={Math.max(0, items.length - 1)}
         // 翻到顶就自动接着取更早的；那颗按钮留着当兜底（自动没触发时还能点）。
         startReached={() => { if (history.hasMore && history.olderCursor) void loadOlder(); }}
         components={TRANSCRIPT_COMPONENTS}
@@ -535,7 +569,7 @@ function Prose({ value }: { value: string }) {
 
 function TextBlock({ text: value, mine, role }: { text: string; mine: boolean; role: string }) {
   const [expanded, setExpanded] = useState(false);
-  const collapsible = !mine && isLongReply(value);
+  const collapsible = !mine && shouldCollapse(value, role);
   const prose = !mine && role !== "tool";
   const collapsed = collapsible && !expanded;
   // 折叠时只把够填满那几行的一段放进 DOM，见 history.ts 的 clipForCollapse。

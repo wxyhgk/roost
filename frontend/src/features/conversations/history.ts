@@ -72,6 +72,23 @@ export const isLongReply = (text: string) =>
   text.split("\n").length > COLLAPSE_LINES || text.length > COLLAPSE_CHARS;
 
 /**
+ * 这一条要不要默认折起来。
+ *
+ * **正文默认全展开。** 原来的判据是「超过 4 行或 240 字就折」，而它同时管着正文和工具
+ * 输出——结果是 agent 的每一条回复都被切成四行加一个「展开」，读一段话要点好几次。
+ * 成熟的聊天界面都不这么干：答案是全的，折起来的是思考过程和工具输出。
+ *
+ * 所以分开：
+ * - **工具输出**用原来那个低阈值。它们基本是噪音（几百上千行的命令输出），默认展开会把
+ *   真正的对话淹掉。
+ * - **正文**只有长到病态才折（8 KB，约等于两千字）。到那个量级不折的话，DOM 里塞进去的
+ *   东西会开始拖慢滚动——见 `clipForCollapse` 的注释。
+ */
+export const LONG_REPLY_CHARS = 8 * 1024;
+export const shouldCollapse = (text: string, role: string) =>
+  role === "tool" ? isLongReply(text) : text.length > LONG_REPLY_CHARS;
+
+/**
  * 折叠状态下**放进 DOM 的那一份**。
  *
  * 折叠原来只用 CSS 的 `line-clamp`——那只是视觉上裁掉，整段文字仍然进 DOM、仍然要完整
