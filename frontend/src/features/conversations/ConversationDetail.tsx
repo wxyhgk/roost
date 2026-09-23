@@ -68,7 +68,9 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
     每前插 N 条就减 N，位置才稳得住。起点取一个大数，因为它只能往下走。
   */
   const [firstItemIndex, setFirstItemIndex] = useState(1_000_000);
-  const prepended = useRef(0);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const itemsRef = useRef(history.items);
+  itemsRef.current = history.items;
   const [run, setRun] = useState<SnapshotRun>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -112,16 +114,9 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
   useEffect(() => {
     if (!items.length || settledFor.current === id) return;
     settledFor.current = id;
-    prepended.current = 0;
     setFirstItemIndex(1_000_000);
     listRef.current?.scrollToIndex({ index: items.length - 1, align: "end" });
   }, [id, items.length]);
-
-  useEffect(() => {
-    if (!prepended.current) return;
-    setFirstItemIndex(value => value - prepended.current);
-    prepended.current = 0;
-  }, [history.items]);
 
   const loadedFor = useRef<string | null>(null);
   const olderRequest = useRef<AbortController | null>(null);
@@ -171,19 +166,31 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
     if (!history.olderCursor || loading || olderRequest.current) return;
     const controller = new AbortController();
     olderRequest.current = controller;
+    setLoadingOlder(true);
     try {
       const page = await fetchMessages(id, history.olderCursor, 30, controller.signal);
       if (controller.signal.aborted) return;
-      setHistory(previous => {
-        const items = mergeMessages(previous.items, page.items);
-        // 合并会去重，所以真正插进去的条数要量出来，不能拿这一页的长度当数。
-        prepended.current += items.length - previous.items.length;
-        return { ...previous, items, olderCursor: page.nextCursor, hasMore: page.hasMore };
-      });
+      /*
+        **前插的条数必须和数据在同一帧落地。** 放在 effect 里更新会晚一帧，那一帧里
+        虚拟化列表看到的是「数据变长了但索引没变」，于是它按「在后面追加」来处理——
+        视口跳走，而且连「翻到顶」的判定也跟着乱，自动加载再也不触发。
+        React 18 会把这两个 setState 合成一次渲染，所以紧挨着写就够了。
+
+        合并会去重，所以条数要自己数，不能拿这一页的长度当数。
+      */
+      const known = new Set(itemsRef.current.map(item => item.messageId));
+      const added = page.items.reduce((n, item) => n + (known.has(item.messageId) ? 0 : 1), 0);
+      setHistory(previous => ({
+        ...previous,
+        items: mergeMessages(previous.items, page.items),
+        olderCursor: page.nextCursor,
+        hasMore: page.hasMore,
+      }));
+      setFirstItemIndex(value => value - added);
     } catch (err) {
       if (!controller.signal.aborted) setError(err instanceof Error ? err.message : String(err));
     } finally {
-      if (olderRequest.current === controller) olderRequest.current = null;
+      if (olderRequest.current === controller) { olderRequest.current = null; setLoadingOlder(false); }
     }
   }, [id, history.olderCursor, loading]);
 
@@ -248,10 +255,15 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
         computeItemKey={(_, item) => item.key}
         itemContent={(index, item) => <TranscriptItem item={item} showRole={showRole[index] ?? true} />}
         followOutput="auto"
-        // 翻到顶就自动接着取更早的；那颗按钮留着当兜底（自动没触发时还能点）。
+        /*
+          **提前一屏就开始取更早的**，别等真的撞到顶。撞到顶才开始取，用户会先看到一片
+          空白再等一次网络往返；提前一屏则是翻着翻着内容就续上了，察觉不到在加载。
+        */
+        increaseViewportBy={{ top: 800, bottom: 0 }}
         startReached={() => { if (history.hasMore && history.olderCursor) void loadOlder(); }}
+        atTopStateChange={atTop => { if (atTop && history.hasMore && history.olderCursor) void loadOlder(); }}
         components={TRANSCRIPT_COMPONENTS}
-        context={{ loading, error, history, loadOlder, terminalId, jumpTarget, onJumpToTerminal, outgoing, readOnly }}
+        context={{ loading, loadingOlder, error, history, loadOlder, terminalId, jumpTarget, onJumpToTerminal, outgoing, readOnly }}
       />
 
       {/* 没有能打字的终端时不给输入框：发不出去，摆一个能打字的框只会让人白写一段。 */}
@@ -274,7 +286,7 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
   而容器的 gap 不算进行高，滚动时会一点点对不齐。
 */
 type ListContext = {
-  loading: boolean; error: string | null;
+  loading: boolean; loadingOlder: boolean; error: string | null;
   history: HistoryState;
   loadOlder: () => void | Promise<void>;
   terminalId?: string; jumpTarget: string | null;
@@ -285,18 +297,22 @@ type ListContext = {
 
 function TranscriptHeader({ context }: { context?: ListContext }) {
   if (!context) return null;
-  const { loading, error, history, loadOlder } = context;
+  const { loading, loadingOlder, error, history, loadOlder } = context;
   return (
     <>
       {loading && <div className="px-2.5 py-2 text-caption text-text-dim">{t.misc.conversations.detail.loading}</div>}
       {error && <div role="alert" className="px-2.5 py-2 text-caption text-danger">{error}</div>}
       {!loading && !error && history.items.length === 0 && <Empty title={t.misc.conversations.detail.noMessages} />}
-      {history.hasMore && history.olderCursor && (
-        <button type="button" onClick={() => void loadOlder()}
-          className="w-full px-2.5 py-2 text-caption text-text-dim hover:bg-bg-hover hover:text-text">
-          {t.misc.conversations.detail.loadOlder}
-        </button>
-      )}
+      {/*
+        正在自动取的时候显示一行状态，而不是那颗按钮——否则用户会以为**必须点它**，
+        那正是这一版之前的体验。按钮只在没有在取的时候留着当兜底（自动没触发时还能点）。
+      */}
+      {history.hasMore && history.olderCursor && (loadingOlder
+        ? <div className="px-2.5 py-2 text-center text-caption text-text-dim">{t.misc.conversations.detail.loadingOlder}</div>
+        : <button type="button" onClick={() => void loadOlder()}
+            className="w-full px-2.5 py-2 text-caption text-text-dim hover:bg-bg-hover hover:text-text">
+            {t.misc.conversations.detail.loadOlder}
+          </button>)}
     </>
   );
 }

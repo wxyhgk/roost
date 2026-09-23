@@ -154,6 +154,7 @@ export const misc = {
     detail: {
       back: "Back to list",
       loading: "Loading the conversation…",
+      loadingOlder: "Loading earlier messages…",
       loadOlder: "Load earlier messages",
       noMessages: "No saved messages in this conversation",
       /** run 非空表示还有终端在跑，可以跳过去；为空照常读历史。 */

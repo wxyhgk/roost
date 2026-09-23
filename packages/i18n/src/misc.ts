@@ -155,6 +155,7 @@ export const misc = {
     detail: {
       back: "返回列表",
       loading: "正在加载对话…",
+      loadingOlder: "正在加载更早的消息…",
       loadOlder: "加载更早的消息",
       noMessages: "这段对话没有已保存的消息",
       /** run 非空表示还有终端在跑，可以跳过去；为空照常读历史。 */
