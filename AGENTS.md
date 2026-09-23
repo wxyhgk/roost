@@ -105,8 +105,34 @@ umask 022 && env -u ROOST_CLAUDE_OBSERVING npm test --workspaces --if-present
 | `deploy/static-server.mjs` `Dockerfile` `nas-*.sh` | 群晖 NAS 那套容器方案 |
 | `scripts/install-service.mjs` | 生成并装载三个 launchd plist（`npm run service:install`） |
 | `scripts/check-boundaries.mjs` | 依赖边界检查，见下一节 |
+| `scripts/observe.mjs` | **一条命令同时看见终端画面和对话内容**，见下面 |
 | `desktop/` | Tauri 桌面预览版，**不在 npm workspaces 里**，独立构建 |
 | `frontend/src/embeds/` | 跑在 iframe 里、有自己 html 入口的子应用（分子编辑器）。新增一个要同时改 vite.config 和 stable-workbench/build.mjs 的 input，见该目录的 README |
+
+### 调这条链时先开 `observe`
+
+GUI 往终端里写字这条路要经过好几道闸（画面认得出吗、键盘归谁、有没有悬着的消息），
+每一道失败都**不报错，只是不写**。挨个手工去看代价很高——2026-09-23 那次排查里
+同样的一次性采样脚本被现写了四遍。
+
+```
+node --import tsx scripts/observe.mjs                 列出可观测的终端
+node --import tsx scripts/observe.mjs s_xxx           打一份快照
+node --import tsx scripts/observe.mjs s_xxx --watch   只在变化时打印
+```
+
+一份快照里同时有：终端画面的判定和输入框内容、写入闸此刻的理由、对话最近几条消息的角色、
+待发队列每条卡在哪。**判定取自守护进程本身**（`commandControl`），不是这里重算的。
+
+抓金样本：
+
+```
+node --import tsx scripts/observe.mjs s_xxx --capture claude-2-1-278-empty
+```
+
+只截输入框那一块（边框、`❯`、页脚），存进 `packages/terminal-daemon/tests/screens/`，
+由 `real-screens.test.ts` 回放。**CLI 升级换了界面时靠这个发现**——上一次页脚措辞漂移
+让整条链静默停摆，而当时没有任何用例会失败。升级后重抓一帧，判定变了测试就会红。
 
 ---
 
