@@ -277,6 +277,7 @@ export const misc = {
           recipientBlockedHint: "The receiving conversation has an unresolved message (usually one written to the terminal but never confirmed). Dismiss or handle it in the pending list and these resume on their own.",
           alreadyDispatching: "This one is already being submitted",
           runUnavailable: "That terminal just changed identity; retrying next pass",
+          userRemoved: "You removed this from the pending list",
           userCancelled: "You cancelled this one",
           userDismissed: "You confirmed it was never sent and dropped it",
           daemonRestarted: "The terminal service restarted; this was never written",
@@ -285,6 +286,8 @@ export const misc = {
           submissionUncertain: "Not sure whether it was submitted",
         },
         queuedOther: (reason: string) => `Cannot deliver yet (${reason})`,
+        remove: "Remove",
+        removeHint: "Takes this finished message out of the pending list. The text stays in the message record.",
         dispatching: "Submitting, waiting for the receipt",
         direct: {
           submitted: "Sent to the terminal",

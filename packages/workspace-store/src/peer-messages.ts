@@ -106,6 +106,31 @@ export function createPeerMessages(db:DatabaseSync) {
     });
   }
   /*
+    「这条已经结束了，从列表里拿走」。
+
+    **每一种状态都得有出口，否则界面会堆死。** 原来只有两个出口：`queued` 能取消、
+    `uncertain` 能放弃；而 `cancelled` 和 `failed` 一个都没有——它们是终态，既不会自己
+    消失，也没有任何按钮能让它消失。实测撞到：一块面板上叠了 7 条「已取消/已放弃」，
+    每条都带着「重试」，而用户想要的是让它们**走开**。
+
+    **只改 reason，不改 state。** 终态就是终态，移除不是一次新的状态转移，只是「用户看过了、
+    不用再摆在待发区」。留着 state 也就留着「它当初是怎么结束的」这一事实。
+
+    只给终态。`queued` 还可能发出去、`uncertain` 还可能等到回执，把它们从列表里藏掉
+    等于让人失去唯一的处置入口——那比堆着更糟。
+  */
+  function remove(deliveryId:string) {
+    return transaction(db,()=>{
+      const d=deliveryRow(deliveryId);
+      if(d.reason==="user_removed")return delivery(d);
+      if(d.state!=="cancelled"&&d.state!=="failed")
+        fail(409,"not_finished","only finished messages can be removed from the list");
+      db.prepare("UPDATE peer_deliveries SET reason='user_removed',revision=revision+1,updated_at=? WHERE id=?")
+        .run(Date.now(),deliveryId);
+      return getDelivery(deliveryId);
+    });
+  }
+  /*
     「这条没发出去，放弃它」。**只给 `uncertain`**，而且只能由用户按。
 
     `uncertain` 在这里没有别的出口：它只等 transcript 里出现那条消息，而一条从没提交过的
@@ -226,7 +251,7 @@ export function createPeerMessages(db:DatabaseSync) {
     return transaction(db,()=>Number(db.prepare(`UPDATE peer_deliveries SET reason='conversation_trashed',revision=revision+1,updated_at=?
       WHERE recipient_id=? AND state='queued' AND reason IS NOT 'conversation_trashed'`).run(Date.now(),conversationId).changes));
   }
-  return {send,get,getDelivery,getByCommand,cancel,dismiss,queued,pending,claimDelivery,finishFromCommand,markUncertain,setQueuedReason,onConversationTrashed,
+  return {send,get,getDelivery,getByCommand,cancel,remove,dismiss,queued,pending,claimDelivery,finishFromCommand,markUncertain,setQueuedReason,onConversationTrashed,
     inbox:(id:string,opts?:{cursor?:string;limit?:number})=>page(id,"inbox",opts),outbox:(id:string,opts?:{cursor?:string;limit?:number})=>page(id,"outbox",opts)};
 }
 export type PeerMessagesStore=ReturnType<typeof createPeerMessages>;

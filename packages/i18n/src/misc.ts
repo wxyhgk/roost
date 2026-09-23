@@ -343,6 +343,7 @@ export const misc = {
           recipientBlockedHint: "收件的对话里有一条还没有定论的消息（多半是写进过终端但没确认的那条）。在待发列表里把它「放弃」或处理掉，后面这些会自己接着发。",
           alreadyDispatching: "这一条已经在提交途中",
           runUnavailable: "那个终端刚换过身份，下一轮重来",
+          userRemoved: "你把这条从待发区拿走了",
           userCancelled: "你取消了这一条",
           userDismissed: "你确认它没发出去，放弃了",
           daemonRestarted: "终端服务重启了，这条没有写出去",
@@ -351,6 +352,8 @@ export const misc = {
           submissionUncertain: "不确定有没有提交成功",
         },
         queuedOther: (reason: string) => `暂时不能投递（${reason}）`,
+        remove: "移除",
+        removeHint: "把这条已经结束的从待发区拿走。原文仍留在消息记录里。",
         dispatching: "正在提交，等待回执",
         /*
           TUI 输入框的镜像。

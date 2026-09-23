@@ -43,8 +43,9 @@ export function createConversationMessagingHandler(store: WorkspaceStore) {
   async function handle(req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean> {
     const conversation = url.pathname.match(/^\/api\/conversations\/([^/]+)\/(inbox|outbox|changes|snapshot)$/);
     const detail = url.pathname.match(/^\/api\/peer-messages\/([^/]+)$/);
-    // cancel 给排队中的；dismiss 给状态不明的（「没发出去，放弃」，见 store 的 dismiss）。
-    const cancel = url.pathname.match(/^\/api\/peer-deliveries\/([^/]+)\/(cancel|dismiss)$/);
+    // cancel 给排队中的；dismiss 给状态不明的；remove 给已经结束的（从待发区拿走）。
+    // 三个出口合起来覆盖全部状态——少一个，界面上就会有一格永远清不掉。
+    const cancel = url.pathname.match(/^\/api\/peer-deliveries\/([^/]+)\/(cancel|dismiss|remove)$/);
     if (!conversation && !detail && !cancel) return false;
     try {
       if (disposed) throw new ConversationError(503, 'storage_unavailable', 'conversation messaging is shutting down');
@@ -60,7 +61,8 @@ export function createConversationMessagingHandler(store: WorkspaceStore) {
         const body = await readJson(req, cancel ? 1024 : 128 * 1024);
         if (cancel) {
           fields(body, []);
-          json(res, 200, cancel[2] === 'dismiss' ? store.peerMessages.dismiss(id) : store.peerMessages.cancel(id));
+          json(res, 200, cancel[2] === 'dismiss' ? store.peerMessages.dismiss(id)
+            : cancel[2] === 'remove' ? store.peerMessages.remove(id) : store.peerMessages.cancel(id));
         } else {
           fields(body, ['requestId', 'text', 'inReplyTo']);
           const requestId = identifier(body.requestId, 'requestId');

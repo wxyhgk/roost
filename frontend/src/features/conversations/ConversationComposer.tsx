@@ -83,10 +83,11 @@ function label(delivery: Delivery) {
   }
 }
 
-export function PendingMessage({ detail, onCancel, onDismiss, onRetry, onJump, readOnly = false }: {
+export function PendingMessage({ detail, onCancel, onDismiss, onRemove, onRetry, onJump, readOnly = false }: {
   detail: PeerDetail;
   onCancel: (detail: PeerDetail) => void;
   onDismiss?: (detail: PeerDetail) => void;
+  onRemove?: (detail: PeerDetail) => void;
   onRetry: () => void;
   onJump?: () => void;
   readOnly?: boolean;
@@ -117,6 +118,14 @@ export function PendingMessage({ detail, onCancel, onDismiss, onRetry, onJump, r
         )}
         {!readOnly && view.retryable && (
           <button type="button" className="rounded px-1.5 py-0.5 text-text hover:bg-bg-hover" onClick={onRetry}>{s.retry}</button>
+        )}
+        {/*
+          终态的出口。**不问确认**：它已经结束了，移除只是把它从待发区拿走，
+          正文仍在消息记录里，按错了也没有后果——和「放弃」那一下不同。
+        */}
+        {!readOnly && view.removable && onRemove && (
+          <button type="button" title={s.removeHint} className="rounded px-1.5 py-0.5 text-text-dim hover:bg-bg-hover"
+            onClick={() => onRemove(detail)}>{s.remove}</button>
         )}
       </div>
       {hint && <div className="mt-0.5 text-caption text-text-dim/80">{hint}</div>}

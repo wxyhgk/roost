@@ -37,6 +37,8 @@ export type OutgoingView = {
   dismissable: boolean;
   /** 允许重试。注意重试必须**沿用原 requestId 和原正文**。 */
   retryable: boolean;
+  /** 已经结束、可以从待发区拿走。只有终态才有。 */
+  removable: boolean;
   /** 是否提供「跳到终端」——只有需要你去终端里做点什么时才给。 */
   jumpToTerminal: boolean;
 };
@@ -44,7 +46,7 @@ export type OutgoingView = {
 export function viewOf(delivery: Delivery): OutgoingView {
   const { state, reason } = delivery;
   const base: OutgoingView = {
-    pending: false, cancellable: false, dismissable: false, hideFromPending: false, retryable: false, jumpToTerminal: false,
+    pending: false, cancellable: false, dismissable: false, hideFromPending: false, retryable: false, removable: false, jumpToTerminal: false,
   };
   switch (state) {
     case "queued":
@@ -68,8 +70,16 @@ export function viewOf(delivery: Delivery): OutgoingView {
       return { ...base, hideFromPending: true };
     case "failed":
     case "cancelled":
-      // 保留原文供查看和重试；重试沿用原 requestId。
-      return { ...base, pending: true, retryable: true };
+      /*
+        终态。保留原文供查看和重试（重试沿用原 requestId），但**必须能拿走**——
+        它不会自己消失，而待发区是给「还要发的」用的。实测撞到：一块面板上叠了 7 条
+        「已取消/已放弃」，每条都带着重试，清不掉。
+
+        用户按过「移除」之后就不再出现在这里；那一下只改 reason，状态仍然是终态，
+        「它当初怎么结束的」这个事实留着。
+      */
+      if (reason === "user_removed") return { ...base, hideFromPending: true };
+      return { ...base, pending: true, retryable: true, removable: true };
   }
   /*
     **兜底不能省，哪怕 TypeScript 认为上面已经穷尽。**

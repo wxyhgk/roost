@@ -227,6 +227,20 @@ export function cancelDelivery(deliveryId: string) {
 }
 
 /**
+ * 「这条已经结束了，从列表里拿走」：只给终态（cancelled / failed），其余 409 not_finished。
+ *
+ * **每一种状态都得有出口**，否则待发区会堆死：queued 能取消、uncertain 能放弃，
+ * 而终态原来一个按钮都没有，只能永远摆着。
+ */
+export function removeDelivery(deliveryId: string) {
+  return request<PeerDetail>(`/api/peer-deliveries/${encodeURIComponent(deliveryId)}/remove`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{}",
+  });
+}
+
+/**
  * 「没发出去，放弃」：只有 uncertain 能放弃，其余返回 409 not_uncertain，应当回读最新状态。
  * 命令和投递由后端在同一个事务里一起落定（见 store 的 dismiss）。
  */

@@ -228,3 +228,57 @@ test('only an unresolved message can be dismissed',t=>{
   f.peer.finishFromCommand(claimed.id,{...c,status:'accepted',writtenAt:Date.now(),nativeMessageId:'native-1'});
   assert.throws(()=>f.peer.dismiss(sent.delivery.id),code('not_uncertain'),'已经送达的绝不能被放弃');
 });
+
+/*
+  终态要有出口。
+
+  原来只有两个：`queued` 能取消、`uncertain` 能放弃。而 `cancelled` 和 `failed` 一个都没有
+  ——它们不会自己消失，也没有任何按钮能让它们消失。实测撞到：一块面板上叠了 7 条
+  「已取消/已放弃」，每条都带着「重试」，用户问的是**怎么删掉**。
+*/
+test('已经结束的可以从待发区拿走，没结束的不行',t=>{
+  const f=fixture(t);
+  const {delivery}=f.send('A','B','one');
+
+  // 还在排队：不能移除。它还可能发出去，藏掉就是把唯一的处置入口拿走了。
+  assert.throws(()=>f.peer.remove(delivery.id),code('not_finished'),'排队中的不许移除');
+
+  f.peer.cancel(delivery.id);
+  const removed=f.peer.remove(delivery.id);
+  assert.equal(removed.reason,'user_removed');
+  assert.equal(removed.state,'cancelled','**状态不变**——移除不是一次新的状态转移，只是不再摆在待发区');
+
+  // 幂等：再按一次不该继续涨 revision（界面上可能连点）。
+  const again=f.peer.remove(delivery.id);
+  assert.equal(again.revision,removed.revision,'重复移除必须是 no-op');
+});
+
+test('移除 failed 的那条，状态仍然是 failed',t=>{
+  /*
+    **状态必须原样留着。** 只测 cancelled 分不出「不动状态」和「顺手写成 cancelled」这两种
+    实现（变异测试发现）——而后者会把「它当初是失败的」这个事实抹掉，以后看记录时
+    一条失败的消息会显示成用户取消的。
+  */
+  const f=fixture(t);
+  const {delivery}=f.send('A','B','three');
+  const claimed=f.peer.claimDelivery(delivery.id,f.B.run,'hello');
+  const c=f.command(claimed);
+  const failed=f.store.aiCommands.update(c.webSessionId,c.requestId,['queued'],
+    {status:'failed',reason:'write_failed',writtenAt:null})!;
+  assert.equal(f.peer.finishFromCommand(claimed.id,failed).state,'failed');
+
+  const removed=f.peer.remove(claimed.id);
+  assert.equal(removed.state,'failed','不能把失败改写成取消');
+  assert.equal(removed.reason,'user_removed');
+});
+
+test('dispatching 和 uncertain 都不算结束，不许移除',t=>{
+  const f=fixture(t);
+  const {delivery}=f.send('A','B','two');
+  const claimed=f.peer.claimDelivery(delivery.id,f.B.run,'hello');
+  assert.throws(()=>f.peer.remove(claimed.id),code('not_finished'),'在途的不许移除');
+
+  f.peer.markUncertain(claimed.id);
+  assert.throws(()=>f.peer.remove(claimed.id),code('not_finished'),
+    'uncertain 有它自己的出口（放弃），而且它悬着会挡住后面的——藏掉等于让人没法处理');
+});

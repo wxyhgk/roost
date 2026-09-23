@@ -39,7 +39,7 @@ function build() {
     acceptance_uncertain: r.acceptanceUncertain, awaiting_paste_echo: r.awaitingPasteEcho,
     acceptance_timeout: r.acceptanceTimeout, target_changed: r.targetChanged,
     peer_target_changed: r.targetChanged, write_boundary_unknown: r.writeBoundaryUnknown,
-    write_failed: r.writeFailed, daemon_restarted: r.daemonRestarted, user_cancelled: r.userCancelled,
+    write_failed: r.writeFailed, daemon_restarted: r.daemonRestarted, user_cancelled: r.userCancelled, user_removed: r.userRemoved,
     recipient_blocked: r.recipientBlocked, already_dispatching: r.alreadyDispatching,
     run_unavailable: r.runUnavailable,
     user_dismissed: r.userDismissed,

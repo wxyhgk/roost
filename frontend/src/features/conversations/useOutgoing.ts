@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { cancelDelivery, dismissDelivery, fetchInbox, fetchPeerMessage, sendToConversation, type PeerDetail } from "../../shared/api/conversations";
+import { cancelDelivery, dismissDelivery, removeDelivery, fetchInbox, fetchPeerMessage, sendToConversation, type PeerDetail } from "../../shared/api/conversations";
 import { ApiError } from "../../shared/api/errors";
 import { MAX_PEER_TEXT_BYTES, pendingOutgoing, textBytes } from "./outgoing";
 import { uid } from "../../shared/uid";
@@ -101,7 +101,26 @@ export function useOutgoing(conversationId: string) {
     }
   }, [conversationId, merge]);
 
-  return { text, setText, items, pending: pendingOutgoing(items), busy, error, submit, cancel, dismiss };
+  /*
+    「从待发区拿走」。和 cancel / dismiss 同一个形状：409 说明它已经不是终态了
+    （极少见，比如别处重试过），回读最新状态给用户看，而不是报错。
+  */
+  const remove = useCallback(async (detail: PeerDetail) => {
+    const current = scope.current;
+    if (!current || current.id !== conversationId || current.controller.signal.aborted) return;
+    try {
+      const result = await removeDelivery(detail.delivery.id);
+      if (!current.controller.signal.aborted) merge(result);
+    } catch (err) {
+      if (current.controller.signal.aborted) return;
+      if (err instanceof ApiError && err.status === 409) {
+        const latest = await fetchPeerMessage(detail.message.id, current.controller.signal).catch(() => null);
+        if (latest && !current.controller.signal.aborted) merge(latest);
+      } else setError(err instanceof Error ? err.message : String(err));
+    }
+  }, [conversationId, merge]);
+
+  return { text, setText, items, pending: pendingOutgoing(items), busy, error, submit, cancel, dismiss, remove };
 }
 
 export type Outgoing = ReturnType<typeof useOutgoing>;

@@ -97,3 +97,34 @@ test("认不出的投递状态当成「还在路上」，不是返回 undefined"
   assert.equal(view.hideFromPending, false, "不能凭空宣布送达");
   assert.equal(view.retryable, false, "也不该鼓励对一个我们不懂的状态重试");
 });
+
+/*
+  终态在待发区要能被拿走，拿走之后不再出现。
+
+  原来 cancelled / failed 一律 `pending: true, retryable: true`，而且**没有任何出口**——
+  实测一块面板上叠了 7 条「已取消/已放弃」，清不掉。
+*/
+test('已结束的可以移除；移除之后不再出现在待发区', () => {
+  const delivery = (state: string, reason: string | null) =>
+    ({ id: 'd', state, reason, revision: 1 } as never);
+
+  for (const state of ['cancelled', 'failed']) {
+    const view = viewOf(delivery(state, 'user_cancelled'));
+    assert.equal(view.pending, true, `${state} 还要显示出来，让人知道它没发出去`);
+    assert.equal(view.removable, true, `${state} 必须给得出口`);
+    assert.equal(view.retryable, true, '同时还能重试');
+
+    const gone = viewOf(delivery(state, 'user_removed'));
+    assert.equal(gone.hideFromPending, true, '移除之后就不该再出现');
+    assert.equal(gone.removable, false);
+  }
+});
+
+test('没结束的一律不给「移除」——那会把唯一的处置入口拿走', () => {
+  const at = (state: string, reason: string | null) =>
+    viewOf({ id: 'd', state, reason, revision: 1 } as never);
+  assert.equal(at('queued', 'busy').removable, false, '还可能发出去');
+  assert.equal(at('dispatching', null).removable, false, '在途');
+  assert.equal(at('uncertain', 'awaiting_user_submit').removable, false,
+    'uncertain 有它自己的出口（放弃），而且它悬着会挡住后面的');
+});
