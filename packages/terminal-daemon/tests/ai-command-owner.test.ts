@@ -313,3 +313,44 @@ test('control 报出输入框内容：空、有草稿、认不出，三件事分
  await new Promise(r=>setTimeout(r,15));
  assert.equal(f.owner.control('s').composer,null,'认不出画面时必须是 null');
 });
+
+/*
+  CLI 报上来的 prompt 是它自己裁过的，我们写进去的正文不是。
+
+  消息体可以带尾换行（`textOf` 只把 \r\n 归一成 \n，不裁剪），所以命令正文会比 CLI 报的
+  多一个 \n。判据原来是逐字相等，于是对不上，`hookSeq` 留 null——而 `acceptFromTranscript`
+  第一行就是 `if(c.hookSeq===null)return`，证据扫描根本不启动，十秒后一律 acceptance_timeout，
+  然后按「一条悬着就挡住后面全部」的规矩，把这个对话后续的消息全堵死。
+
+  实测 2026-09-23：从网页发「你好」（无尾换行）对上了，hookSeq=2；发「测试发送\n」就没有。
+*/
+test('正文带尾换行时，钩子仍然要和命令对上号',async t=>{
+ const f=await fixture(t);
+ await f.display();
+ f.owner.enqueue('s',f.input('r','看看当前的项目\n'));
+ await f.owner.pump('s');
+ f.expireEcho();await f.owner.pump('s');
+ assert.equal(f.store.aiCommands.get('s','r')?.hookSeq,null,'还没收到钩子');
+
+ // CLI 报的是裁过的那一份。
+ f.owner.hook('s',{event:'UserPromptSubmit',sessionId:'native',prompt:'看看当前的项目'},7);
+ assert.equal(f.store.aiCommands.get('s','r')?.hookSeq,7,'差一个尾换行不该让整条回执链停摆');
+});
+
+test('裁剪只吃首尾空白，别人的正文照样对不上',async t=>{
+ const f=await fixture(t);
+ await f.display();
+ f.owner.enqueue('s',f.input('r','看看当前的项目\n'));
+ await f.owner.pump('s');
+ f.expireEcho();await f.owner.pump('s');
+ // 用户自己在终端里打了别的话，那一条不能被认成我们这条。
+ f.owner.hook('s',{event:'UserPromptSubmit',sessionId:'native',prompt:'看看当前的项目 还有别的'},7);
+ assert.equal(f.store.aiCommands.get('s','r')?.hookSeq,null,'比我们的长，不许对上');
+ /*
+   **更短的那一边才是真考验。** 用户手打一句恰好是我们正文子串的话（这里是前缀），
+   用「包含」去判就会把它认成我们那条，于是回执指向了错的一行。变异测试证明：只写上面
+   那条更长的反例，「相等」和「包含」两种实现看不出区别。
+ */
+ f.owner.hook('s',{event:'UserPromptSubmit',sessionId:'native',prompt:'看看当前'},8);
+ assert.equal(f.store.aiCommands.get('s','r')?.hookSeq,null,'是子串也不行——必须是同一句话');
+});

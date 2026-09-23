@@ -12,6 +12,22 @@ import {writeQwenCommand} from './qwen-launch.ts';
 // These exact replies contain no composer text. Never trust a caller's tag alone.
 export const isTerminalReply=(data:string)=>/^(?:\x1b\[(?:[IO]|[?>][0-9;]+c|[0-9;]+R|\?997;[12]n|\?2031;[0-9]+\$y)|\x1b\](?:10|11|12);rgb:[a-fA-F0-9/]+(?:\x07|\x1b\\))$/.test(data);
 const normalize=(text:string)=>text.replace(/\r\n?/g,'\n');
+/*
+  把 CLI 报上来的 prompt 和我们写进去的正文对上号。
+
+  **两边都要去掉首尾空白。** 我们写的正文原样保留消息体，而消息体可以带尾换行
+  （`textOf` 只把 \r\n 归一成 \n，不裁剪）；CLI 报上来的 prompt 则是它自己裁过的。
+  于是「我们写的」比「它报的」多一个 \n，逐字相等永远不成立。
+
+  实测 2026-09-23：从网页发「你好」（无尾换行）对上了，hookSeq=2；发「测试发送\n」
+  就对不上，hookSeq 留 null。而 `acceptFromTranscript` 第一行就是 `if(c.hookSeq===null)return`
+  ——证据扫描根本不启动，十秒后一律 acceptance_timeout，然后把后面的消息全挡住。
+
+  裁剪不会让这条判据变松到危险：它只决定「从转录的哪个位置开始找回执」，不授权任何写入，
+  而真正的身份核对在 acceptFromTranscript 里按 native 会话和 uuid 逐条做。
+  各家 CLI 怎么裁 prompt 不是我们能控制的，所以只能两边都裁。
+*/
+const samePrompt=(reported:string,written:string)=>normalize(reported).trim()===normalize(written).trim();
 type State={instance:string;screen:ClaudeScreen;epoch:number;lastInput:number;nativeId:string|null;working:boolean;version:string|null;hookSeq:number;cli:'claude'|'qwen';inputPath:string|null;protocolVersion:number|null;dialog:boolean;lifecycleSupported:boolean;};
 type Proof={offset:number;identity:string|null;partial:string;path:string;decoder:StringDecoder;};
 const key=(c:AiCommand)=>c.webSessionId+"\0"+c.requestId;
@@ -289,7 +305,7 @@ const PASTE_ECHO_MS=2000;
    if(event.event==='UserPromptSubmit'){
     s.working=true;
     const c=store.aiCommands.active(id).find(c=>matches(c,s)&&['writing','awaiting_acceptance','uncertain'].includes(c.status));
-    if(c&&c.inputEpoch===s.epoch&&seq>(c.sourceSeq??0)&&typeof event.prompt==='string'&&normalize(event.prompt)===c.text)update(c,{hookSeq:seq});
+    if(c&&c.inputEpoch===s.epoch&&seq>(c.sourceSeq??0)&&typeof event.prompt==='string'&&samePrompt(event.prompt,c.text))update(c,{hookSeq:seq});
    }
   },
   qwenHook(id:string,event:{event:string;sessionId:string;prompt?:string;version:string;protocolVersion:number;inputPath:string;lifecycleSupported?:boolean},seq:number){
@@ -302,7 +318,7 @@ const PASTE_ECHO_MS=2000;
    if(event.event==='UserPromptSubmit'){
     s.working=true;s.dialog=false;
     const c=store.aiCommands.active(id).find(c=>matches(c,s)&&['writing','awaiting_acceptance','uncertain'].includes(c.status));
-    if(c&&c.inputEpoch===s.epoch&&seq>(c.sourceSeq??0)&&typeof event.prompt==='string'&&normalize(event.prompt)===c.text)update(c,{hookSeq:seq});
+    if(c&&c.inputEpoch===s.epoch&&seq>(c.sourceSeq??0)&&typeof event.prompt==='string'&&samePrompt(event.prompt,c.text))update(c,{hookSeq:seq});
    }
   },
   control,
