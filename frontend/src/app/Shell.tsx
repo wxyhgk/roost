@@ -1,5 +1,7 @@
 import { subscribeFileLinkOpen } from '../features/terminal/public';
 import { useNarrowLayout } from "../shared/useNarrowLayout";
+import { isNarrowLayout } from "../shared/narrow";
+import { NarrowDrawer } from "./NarrowDrawer";
 import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelHandle, type ImperativePanelGroupHandle } from "react-resizable-panels";
 import { LeftRail } from "./LeftRail";
@@ -125,12 +127,23 @@ export function Shell() {
     不看 `pointer: coarse`——iPad 横屏是触屏但宽得很，平板竖屏不是手机但一样挤。
   */
   const narrow = useNarrowLayout();
-  // autoSaveId 会恢复上次的尺寸（含折叠）, 挂载后对齐一次状态。
+  /*
+    **只在挂载时决定一次，之后永不自动切。**
+
+    上一版是 `useEffect(..., [narrow])` 里无条件收起两侧——跟着阈值每次跨越都跑，而且
+    只收不放：桌面上把窗口拖窄再拖宽，两侧就一直收着。
+
+    JupyterLab 2020 年做过一模一样的（PR #8456 自动切 single-document），**九个月后整条
+    撤掉**（PR #9831）。撤回理由的第二条逐字就是这个不对称：缩小会切、放大不切回来。
+    第一条是「桌面用户把窗口拖到半屏就被迫切成手机版」。
+
+    照他们事后总结的三条办：加载时看一次宽度；**之后再不自动切**；用户显式操作优先。
+  */
   useEffect(() => {
-    if (narrow) { leftRef.current?.collapse(); rightRef.current?.collapse(); }
+    if (isNarrowLayout(window.innerWidth)) { leftRef.current?.collapse(); rightRef.current?.collapse(); }
     setLeftCollapsed(leftRef.current?.isCollapsed() ?? false);
     setRightCollapsed(rightRef.current?.isCollapsed() ?? false);
-  }, [narrow]);
+  }, []);
 
   // 窄屏下两侧不能同时开：一共就那么点宽度，开第二个等于把中间挤没。
   function toggleLeft() {
@@ -216,9 +229,19 @@ export function Shell() {
             collapsedSize={0}
             onCollapse={() => setLeftCollapsed(true)}
             onExpand={() => setLeftCollapsed(false)}
-            className="h-full min-w-0 overflow-hidden"
+            /*
+              **窄屏时这个面板只当开关用，内容画在覆盖层里**（见下面的 narrowOverlay）。
+
+              两个原因。一是它根本放不下：PanelGroup 分的是百分比，手机 390px 去掉两条
+              图标栏只剩 310，23% 就是 [实测] **72px** 的一条竖缝。
+              二是更要紧的——让侧栏在窄屏真占宽度，中间的终端就会被挤窄 → `fit` 重算 →
+              PTY resize → **SIGWINCH**，而 `tasks/terminal-flood/README.md` 写着 omp 收到
+              SIGWINCH 会把整段对话重新打印一遍。**覆盖层不改终端宽度，所以它不是更好看，
+              是唯一不触发这条链的做法。**
+            */
+            className={`h-full min-w-0 overflow-hidden ${narrow ? "hidden" : ""}`}
           >
-            <Sidebar scope={scope} onScope={setScope} onEnterTerminal={() => setMode("terminal")} />
+            {!narrow && <Sidebar scope={scope} onScope={setScope} onEnterTerminal={() => setMode("terminal")} />}
           </Panel>
           <PanelResizeHandle className="resize" />
           <Panel defaultSize={59} minSize={38} className="h-full min-w-0">
@@ -235,7 +258,8 @@ export function Shell() {
           <PanelResizeHandle className="resize" />
           <Panel
             ref={rightRef}
-            className="h-full min-w-0 overflow-hidden"
+            /* 同左面板：窄屏时这个 Panel 只当开关，内容画在覆盖层里。理由见左面板那段。 */
+            className={`h-full min-w-0 overflow-hidden ${narrow ? "hidden" : ""}`}
             defaultSize={18}
             minSize={12}
             maxSize={30}
@@ -244,10 +268,23 @@ export function Shell() {
             onCollapse={() => setRightCollapsed(true)}
             onExpand={() => setRightCollapsed(false)}
           >
-            <ErrorBoundary region={t.misc.shell.regionLibraryFiles} key={rightView}><RightPanel view={rightView} onChangeView={setRightView} visible={!rightCollapsed} monitorTarget={monitorTarget} /></ErrorBoundary>
+            {!narrow && <ErrorBoundary region={t.misc.shell.regionLibraryFiles} key={rightView}><RightPanel view={rightView} onChangeView={setRightView} visible={!rightCollapsed} monitorTarget={monitorTarget} /></ErrorBoundary>}
           </Panel>
         </PanelGroup>
         <RightRail view={rightView} collapsed={rightCollapsed} onSelect={selectRight} />
+        {/* 窄屏：侧栏内容画在这儿，盖住终端而不是挤它。理由见 NarrowDrawer 的注释。 */}
+        {narrow && !leftCollapsed && (
+          <NarrowDrawer side="left" label={t.misc.leftRail.sessions} onClose={() => leftRef.current?.collapse()}>
+            <Sidebar scope={scope} onScope={setScope} onEnterTerminal={() => { setMode("terminal"); leftRef.current?.collapse(); }} />
+          </NarrowDrawer>
+        )}
+        {narrow && !rightCollapsed && (
+          <NarrowDrawer side="right" label={t.misc.shell.regionLibraryFiles} onClose={() => rightRef.current?.collapse()}>
+            <ErrorBoundary region={t.misc.shell.regionLibraryFiles} key={rightView}>
+              <RightPanel view={rightView} onChangeView={setRightView} visible monitorTarget={monitorTarget} />
+            </ErrorBoundary>
+          </NarrowDrawer>
+        )}
       </div>
       <StatusBar monitorVisible={rightView === 'server' && !rightCollapsed} onOpenMonitor={tab => { setMonitorTarget(previous => ({ tab, revision: previous.revision + 1 })); showRight('server'); }} />
       {settingsOpen && <ErrorBoundary region={t.misc.shell.regionSettings}><Suspense fallback={null}><SettingsDialog onClose={() => setSettingsOpen(false)} onResetLayout={() => layoutRef.current?.setLayout([23, 59, 18])} /></Suspense></ErrorBoundary>}
