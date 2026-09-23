@@ -105,6 +105,42 @@ export function createPeerMessages(db:DatabaseSync) {
       return getDelivery(deliveryId);
     });
   }
+  /*
+    「这条没发出去，放弃它」。**只给 `uncertain`**，而且只能由用户按。
+
+    `uncertain` 在这里没有别的出口：它只等 transcript 里出现那条消息，而一条从没提交过的
+    消息永远等不到。与此同时 `claimDelivery` 把同一收件人的 uncertain 当成阻塞，
+    `ai-command-owner` 也把同一终端的 uncertain 命令当成阻塞——于是一条没发成的消息会把
+    后面所有消息挡死，直到那个终端里的 CLI 重启。实测：2026-09-22 07:37 的一条就这么
+    堵了一整天，而它在任何 transcript 里都不存在。
+
+    **为什么不自动判**：粘贴过、输入框又空了，可能是被清掉，也可能是用户按了回车而回执还没
+    到——这两者从画面上分不开（见 ai-command-owner 的 control()）。程序不猜，所以交给人。
+    人能分辨，是因为人知道自己按没按过那一下。
+
+    命令和投递**在同一个事务里**一起落定。只落投递，终端那边的命令仍是 uncertain，会继续
+    挡住这个终端；只落命令，投递会被 `finishFromCommand` 同步回 uncertain（命令写过就一律
+    算不明），收件人照样堵着。后面这种半截状态实测撞到过。
+
+    放弃不会去碰终端：正文若还在输入框里，它就还在那儿，用户照样可以自己按回车——那是
+    用户的事，也是用户看得见的事。
+  */
+  function dismiss(deliveryId:string) {
+    return transaction(db,()=>{
+      const d=deliveryRow(deliveryId);
+      if(d.state==="cancelled"&&d.reason==="user_dismissed")return delivery(d);
+      if(d.state!=="uncertain")fail(409,"not_uncertain","only uncertain messages can be dismissed");
+      const now=Date.now();
+      if(d.command_session_id&&d.command_request_id) {
+        db.prepare(`UPDATE ai_commands SET record_json=json_set(record_json,'$.status','cancelled','$.reason','user_dismissed',
+            '$.revision',json_extract(record_json,'$.revision')+1,'$.updatedAt',?)
+          WHERE session_id=? AND request_id=? AND json_extract(record_json,'$.status')='uncertain'`)
+          .run(now,d.command_session_id,d.command_request_id);
+      }
+      db.prepare("UPDATE peer_deliveries SET state='cancelled',reason='user_dismissed',revision=revision+1,updated_at=? WHERE id=? AND state='uncertain'").run(now,deliveryId);
+      return getDelivery(deliveryId);
+    });
+  }
   function queued(recipientId?:string) {
     return (db.prepare(`SELECT * FROM peer_deliveries WHERE state='queued'${recipientId===undefined?"":" AND recipient_id=?"} ORDER BY enqueue_seq LIMIT 100`).all(...(recipientId===undefined?[]:[recipientId])) as DeliveryRow[]).map(delivery);
   }
@@ -190,7 +226,7 @@ export function createPeerMessages(db:DatabaseSync) {
     return transaction(db,()=>Number(db.prepare(`UPDATE peer_deliveries SET reason='conversation_trashed',revision=revision+1,updated_at=?
       WHERE recipient_id=? AND state='queued' AND reason IS NOT 'conversation_trashed'`).run(Date.now(),conversationId).changes));
   }
-  return {send,get,getDelivery,getByCommand,cancel,queued,pending,claimDelivery,finishFromCommand,markUncertain,setQueuedReason,onConversationTrashed,
+  return {send,get,getDelivery,getByCommand,cancel,dismiss,queued,pending,claimDelivery,finishFromCommand,markUncertain,setQueuedReason,onConversationTrashed,
     inbox:(id:string,opts?:{cursor?:string;limit?:number})=>page(id,"inbox",opts),outbox:(id:string,opts?:{cursor?:string;limit?:number})=>page(id,"outbox",opts)};
 }
 export type PeerMessagesStore=ReturnType<typeof createPeerMessages>;

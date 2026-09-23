@@ -194,3 +194,37 @@ test('取消仍然只对 queued 开放——卡在门口的不能撤',t=>{
   assert.equal(f.peer.finishFromCommand(claimed.id,busy).reason,'busy');
   assert.throws(()=>f.peer.cancel(claimed.id),code('already_dispatching'),'带上原因之后也绝不能变得可取消');
 });
+
+test('dismiss settles an unresolved message in both layers so the ones queued behind it can go',t=>{
+  // 2026-09-22 的真实形状：贴进去了、没等到回显、再也等不到回执。它挡住了同一收件人后面的所有投递。
+  const f=fixture(t),one=f.send('A','B','one','后续可以做什么'),claimed=f.peer.claimDelivery(one.delivery.id,f.B.run);
+  const queuedCommand=f.command(claimed,'后续可以做什么');
+  const stuck=f.store.aiCommands.update(queuedCommand.webSessionId,queuedCommand.requestId,['queued'],{status:'uncertain',reason:'awaiting_user_submit',writtenAt:Date.now()})!;
+  assert.equal(f.peer.finishFromCommand(claimed.id,stuck).state,'uncertain');
+  const two=f.send('A','B','two');
+  assert.throws(()=>f.peer.claimDelivery(two.delivery.id,f.B.run),code('recipient_blocked'),'前提：不明的那条确实挡住了后面的');
+
+  const dismissed=f.peer.dismiss(one.delivery.id);
+  assert.equal(dismissed.state,'cancelled');
+  assert.equal(dismissed.reason,'user_dismissed');
+  const command=f.store.aiCommands.get(stuck.webSessionId,stuck.requestId)!;
+  assert.equal(command.status,'cancelled','命令必须和投递一起落定，否则终端那边继续被它挡住');
+  assert.equal(command.reason,'user_dismissed');
+  assert.equal(command.revision,stuck.revision+1);
+  assert.equal(f.store.aiCommands.active(stuck.webSessionId).length,0);
+  assert.equal(f.peer.finishFromCommand(claimed.id,command).state,'cancelled','daemon 之后再同步也不能把它拉回 uncertain');
+
+  assert.equal(f.peer.claimDelivery(two.delivery.id,f.B.run).state,'dispatching','后面那条放行了');
+  assert.equal(f.peer.dismiss(one.delivery.id).revision,dismissed.revision,'重复放弃是幂等的');
+});
+
+test('only an unresolved message can be dismissed',t=>{
+  const f=fixture(t),queued=f.send('A','B','queued');
+  assert.throws(()=>f.peer.dismiss(queued.delivery.id),code('not_uncertain'),'排队中的走取消，不走放弃');
+  const cancelled=f.send('A','B','cancelled');f.peer.cancel(cancelled.delivery.id);
+  assert.throws(()=>f.peer.dismiss(cancelled.delivery.id),code('not_uncertain'),'用户取消的不能被改写成放弃');
+  f.peer.cancel(queued.delivery.id);
+  const sent=f.send('A','B','sent'),claimed=f.peer.claimDelivery(sent.delivery.id,f.B.run),c=f.command(claimed);
+  f.peer.finishFromCommand(claimed.id,{...c,status:'accepted',writtenAt:Date.now(),nativeMessageId:'native-1'});
+  assert.throws(()=>f.peer.dismiss(sent.delivery.id),code('not_uncertain'),'已经送达的绝不能被放弃');
+});

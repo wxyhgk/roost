@@ -103,13 +103,14 @@ function label(delivery: Delivery) {
     // P2：正文进了输入框但我们没按回车。它和「不知道写没写进去」是两件事，要分开说。
     case "uncertain": return delivery.reason === "awaiting_user_submit" ? s.awaitingUserSubmit : s.uncertain;
     case "failed": return s.failed;
-    case "cancelled": return s.cancelled;
+    case "cancelled": return delivery.reason === "user_dismissed" ? s.dismissed : s.cancelled;
   }
 }
 
-export function PendingMessage({ detail, onCancel, onRetry, onJump, readOnly = false }: {
+export function PendingMessage({ detail, onCancel, onDismiss, onRetry, onJump, readOnly = false }: {
   detail: PeerDetail;
   onCancel: (detail: PeerDetail) => void;
+  onDismiss?: (detail: PeerDetail) => void;
   onRetry: () => void;
   onJump?: () => void;
   readOnly?: boolean;
@@ -129,6 +130,14 @@ export function PendingMessage({ detail, onCancel, onRetry, onJump, readOnly = f
         )}
         {!readOnly && view.cancellable && (
           <button type="button" className="rounded px-1.5 py-0.5 text-text-dim hover:bg-bg-hover" onClick={() => onCancel(detail)}>{s.cancel}</button>
+        )}
+        {/*
+          要确认一下：放弃之后后面的消息会接着发，而这条若其实已经提交了，就会变成「发了但
+          界面说放弃了」。能分辨的只有用户，所以把后果说清楚再让他按。
+        */}
+        {!readOnly && view.dismissable && onDismiss && (
+          <button type="button" className="rounded px-1.5 py-0.5 text-text-dim hover:bg-bg-hover"
+            onClick={() => { if (window.confirm(s.dismissConfirm)) onDismiss(detail); }}>{s.dismiss}</button>
         )}
         {!readOnly && view.retryable && (
           <button type="button" className="rounded px-1.5 py-0.5 text-text hover:bg-bg-hover" onClick={onRetry}>{s.retry}</button>

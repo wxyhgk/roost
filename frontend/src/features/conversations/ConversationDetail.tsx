@@ -205,7 +205,7 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
           {/* 待发的消息就在流的末尾——它会进 TUI、再从 transcript 回来，本来就属于这里。 */}
           {outgoing.pending.map(item => (
             <li key={item.message.id} className="flex flex-col items-end gap-1">
-              <PendingMessage readOnly={readOnly} detail={item} onCancel={outgoing.cancel} onRetry={() => void outgoing.submit()}
+              <PendingMessage readOnly={readOnly} detail={item} onCancel={outgoing.cancel} onDismiss={outgoing.dismiss} onRetry={() => void outgoing.submit()}
                 onJump={jumpTarget ? () => onJumpToTerminal?.(jumpTarget) : undefined} />
             </li>
           ))}

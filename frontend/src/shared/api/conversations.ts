@@ -226,6 +226,18 @@ export function cancelDelivery(deliveryId: string) {
   });
 }
 
+/**
+ * 「没发出去，放弃」：只有 uncertain 能放弃，其余返回 409 not_uncertain，应当回读最新状态。
+ * 命令和投递由后端在同一个事务里一起落定（见 store 的 dismiss）。
+ */
+export function dismissDelivery(deliveryId: string) {
+  return request<PeerDetail>(`/api/peer-deliveries/${encodeURIComponent(deliveryId)}/dismiss`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{}",
+  });
+}
+
 export function fetchPeerMessage(messageId: string, signal?: AbortSignal) {
   return request<PeerDetail>(`/api/peer-messages/${encodeURIComponent(messageId)}`, readOptions(signal));
 }

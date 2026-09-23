@@ -26,6 +26,15 @@ export type OutgoingView = {
    * 此时还在待发区留一份，同一句话就会出现两次——这正是契约里点名要避免的。
    */
   hideFromPending: boolean;
+  /**
+   * 能否「没发出去，放弃」——只有 uncertain 可以。
+   *
+   * uncertain 是这里唯一没有出口的状态：它只等 transcript 里出现那条消息，一条从没提交
+   * 过的消息永远等不到，而它悬着的时候，发给同一对话的后续消息全部被挡住。能分辨「没发
+   * 出去」和「发了但回执还没到」的只有用户——他知道自己按没按过回车——所以这是个按钮，
+   * 不是自动判定。
+   */
+  dismissable: boolean;
   /** 允许重试。注意重试必须**沿用原 requestId 和原正文**。 */
   retryable: boolean;
   /** 是否提供「跳到终端」——只有需要你去终端里做点什么时才给。 */
@@ -35,7 +44,7 @@ export type OutgoingView = {
 export function viewOf(delivery: Delivery): OutgoingView {
   const { state, reason } = delivery;
   const base: OutgoingView = {
-    pending: false, cancellable: false, hideFromPending: false, retryable: false, jumpToTerminal: false,
+    pending: false, cancellable: false, dismissable: false, hideFromPending: false, retryable: false, jumpToTerminal: false,
   };
   switch (state) {
     case "queued":
@@ -54,7 +63,7 @@ export function viewOf(delivery: Delivery): OutgoingView {
       //
       // `awaiting_user_submit` 是其中一格确定的情况：正文就在输入框里等着，最后那一下
       // 回车由用户按。这一格必须给「去终端」的入口——那正是用户要做的事。
-      return { ...base, pending: true, jumpToTerminal: reason === "awaiting_user_submit" };
+      return { ...base, pending: true, dismissable: true, jumpToTerminal: reason === "awaiting_user_submit" };
     case "accepted":
       return { ...base, hideFromPending: true };
     case "failed":

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { cancelDelivery, fetchInbox, fetchPeerMessage, sendToConversation, type PeerDetail } from "../../shared/api/conversations";
+import { cancelDelivery, dismissDelivery, fetchInbox, fetchPeerMessage, sendToConversation, type PeerDetail } from "../../shared/api/conversations";
 import { ApiError } from "../../shared/api/errors";
 import { MAX_PEER_TEXT_BYTES, pendingOutgoing, textBytes } from "./outgoing";
 import { uid } from "../../shared/uid";
@@ -84,8 +84,24 @@ export function useOutgoing(conversationId: string) {
     }
   }, [conversationId, merge]);
 
+  // 和 cancel 同一个形状：409 not_uncertain 说明它已经自己落定了（回执到了、或被别处处理了），
+  // 回读最新状态给用户看，而不是报错。
+  const dismiss = useCallback(async (detail: PeerDetail) => {
+    const current = scope.current;
+    if (!current || current.id !== conversationId || current.controller.signal.aborted) return;
+    try {
+      const result = await dismissDelivery(detail.delivery.id);
+      if (!current.controller.signal.aborted) merge(result);
+    } catch (err) {
+      if (current.controller.signal.aborted) return;
+      if (err instanceof ApiError && err.status === 409) {
+        const latest = await fetchPeerMessage(detail.message.id, current.controller.signal).catch(() => null);
+        if (latest && !current.controller.signal.aborted) merge(latest);
+      } else setError(err instanceof Error ? err.message : String(err));
+    }
+  }, [conversationId, merge]);
 
-  return { text, setText, items, pending: pendingOutgoing(items), busy, error, submit, cancel };
+  return { text, setText, items, pending: pendingOutgoing(items), busy, error, submit, cancel, dismiss };
 }
 
 export type Outgoing = ReturnType<typeof useOutgoing>;

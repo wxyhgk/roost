@@ -25,6 +25,17 @@ test("uncertain 保留原请求，不能自动换 requestId 重发", () => {
   assert.equal(view.retryable, false);
 });
 
+test("只有 uncertain 能放弃：它是唯一没有出口的状态", () => {
+  // uncertain 悬着会挡住发给同一对话的所有后续消息，而一条从没提交过的永远等不到回执。
+  assert.equal(viewOf(d("uncertain")).dismissable, true);
+  assert.equal(viewOf(d("uncertain", "awaiting_user_submit")).dismissable, true);
+  // 排队中的走「取消」；在途的还有回执可等；已送达、已失败、已取消的都已经落定。
+  for (const state of ["queued", "dispatching", "accepted", "failed", "cancelled"] as const) {
+    assert.equal(viewOf(d(state)).dismissable, false, state);
+  }
+  assert.equal(viewOf(d("expired" as Delivery["state"])).dismissable, false, "不认识的状态不给放弃");
+});
+
 test("accepted 之后从待发区隐藏，避免同一句话出现两次", () => {
   const view = viewOf(d("accepted"));
   // 正文已进入 CLI 原生历史，会从历史那条路显示；待发区再留一份就是重复。

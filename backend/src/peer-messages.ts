@@ -43,7 +43,8 @@ export function createConversationMessagingHandler(store: WorkspaceStore) {
   async function handle(req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean> {
     const conversation = url.pathname.match(/^\/api\/conversations\/([^/]+)\/(inbox|outbox|changes|snapshot)$/);
     const detail = url.pathname.match(/^\/api\/peer-messages\/([^/]+)$/);
-    const cancel = url.pathname.match(/^\/api\/peer-deliveries\/([^/]+)\/cancel$/);
+    // cancel 给排队中的；dismiss 给状态不明的（「没发出去，放弃」，见 store 的 dismiss）。
+    const cancel = url.pathname.match(/^\/api\/peer-deliveries\/([^/]+)\/(cancel|dismiss)$/);
     if (!conversation && !detail && !cancel) return false;
     try {
       if (disposed) throw new ConversationError(503, 'storage_unavailable', 'conversation messaging is shutting down');
@@ -59,7 +60,7 @@ export function createConversationMessagingHandler(store: WorkspaceStore) {
         const body = await readJson(req, cancel ? 1024 : 128 * 1024);
         if (cancel) {
           fields(body, []);
-          json(res, 200, store.peerMessages.cancel(id));
+          json(res, 200, cancel[2] === 'dismiss' ? store.peerMessages.dismiss(id) : store.peerMessages.cancel(id));
         } else {
           fields(body, ['requestId', 'text', 'inReplyTo']);
           const requestId = identifier(body.requestId, 'requestId');

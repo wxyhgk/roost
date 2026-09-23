@@ -45,6 +45,9 @@ test('HTTP queues durable user mail, rejects sender impersonation, preserves ide
   response=await f.request(url,'POST',input);assert.equal((await response.json()).message.id,saved.message.id);
   response=await f.request(url,'POST',{...input,text:'changed'});assert.equal(response.status,409);assert.equal((await response.json()).error.code,'request_conflict');
   response=await f.request(url,'POST',{requestId:'spoof',text:'spoof',senderConversationId:f.id});assert.equal(response.status,400);
+  // dismiss 只给状态不明的：排队中的走它必须 409，而同一条走 cancel 是 200——这一对能分辨路由接到了哪里。
+  response=await f.request('/api/peer-deliveries/'+saved.delivery.id+'/dismiss','POST',{});assert.equal(response.status,409);assert.equal((await response.json()).error.code,'not_uncertain');
+  assert.equal((await f.request('/api/peer-deliveries/'+saved.delivery.id+'/dismiss')).status,405);
   const cancelled=await(await f.request('/api/peer-deliveries/'+saved.delivery.id+'/cancel','POST',{})).json();assert.equal(cancelled.state,'cancelled');
   assert.equal((await(await f.request('/api/peer-messages/'+saved.message.id)).json()).delivery.state,'cancelled');
   f.store.deleteSessionRecord('terminal');

@@ -40,6 +40,7 @@ function build() {
     acceptance_timeout: r.acceptanceTimeout, target_changed: r.targetChanged,
     peer_target_changed: r.targetChanged, write_boundary_unknown: r.writeBoundaryUnknown,
     write_failed: r.writeFailed, daemon_restarted: r.daemonRestarted, user_cancelled: r.userCancelled,
+    user_dismissed: r.userDismissed,
     submission_boundary_unknown: r.submissionBoundaryUnknown,
     command_evidence_mismatch: r.commandEvidenceMismatch,
     submission_uncertain: r.submissionUncertain,
