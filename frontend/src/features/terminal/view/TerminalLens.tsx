@@ -13,7 +13,14 @@ import { fetchConversation, listConversations, type Conversation } from "../../.
   懒加载整个组件，而不是只把 markdown-it 动态化：后者会让每条消息先闪一下纯文本再变成
   渲染结果，那比晚一拍出现更糟。组件在加载完之前根本不挂，切换时只是一次极短的空白。
 */
-const ConversationDetail = lazy(() => import("../../conversations/ConversationDetail").then(m => ({ default: m.ConversationDetail })));
+/*
+  **预取要能单独调用。** 懒加载本身只在组件真正被渲染时才开始下载，而下面那条路径是
+  「先取对话对象（一个往返）→ 拿到了才渲染 → 这时才开始下 chunk」。这三段在公网上是
+  首尾相接的，用户看到的就是一段空白。所以把 import 提出来，知道要打开哪条对话的那一刻
+  就先把 chunk 拉起来，和取数据并行。
+*/
+const loadConversationDetail = () => import("../../conversations/ConversationDetail");
+const ConversationDetail = lazy(() => loadConversationDetail().then(m => ({ default: m.ConversationDetail })));
 const LensComposer = lazy(() => import("../../conversations/LensComposer"));
 import type { Lens } from "../../../shared/view";
 import { sendBlock, type SendBlock } from "../../conversations/sendability";
@@ -112,7 +119,7 @@ export function ConversationLens({ terminalId, conversationId, current }: { term
     </div>
     {error && <p role="status" className="px-3 text-caption text-text-dim">{t.bookmarks.historyFailed}</p>}
     {active && !current && !selected && <p className="border-b border-border px-3 py-1.5 text-caption text-text-dim">{t.bookmarks.historyFallback}</p>}
-    {active ? <ConversationContent key={active} conversationId={active} readOnly={!!selected || !current} blocked={blocked} terminalId={terminalId} sendTarget={sendTarget} /> : <>
+    {active ? <ConversationContent key={active} conversationId={active} known={items.find(item => item.id === active) ?? null} readOnly={!!selected || !current} blocked={blocked} terminalId={terminalId} sendTarget={sendTarget} /> : <>
       <p role="status" className="p-4 text-caption text-text-dim">{loading ? t.bookmarks.loading : t.bookmarks.noTerminalHistory}</p>
       <div className="flex-1" />
       {sendTarget && <Suspense fallback={null}><LensComposer terminalId={sendTarget} /></Suspense>}
@@ -120,18 +127,32 @@ export function ConversationLens({ terminalId, conversationId, current }: { term
   </div>;
 }
 
-function ConversationContent({ conversationId, readOnly, blocked, terminalId, sendTarget }: { conversationId: string; readOnly: boolean; blocked: SendBlock | null; terminalId: string; sendTarget: string | null }) {
-  const [conversation, setConversation] = useState<Conversation | null>(null);
+/**
+ * 打开一条对话。
+ *
+ * **两处都是为了少等一个往返**，而这在公网上是实打实的：
+ *
+ * 1. `known` —— 上面那个列表里本来就有这条对话的完整对象。原来这里无条件再取一次，
+ *    而且那一跳做完之前什么都不渲染，连懒加载的 chunk 都还没开始下。列表里有就直接用，
+ *    没有（比如从书签直接跳进来）才去取。
+ * 2. 知道 id 的那一刻就**并行**把 chunk 拉起来，不排在取数据后面。
+ */
+function ConversationContent({ conversationId, known, readOnly, blocked, terminalId, sendTarget }: { conversationId: string; known: Conversation | null; readOnly: boolean; blocked: SendBlock | null; terminalId: string; sendTarget: string | null }) {
+  const [fetched, setFetched] = useState<Conversation | null>(null);
   const [error, setError] = useState(false);
   const [retry, setRetry] = useState(0);
+  const conversation = known ?? fetched;
   useEffect(() => {
+    // 数据和代码同时开始拿。
+    void loadConversationDetail();
+    if (known) return;
     let cancelled = false;
     setError(false);
     void fetchConversation(conversationId)
-      .then(found => { if (!cancelled) setConversation(found); })
+      .then(found => { if (!cancelled) setFetched(found); })
       .catch(() => { if (!cancelled) setError(true); });
     return () => { cancelled = true; };
-  }, [conversationId, retry]);
+  }, [conversationId, retry, known]);
   if (error) return <button className="p-4 text-caption text-text-dim" onClick={() => setRetry(value => value + 1)}>{t.bookmarks.historyFailed} · {t.bookmarks.retry}</button>;
   if (!conversation) return <div className="px-2.5 py-2 text-caption text-text-dim">{t.terminal.lens.resolving}</div>;
   return <Suspense fallback={null}><ConversationDetail key={conversation.id} conversation={conversation} readOnly={readOnly} blocked={blocked} terminalId={terminalId} sendTarget={sendTarget} /></Suspense>;

@@ -4,8 +4,7 @@ import type { EditorPlugin, PreviewFile } from "../../shared/editor";
 import { resolveDocPath, isExternalHref } from "./markdownPaths";
 import { rawFileUrl } from "../../shared/api/files";
 import { publishNav } from "../../shared/navigate";
-import { renderMarkdown, useCodeHighlight } from "../../shared/markdown";
-import "katex/dist/katex.min.css";
+import { renderMarkdown, useCodeHighlight, useMathRender } from "../../shared/markdown";
 import { useTheme } from "../../shared/theme";
 import { t } from "@roost/i18n";
 
@@ -39,6 +38,7 @@ function MarkdownPreview({ content, file }: { content: string; file: PreviewFile
   }, [content, file.root, file.path]);
 
   useCodeHighlight(host, html, theme);
+  useMathRender(host, html);
 
   // 链接用事件委托，而不是给每个 <a> 挂监听：内容是整块替换的，委托不会漏。
   useEffect(() => {

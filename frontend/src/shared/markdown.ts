@@ -1,6 +1,6 @@
 import { useEffect, type RefObject } from "react";
 import MarkdownIt from "markdown-it";
-import { katex } from "@mdit/plugin-katex";
+import { tex } from "@mdit/plugin-tex";
 import { highlightCode } from "./code-highlight";
 
 /**
@@ -36,11 +36,65 @@ import { highlightCode } from "./code-highlight";
   `throwOnError: false` —— 写错的公式显示成红色原文，而不是把整篇文档炸掉。
   这和上面 `html: false` 的理由是同一条：**渲染内容的失败不该毁掉容器**。
 */
+/** 公式先出占位，挂载后再换成真的。类名是 `useMathRender` 的唯一入口。 */
+export const MATH_PENDING = "math-pending";
+const escapeHtml = (value: string) =>
+  value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
 export function renderMarkdown(content: string, customize?: (md: InstanceType<typeof MarkdownIt>) => void): string {
   const md = new MarkdownIt({ html: false, linkify: true, breaks: false, typographer: false });
-  md.use(katex, { delimiters: "all", mathFence: true, throwOnError: false });
+  /*
+    **这里只认出公式，不渲染它。**
+
+    渲染要 katex，而 katex 是 365 KB（gzip 119）。它原来通过 `@mdit/plugin-katex` 被静态
+    引进来，于是每次打开对话面板都要先下完它——实测那一跳占了整个二次下载的七成以上，
+    而绝大多数对话里一个公式都没有。
+
+    所以换成和代码高亮同一套做法（见 `useCodeHighlight`）：这一步同步出一个占位 span，
+    挂载之后由 `useMathRender` 决定要不要去取 katex。**没有公式就一个字节都不下。**
+
+    TeX 原文放在占位的文本内容里而不是属性里——属性要多一层转义，而文本内容读回来就是原文。
+  */
+  md.use(tex, {
+    delimiters: "all", mathFence: true,
+    render: (source, displayMode) =>
+      `<span class="${MATH_PENDING}"${displayMode ? ' data-display="1"' : ""}>${escapeHtml(source)}</span>`,
+  });
   customize?.(md);
   return md.render(content);
+}
+
+/**
+ * 把占位换成真公式。**只有页面上确实有公式时才去取 katex。**
+ *
+ * 和 `useCodeHighlight` 是同一条纪律：同步那一步只出朴素结构，重的东西挂载之后按需拉。
+ * 样式也一起动态取——CSS 和渲染结果是配对的，缺了它公式会散成一行看不懂的字符。
+ */
+export function useMathRender(host: RefObject<HTMLElement | null>, html: string) {
+  useEffect(() => {
+    const root = host.current;
+    if (!root) return;
+    const pending = [...root.querySelectorAll(`.${MATH_PENDING}`)] as HTMLElement[];
+    if (!pending.length) return;
+    let cancelled = false;
+    void (async () => {
+      const [{ default: katex }] = await Promise.all([
+        import("katex"),
+        import("katex/dist/katex.min.css"),
+      ]);
+      if (cancelled) return;
+      for (const node of pending) {
+        if (!node.isConnected) continue;
+        const holder = document.createElement("span");
+        // `throwOnError: false`：写坏的公式显示成红色原文，不把整篇文档炸掉。
+        holder.innerHTML = katex.renderToString(node.textContent ?? "", {
+          displayMode: node.dataset.display === "1", throwOnError: false,
+        });
+        node.replaceWith(holder);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [host, html]);
 }
 
 /**

@@ -1,8 +1,7 @@
 import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { buildItems, groupMessages, MIN_GROUPED_TOOLS, type Item, type TurnDiff } from "./parts";
-import { renderMarkdown, useCodeHighlight } from "../../shared/markdown";
-import "katex/dist/katex.min.css";
+import { renderMarkdown, useCodeHighlight, useMathRender } from "../../shared/markdown";
 import { useTheme } from "../../shared/theme";
 import {
   connectConversationStream, fetchMessage, fetchMessages, fetchSnapshot, locateRuntime,
@@ -578,6 +577,7 @@ function Prose({ value }: { value: string }) {
   const host = useRef<HTMLDivElement>(null);
   const html = useMemo(() => { try { return renderMarkdown(value); } catch { return null; } }, [value]);
   useCodeHighlight(host, html ?? "", theme);
+  useMathRender(host, html ?? "");
   // 渲染失败就退回纯文本：宁可样子朴素，也不能把内容吞掉。
   if (html === null) return <div className="whitespace-pre-wrap break-words">{value}</div>;
   return <div ref={host} className="md-body" dangerouslySetInnerHTML={{ __html: html }} />;

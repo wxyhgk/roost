@@ -16,10 +16,15 @@
 */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { renderMarkdown } from '../src/shared/markdown';
+import { MATH_PENDING, renderMarkdown } from '../src/shared/markdown';
 
-/** KaTeX 渲染出来的东西一定带 `katex` 类名；没有就说明它按原文走了。 */
-const renderedAsMath = (source: string) => /class="katex/.test(renderMarkdown(source));
+/*
+  **同步这一步只认出公式，不渲染它。** 渲染要 katex（365 KB / gzip 119），而绝大多数对话
+  里一个公式都没有——所以它改成了按需加载：这里出一个占位 span，挂载后由 `useMathRender`
+  决定要不要去取。判据也跟着从「有没有 katex 类名」变成「有没有占位」。
+*/
+const renderedAsMath = (source: string) =>
+  new RegExp(`class="${MATH_PENDING}"`).test(renderMarkdown(source));
 
 test('五种写法都渲染成公式', () => {
   // `$…$` 和 `$$…$$` 是最常见的；`\(…\)` `\[…\]` 是 LLM 也会吐的另一套，
@@ -53,6 +58,17 @@ test('散文里的美元和变量不是公式', () => {
   assert.ok(!renderedAsMath('字面量 \\$x\\$ 不是公式'), '转义的 $');
 });
 
+test('占位里带着原样的 TeX 和行内/行间的区别', () => {
+  /*
+    挂载之后要靠这两样把公式还原出来：正文从占位的**文本内容**里读（放属性里要多一层转义），
+    行间公式额外带一个标记。丢了任何一样，渲染出来的就不是原来那个公式。
+  */
+  const inline = renderMarkdown('质能方程 $E = mc^2$ 如上');
+  assert.match(inline, /E = mc\^2/, 'TeX 原文要原样留在占位里');
+  assert.doesNotMatch(inline, /data-display/, '行内公式不该被标成行间');
+  assert.match(renderMarkdown('$$\n\\int_0^1 x\n$$'), /data-display="1"/, '行间公式要标出来');
+});
+
 test('写坏的公式只染红自己，不炸掉整篇', () => {
   /*
     `throwOnError: false` 的意义：内容的失败不该毁掉容器。这和 `html: false` 是同一条
@@ -68,21 +84,21 @@ test('公式渲染不影响其余 markdown', () => {
   assert.ok(html.includes('<h1>'), '标题');
   assert.ok(html.includes('<li>'), '列表');
   assert.ok(html.includes('<code'), '代码块');
-  assert.ok(/class="katex/.test(html), '公式');
+  assert.ok(new RegExp(`class="${MATH_PENDING}"`).test(html), '公式');
 });
 
 /*
-  KaTeX 的 CSS 和 `renderMarkdown` 是**配对**的：渲染出来的是一堆 `class="katex…"` 的
-  span，没有那份 CSS 它们会散成一行看不懂的字符——公式「渲染了」，但排版是坏的。
+  公式的渲染和样式现在都在 `useMathRender` 里按需取，所以配对关系变了：
+  **谁用 renderMarkdown，谁就必须调 useMathRender**。少调一次的后果是公式永远停在占位状态
+  ——页面上显示的是一段裸 TeX 原文，而且没有任何报错。
 
-  CSS 不能 import 在 `shared/markdown.ts` 里（那个文件要能在纯 node 里测，而 node 加载
-  不了 `.css`），所以只能放在挂载方。这条用例就是那份配对的守卫：扫源码，谁用了
-  renderMarkdown 就必须一起 import katex 的 CSS。**不这么钉的话，下一个消费者会忘。**
+  这条用例扫源码。它守的是同一件事，只是守在新的那一头：以前守「别忘了 import CSS」，
+  现在守「别忘了挂 hook」。**下一个消费者一定会忘**，所以这条不能删。
 */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-test('凡是用 renderMarkdown 的地方，都要一起 import katex 的 CSS', () => {
+test('凡是用 renderMarkdown 的地方，都要挂 useMathRender', () => {
   const root = new URL('../src/', import.meta.url).pathname;
   const files: string[] = [];
   const walk = (dir: string) => {
@@ -101,7 +117,18 @@ test('凡是用 renderMarkdown 的地方，都要一起 import katex 的 CSS', (
   assert.ok(consumers.length >= 2, '至少有文件预览和对话两个消费者，扫不到说明这条用例本身失效了');
 
   for (const path of consumers) {
-    assert.match(readFileSync(path, 'utf8'), /katex\/dist\/katex\.min\.css/,
-      `${path.slice(root.length)} 用了 renderMarkdown 却没 import katex 的 CSS——公式会渲染出来但排版是散的`);
+    assert.match(readFileSync(path, 'utf8'), /\buseMathRender\b/,
+      `${path.slice(root.length)} 用了 renderMarkdown 却没挂 useMathRender——公式会一直停在占位上`);
   }
+});
+
+test('katex 和它的样式都只在需要时才取', () => {
+  /*
+    **同步 import 一条都不许有。** 只要有一条，整个 katex（365 KB / gzip 119）就会跟着
+    对话面板一起下——而这正是这次改动要去掉的东西。
+  */
+  const source = readFileSync(new URL('../src/shared/markdown.ts', import.meta.url).pathname, 'utf8');
+  assert.doesNotMatch(source, /^\s*import\s+[^\n]*["\']katex/m, 'katex 不许静态 import');
+  assert.match(source, /import\(\s*["\']katex["\']\s*\)/, '要在用到的时候动态取');
+  assert.match(source, /import\(\s*["\']katex\/dist\/katex\.min\.css["\']\s*\)/, '样式也要动态取，它和渲染结果是配对的');
 });
