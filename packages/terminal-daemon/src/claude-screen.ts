@@ -11,22 +11,39 @@ export type ScreenView={state:ComposerState;seq:number;settled:boolean;version:n
  * P2 之后我们自己的正文就留在输入框里，而画面上它和用户自己打的字长得一模一样——
  * 分不出来就会用「终端输入框里还有草稿」去怪用户，而那段草稿是我们放的。
  */
+/** 输入框最多认这么高。再高就不是我们验过的那个形状了，宁可说「认不出」。 */
+const MAX_COMPOSER_ROWS=12;
+const isBorder=(v:string|undefined)=>/^\s*[─━]{8,}\s*$/.test(v??'');
+
+/**
+ * 光标落在哪个输入框里：上下两条横线之间，第一行必须是 `❯`。
+ *
+ * **输入框不止一行。** 原来这里写死「光标行就是 `❯` 行、上下紧挨着横线」，于是只要正文
+ * 换行或者长到软换行，整块画面就判成「认不出」——而认不出是拒绝一切写入的。
+ * 实测撞到：从网页发出的消息带一个 JSON 包头，在 136 列下必然折行，粘进去之后
+ * 回显核对永远失败，只能退回「等你自己按回车」。用户自己打一段长话也一样。
+ */
+function composerBox(lines:string[],cursorY:number) {
+ let top=-1,bottom=-1;
+ for(let i=cursorY;i>=0&&cursorY-i<=MAX_COMPOSER_ROWS;i--)if(isBorder(lines[i])){top=i;break;}
+ for(let i=cursorY;i<lines.length&&i-cursorY<=MAX_COMPOSER_ROWS;i++)if(isBorder(lines[i])){bottom=i;break;}
+ if(top<0||bottom<=top+1)return null;
+ const prompt=/^(\s*)❯[ \u00a0]?(.*)$/.exec(lines[top+1]??'');
+ if(!prompt)return null;
+ return {promptRow:top+1,indent:prompt[1].length,
+  text:[prompt[2],...lines.slice(top+2,bottom).map(line=>line.trim())].join('\n').trim()};
+}
+
 export function claudeComposerContent(lines:string[],cursorY:number):string|null {
- const row=lines[cursorY]??'',match=/^(\s*)❯[ \u00a0]?(.*)$/.exec(row);
- if(!match)return null;
- const border=(v:string)=>/^\s*[─━]{8,}\s*$/.test(v);
- if(!border(lines[cursorY-1]??'')||!border(lines[cursorY+1]??''))return null;
- return match[2].trim();
+ return composerBox(lines,cursorY)?.text??null;
 }
 
 /** Strictly recognizes the tested plain Claude composer; unknown screens never authorize input. */
 export function classifyClaudeComposer(lines:string[],cursorY:number,cursorX:number,mutedPlaceholder=false):ComposerState {
- const row=lines[cursorY]??'',match=/^(\s*)❯[ \u00a0]?(.*)$/.exec(row);
+ const box=composerBox(lines,cursorY);
  const surrounding=lines.join('\n');
  if(/Do you trust|trust this folder|Yes,? (?:allow|I trust)|Allow (?:once|always)|Enter to select|Esc to cancel|Do you want to proceed|Choose an option/i.test(surrounding))return 'dialog';
- if(!match)return 'screen_unknown';
- const border=(s:string)=>/^\s*[─━]{8,}\s*$/.test(s);
- if(!border(lines[cursorY-1]??'')||!border(lines[cursorY+1]??''))return 'screen_unknown';
+ if(!box)return 'screen_unknown';
  /*
    页脚：确认这块画面**真的是 Claude Code 的输入区**，而不是别的程序恰好画了一个
    夹在横线之间的 `❯`（①②两条并不足以排除这种情况）。
@@ -44,8 +61,11 @@ export function classifyClaudeComposer(lines:string[],cursorY:number,cursorX:num
    措辞会改，这个符号不会，把它一起认上，下次改名不至于又全线静默。
  */
  if(!/(?:Claude Code|shift\+tab|bypass permissions|accept edits|plan mode|auto mode|⏵⏵|for shortcuts)/i.test(surrounding))return 'screen_unknown';
- if(cursorX>match[1].length+2)return 'terminal_draft';
- const content=match[2].trim();
+ // 光标不在提示符那一行 = 输入框里已经不止一行，必然有内容。
+ if(cursorY!==box.promptRow)return 'terminal_draft';
+ if(cursorX>box.indent+2)return 'terminal_draft';
+ // **整框的内容**，不只是第一行：第一行空、后面有字时判成 empty 就会往有内容的框里写。
+ const content=box.text;
  if(!content)return 'empty';
  if(mutedPlaceholder&&/^Try ["“].+["”]$/.test(content))return 'empty';
  return 'terminal_draft';
@@ -59,7 +79,9 @@ export function createClaudeScreen(cols=80,rows=24) {
   if(disposed||broken||parsed!==received)return {state:'screen_unknown',seq:parsed,settled:false,version,composer:null};
   const buffer=terminal.buffer.active;
   const lines=Array.from({length:terminal.rows},(_,i)=>buffer.getLine(buffer.baseY+i)?.translateToString(true)??'');
-  const row=buffer.getLine(buffer.baseY+buffer.cursorY);const text=lines[buffer.cursorY]??'';
+  // 灰字判定要看**提示符那一行**，而不是光标那一行——输入框可以有好几行。
+  const promptRow=composerBox(lines,buffer.cursorY)?.promptRow??buffer.cursorY;
+  const row=buffer.getLine(buffer.baseY+promptRow);const text=lines[promptRow]??'';
   let muted=true;
   const prompt=text.indexOf('❯');
   for(let x=prompt+2;x<(row?.length??0);x++){

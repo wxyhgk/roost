@@ -36,11 +36,24 @@ export function pastedMarkerLineCount(composer:string):number|null {
   return Number.isSafeInteger(parsed)&&parsed>=0?parsed:null;
 }
 
+/**
+ * 屏幕上读回来的正文和原文比对时，**软换行和真换行分不开**。
+ *
+ * 输入框里一行长文本超过终端宽度就会折行，读回来变成两行；而原文里那儿没有换行。
+ * 反过来原文里的换行在屏幕上也是换行。两者在画面上长得一模一样，没有任何办法从屏幕
+ * 区分——所以比对时把空白整个抹掉再比。
+ *
+ * 这不算放宽：同一个函数已经接受「`[Pasted text #1]` 就算数」那条更松的路，而且它自己
+ * 写着**永远不用来授权写入**。抹掉空白之后两段不同的正文仍然几乎不可能相等。
+ */
+const squeeze=(value:string)=>value.replace(/\s+/g,'');
+
 export function composerHoldsPrompt(composer:string|null,prompt:string):boolean {
   if(composer===null)return false;
   const text=composer.trim(),wanted=normalize(prompt);
   if(!text||!wanted)return false;
   if(text===wanted)return true;
+  if(squeeze(text)===squeeze(wanted))return true;
   // 计数被省略时标记不携带任何身份信息，只能说「像是一次粘贴」——
   // 所以它必须限定在「我们确实刚放过一条」这个前提下用，而调用方正是这么用的。
   if(MARKER_WITHOUT_COUNT.test(text))return true;

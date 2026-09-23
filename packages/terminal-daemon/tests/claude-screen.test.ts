@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {classifyClaudeComposer,createClaudeScreen} from '../src/claude-screen.ts';
+import {claudeComposerContent,classifyClaudeComposer,createClaudeScreen} from '../src/claude-screen.ts';
 const border='────────────────────────────────────────';
 const lines=['Claude Code v2.1.266',border,'❯ ',border,'shift+tab to cycle'];
 test('only tested empty composer authorizes input; drafts, dialogs and unknown layouts do not',()=>{
@@ -84,4 +84,73 @@ test('画面没稳下来时不给 composer', async () => {
   await new Promise(r => setTimeout(r, 20));
   assert.equal(screen.inspect().settled, true, '稳下来之后才继续报');
  } finally { screen.dispose(); }
+});
+
+/*
+  输入框不止一行。
+
+  原来这里写死「光标行就是 ❯ 行、上下紧挨着横线」，于是只要正文换行、或者长到软换行，
+  整块画面就判成「认不出」——而认不出是拒绝一切写入的。
+
+  实测撞到：从网页发出的消息带一个 JSON 包头（`[Workspace message {…}]`），在 136 列下
+  必然折行，粘进去之后回显核对永远失败，只能退回「等你自己按回车」。用户自己在终端里
+  打一段长话也一样——连我们刚上线的那个「TUI 输入框镜像」都会显示成「认不出画面」。
+*/
+test('多行输入框：内容整框读出来', () => {
+  const lines = [border, '❯ 第一行', '  第二行', '  第三行', border, '  ⏵⏵ auto mode on'];
+  // 光标在最后一行内容上——原实现在这里直接返回 null。
+  assert.equal(claudeComposerContent(lines, 3), '第一行\n第二行\n第三行');
+  assert.equal(classifyClaudeComposer(lines, 3, 5), 'terminal_draft');
+  // 光标停在提示符那一行，后面几行仍然有字：**不能判成空的**，否则会往有内容的框里写。
+  assert.equal(classifyClaudeComposer(lines, 1, 2), 'terminal_draft',
+    '第一行空与否都不算数，整框有内容就是草稿');
+});
+
+test('多行输入框：第一行空、后面有字，照样是草稿', () => {
+  const lines = [border, '❯ ', '  用户换行之后接着打的', border, '  ⏵⏵ auto mode on'];
+  assert.equal(claudeComposerContent(lines, 2), '用户换行之后接着打的');
+  assert.equal(classifyClaudeComposer(lines, 1, 2), 'terminal_draft', '往这个框里写会把两段话拼一起');
+});
+
+test('框太高就不认——那不是我们验过的形状', () => {
+  const tall = [border, '❯ x', ...Array.from({ length: 20 }, (_, i) => `  行${i}`), border];
+  assert.equal(claudeComposerContent(tall, 21), null);
+  assert.equal(classifyClaudeComposer(tall, 21, 3), 'screen_unknown');
+});
+
+test('光标不在任何输入框里时仍然认不出', () => {
+  const lines = ['随便什么输出', border, '❯ ', border, '  ⏵⏵ auto mode on'];
+  assert.equal(claudeComposerContent(lines, 0), null, '光标在框外，不能把下面那个框认成它的');
+});
+
+test('多行但整框没字：不算空，按不认识处理', () => {
+  /*
+    框有好几行、里面却一个字都没有——这不是我们验过的形状。判成 `empty` 就等于授权往里写，
+    而我们并不知道那几行是什么。所以只要光标不在提示符那一行，一律当草稿（即拒绝写入）。
+    这一条是**防御性**的：变异测试证明，去掉它在已知形状上看不出区别，正因如此它必须被
+    单独钉住，否则下一个人会当死代码删掉。
+  */
+  const lines = [border, '❯ ', '   ', '   ', border, '  ⏵⏵ auto mode on'];
+  assert.equal(classifyClaudeComposer(lines, 2, 2), 'terminal_draft', '不认识的形状不许授权写入');
+  // 对照：同样是空的，但框只有一行——那是验过的形状，可以写。
+  assert.equal(classifyClaudeComposer([border, '❯ ', border, '  ⏵⏵ auto mode on'], 1, 2), 'empty');
+});
+
+test('上下横线之间一行都没有：不是输入框', () => {
+  const lines = ['x', border, border, '  ⏵⏵ auto mode on'];
+  assert.equal(claudeComposerContent(lines, 1), null);
+  assert.equal(classifyClaudeComposer(lines, 1, 0), 'screen_unknown');
+});
+
+test('光标正落在横线上时，不许把下面那个框当成它的', () => {
+  /*
+    重绘途中光标可以停在任何位置。落在边框上时，「向上找到的横线」和「向下找到的横线」
+    是同一条——此时框的上下界重合，里面一行都没有。不拦住的话，`top+1` 正好是下面那个框的
+    `❯` 行，于是会去读一个**光标根本不在里面**的输入框。
+  */
+  const lines = ['输出', border, '❯ 别人的内容', border, '  ⏵⏵ auto mode on'];
+  assert.equal(claudeComposerContent(lines, 1), null, '光标在边框上，不属于任何框');
+  assert.equal(classifyClaudeComposer(lines, 1, 0), 'screen_unknown');
+  // 对照：光标真的在框里时照常读得出来。
+  assert.equal(claudeComposerContent(lines, 2), '别人的内容');
 });

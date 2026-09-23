@@ -43,3 +43,24 @@ test('用户自己打的字不会被认成我们的', () => {
   // 长得像标记但不是完整形状的，不认。
   assert.equal(composerHoldsPrompt('看看 [Pasted text +4 lines] 这个', 'a\nb\nc\nd\ne'), false);
 });
+
+/*
+  软换行和真换行在屏幕上分不开。
+
+  从网页发出的消息带一个 JSON 包头，在 136 列的终端里必然折行：原文里那儿没有换行，
+  读回来却是两行。反过来原文里的换行在屏幕上也是换行。没有任何办法从画面上区分，
+  所以比对时把空白整个抹掉。
+
+  这不算放宽：同一个函数已经接受「`[Pasted text #1]` 就算数」那条更松的路。
+*/
+test('折行之后读回来的正文仍然认得出是自己那条', () => {
+  const prompt = '[Workspace message {"type":"agent-message","messageId":"b13c0e20"}]\n后续可以做什么';
+  // 屏幕上：包头折成两行，正文自己一行。
+  const onScreen = '[Workspace message {"type":"agent-message",\n"messageId":"b13c0e20"}]\n后续可以做什么';
+  assert.equal(composerHoldsPrompt(onScreen, prompt), true);
+});
+
+test('抹掉空白之后，别人的正文还是不认', () => {
+  assert.equal(composerHoldsPrompt('用户自己打的另一句话', '我们放进去的那一句'), false);
+  assert.equal(composerHoldsPrompt('后续可以做什么了', '后续可以做什么'), false, '多一个字就不是同一条');
+});
