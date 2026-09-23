@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { t } from "@roost/i18n";
 import { IconChevron } from "../../../shared/icons";
-import { getTerminalHandle, sendToSession } from "../public";
+import { getTerminalHandle } from "../public";
 import {
   HOLD_MS, KEY_ROWS, LATCHES_OFF, REPEAT_DELAY_MS, REPEAT_INTERVAL_MS,
   consumeLatches, encodeBarKey, encodeChar, holdLatch, latchActive, latchMods, tapLatch,
@@ -62,14 +62,17 @@ export function useKeyBar(sessionId: string) {
 
   const send = useCallback((data: string) => {
     /*
-      走 `sendToSession`，和「把选区粘到 CLI」是同一条路。
+      **当作键盘敲的，不走 `sendToSession`。** 键栏就是一块键盘，它发的字节必须和真键盘过
+      同一道 `inputRelay`：那里挂着打断守卫（agent 在跑时第一下 Ctrl+C 先清空输入框、
+      第二下才真打断）。`sendToSession` 是给「把一段文本交给 CLI」用的，直通 PTY——键栏
+      早先走的就是它，结果手机上点一下 Ctrl、一下 C，正在跑的那一轮当场被掐断，
+      桌面上同样两下却只是清空输入框。
 
-      **代价要说清楚**：终端自己敲进去的字节走的是 `inputRelay`，那条路上挂着打断守卫
-      （运行中的第一下 Ctrl+C 先清空输入框、第二下才真打断）。键栏这条路绕过了它，
-      所以用键栏按出来的 Ctrl+C 是直接打断。往 relay 上开一个公开入口要动
-      handles/sessionController，那是别人的地盘，留给后面一起改。
+      句柄还没挂上就什么都不做，也不消耗修饰键：这一下没发出去，举着的 Ctrl 还该留着。
     */
-    if (sendToSession(sessionId, data) === "rejected") return;
+    const handle = getTerminalHandle(sessionId);
+    if (!handle?.typeInput) return;
+    handle.typeInput(data);
     setLatches(consumeLatches);
   }, [sessionId]);
 

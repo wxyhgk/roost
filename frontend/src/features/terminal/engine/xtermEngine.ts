@@ -419,6 +419,12 @@ export function mountXterm(host: HTMLElement, theme: TermTheme, onFileLink?: (li
     },
     isInputTarget(target) { return target != null && target === term.textarea; },
     blur() { term.blur(); },
+    /*
+      `wasUserInput` 取 true：xterm 在这一档只多做两件事，滚回底部、清掉选区——正是真按一个
+      键时的样子。它**不调 focus**（`CoreService.triggerDataEvent` 里核过），所以按键栏上的键
+      不会顺手把软键盘弹出来。`disableStdin` 也照样拦得住。
+    */
+    typeInput(data: string) { term.input(data, true); },
     focus() {
       term.focus();
     },

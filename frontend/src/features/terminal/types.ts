@@ -55,6 +55,11 @@ export type TermHandle = {
   scrollToBottom(): void;
   serializeText(): string;
   focus(): void;
+  /**
+   * 当作用户在键盘上敲了这一串：走 `onData`，于是和真按键过**同一道** `inputRelay`
+   * （打断守卫、本地回显预测都在那儿）。不抢焦点——手机上抢焦点就是弹软键盘。
+   */
+  typeInput?(data: string): void;
   /** 交出键盘焦点。不再是前台的终端必须调它，否则被盖住之后按键还会打进 PTY。 */
   blur?(): void;
   isInputTarget(target: EventTarget | null): boolean;
