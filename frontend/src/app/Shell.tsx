@@ -1,4 +1,5 @@
 import { subscribeFileLinkOpen } from '../features/terminal/public';
+import { useNarrowLayout } from "../shared/useNarrowLayout";
 import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelHandle, type ImperativePanelGroupHandle } from "react-resizable-panels";
 import { LeftRail } from "./LeftRail";
@@ -110,24 +111,41 @@ export function Shell() {
     rightRef.current?.expand();
     setRightView('files');
   }), []);
+  /*
+    **窄屏一次只给一段。**
+
+    这个骨架是五段横排：两条图标栏 + 左面板 + 中间 + 右面板。手机上大约 390 像素，光两条
+    图标栏就去掉 80，三个面板挤在剩下的 310 里——[实测] 面板标题被截成 `W...`、`F...`，
+    右面板只剩百来像素、文件名全没了，提示语被挤成一行一个词竖排九行。
+
+    所以窄屏挂载时两侧都收起，中间拿到全部宽度；而且打开一侧就收起另一侧——不然一展开
+    又回到三段挤一起。桌面不受影响：宽屏仍然按 autoSaveId 恢复上次的尺寸。
+
+    断点取 820：再宽一点两个面板各自还剩 300 以上，是能用的；此外这是个纯布局判断，
+    不看 `pointer: coarse`——iPad 横屏是触屏但宽得很，平板竖屏不是手机但一样挤。
+  */
+  const narrow = useNarrowLayout();
   // autoSaveId 会恢复上次的尺寸（含折叠）, 挂载后对齐一次状态。
   useEffect(() => {
+    if (narrow) { leftRef.current?.collapse(); rightRef.current?.collapse(); }
     setLeftCollapsed(leftRef.current?.isCollapsed() ?? false);
     setRightCollapsed(rightRef.current?.isCollapsed() ?? false);
-  }, []);
+  }, [narrow]);
 
+  // 窄屏下两侧不能同时开：一共就那么点宽度，开第二个等于把中间挤没。
   function toggleLeft() {
-    if (leftCollapsed) leftRef.current?.expand();
+    if (leftCollapsed) { leftRef.current?.expand(); if (narrow) rightRef.current?.collapse(); }
     else leftRef.current?.collapse();
   }
 
   function toggleRight() {
-    if (rightCollapsed) rightRef.current?.expand();
+    if (rightCollapsed) { rightRef.current?.expand(); if (narrow) leftRef.current?.collapse(); }
     else rightRef.current?.collapse();
   }
 
   function showRight(view: RightView) {
     rightRef.current?.expand();
+    if (narrow) leftRef.current?.collapse();
     setRightView(view);
   }
 
