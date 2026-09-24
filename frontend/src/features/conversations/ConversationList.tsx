@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
-import { basename } from "../../shared/path";
+import { writeClipboard } from "../../shared/clipboard";
 import { fetchConversation, listConversations, MAX_QUERY_LENGTH, type Conversation, type ConversationFilters } from "../../shared/api/conversations";
 import { ApiError } from "../../shared/api/errors";
 import { ConversationDetail } from "./ConversationDetail";
@@ -155,62 +155,71 @@ export function ConversationList() {
   );
 }
 
+/*
+  一条对话一张卡片。
+
+  原来是一行挤满：时刻、图标、CLI 名、标题、目录、几个记号，全塞在同一条基线上。
+  扫得快，但**看不出这是哪一条对话**——真实数据里 7 条有 7 条叫「Terminal」，目录基名
+  也大量重复，一屏看下来全是同一个形状。
+
+  卡片把「认出它」需要的东西摆开：第一句问的是什么（这是唯一真正能区分的东西）、
+  完整工作目录、跑的哪个 CLI、什么时候、以及能直接动手的两个操作。
+
+  **id 放在卡片上**是刻意的：终端上那个 × 走的是删除，删完之后这张卡片就是回家的路，
+  而接着跑需要那个 id。要它的时候正是在这儿。
+*/
 function Row({ conversation, onOpen }: { conversation: Conversation; onOpen: (c: Conversation) => void }) {
   // lastMessageAt 可能为 null（建了对话但一条消息都没有），此时退回创建时间。
   const when = conversation.lastMessageAt ?? conversation.createdAt;
   const gap = conversation.source.coverage?.hasGap === true;
-  // 标题大量重复（真实数据里 17 条有 10 条叫「前端」），工作目录的最后一段
-  // 是现有字段里唯一还能区分它们的东西，所以补上。
-  const folder = (conversation.source.cwd && basename(conversation.source.cwd)) || null;
-  // 只放一个图标是分不出来的：真实数据里 11/17 是同一个 CLI，图标全长一样。
   const identity = useCliIdentity(null, conversation.source.cliId);
   // titleOrigin 现在是可信的：默认终端标题在入库时会被标成 fallback（见 conversation-schema.ts）。
   const fallbackTitle = conversation.titleOrigin === "fallback";
   const preview = conversation.firstUserMessagePreview?.trim() || null;
+  /*
+    标题是兜底值时改显示第一条用户消息——目录里的标题几乎全是「Terminal」，画标题等于
+    画一屏一模一样的东西。兜底值又没有 preview 时（一条消息都没有）才退回标题，不留空。
+  */
+  const heading = fallbackTitle && preview ? preview : conversation.title;
+  const sub = fallbackTitle && preview ? null : preview;
+  const [copied, setCopied] = useState(false);
   return (
-    <li>
-      <button
-        type="button"
-        onClick={() => onOpen(conversation)}
-        className="flex w-full items-baseline gap-2 px-2.5 py-1.5 text-left hover:bg-bg-hover"
-      >
-        {/* 时间在最左且等宽：它是这个列表事实上的主键，要能一列扫下来。 */}
-        <span className="shrink-0 font-mono text-caption tabular-nums text-text-dim">
-          {conversation.lastMessageAt ? timeLabel(when) : "--:--"}
-        </span>
-        <span className="shrink-0 self-center"><SessionLogo cliId={conversation.source.cliId} /></span>
-        <span className="shrink-0 text-caption text-text-dim/80">{identity.label}</span>
-        {/*
-          标题是兜底值时，改显示第一条用户消息。
-
-          目录里 7 条有 7 条叫「Terminal」——建终端时写死的标题被当成了对话标题。
-          那种情况下画标题等于画 7 行一模一样的东西，而 `firstUserMessagePreview`
-          后端本来就算好、也传过来了，只是从来没人画。兜底值没有 preview 时（比如
-          一条消息都没有的对话）仍然退回标题，**不留空行**。
-        */}
-        <span className="truncate text-body text-text" title={fallbackTitle && preview ? conversation.title : undefined}>{fallbackTitle && preview ? preview : conversation.title}</span>
-        {folder && <span className="shrink-0 truncate text-caption text-text-dim/70">{folder}</span>}
-        <span className="ml-auto flex shrink-0 items-center gap-1.5">
-          {/*
-            只有真的在显示兜底标题时才打这个记号。换成第一条用户消息之后它就不成立了——
-            那时画面上根本没有标题，而且**每一行都会命中**（目录里的标题几乎全是兜底值），
-            一个 100% 命中的标记不携带任何信息，只是噪音。替换本身就是信号，原标题在
-            悬停提示里。
-          */}
-          {fallbackTitle && !preview && (
-            <span className="text-caption text-text-dim/60" title={t.misc.conversations.fallbackTitle}>~</span>
+    <li className="px-2 py-1">
+      <div className="group rounded-lg border border-border bg-bg-raised transition-colors hover:border-accent/50">
+        <button type="button" onClick={() => onOpen(conversation)} className="block w-full px-2.5 py-2 text-left">
+          <div className="flex items-center gap-1.5 text-caption text-text-dim">
+            <SessionLogo cliId={conversation.source.cliId} />
+            <span className="shrink-0">{identity.label}</span>
+            <span className="shrink-0 font-mono tabular-nums">{conversation.lastMessageAt ? timeLabel(when) : "--:--"}</span>
+            {gap && (
+              <span role="img" aria-label={t.misc.conversations.hasGap} title={t.misc.conversations.hasGapHint}
+                className="h-1.5 w-1.5 shrink-0 rounded-full bg-warning" />
+            )}
+            {!conversation.lastMessageAt && <span className="shrink-0">{t.misc.conversations.never}</span>}
+            {conversation.pinnedAt && <span className="shrink-0" title={t.misc.conversations.meta.pin}>★</span>}
+          </div>
+          <div className="mt-1 line-clamp-2 text-body text-text"
+            title={fallbackTitle && preview ? conversation.title : undefined}>{heading}</div>
+          {sub && <div className="mt-0.5 line-clamp-1 text-caption text-text-dim/80">{sub}</div>}
+          {/* 完整路径，不是基名：基名在真实数据里大量重复，区分不出来。 */}
+          {conversation.source.cwd && (
+            <div className="mt-1 truncate font-mono text-caption text-text-dim/70" dir="rtl">{conversation.source.cwd}</div>
           )}
-          {/* 缺口出现在近三成的行上，用整段橙字会盖过内容本身。
-              降成一个小点：信息不丢，说明留在 tooltip 里。 */}
-          {gap && (
-            <span role="img" aria-label={t.misc.conversations.hasGap} title={t.misc.conversations.hasGapHint}
-              className="h-1.5 w-1.5 rounded-full bg-warning" />
-          )}
-          {!conversation.lastMessageAt && (
-            <span className="text-caption text-text-dim/50">{t.misc.conversations.never}</span>
-          )}
-        </span>
-      </button>
+        </button>
+        <div className="flex items-center gap-1 border-t border-border/60 px-2 py-1 text-caption text-text-dim">
+          <span className="min-w-0 flex-1 truncate font-mono" title={conversation.source.nativeSessionId}>
+            {conversation.source.nativeSessionId}
+          </span>
+          <button type="button" className="shrink-0 rounded px-1.5 py-0.5 hover:bg-bg-hover hover:text-text"
+            onClick={() => { void (async () => {
+              if (await writeClipboard(conversation.source.nativeSessionId)) {
+                setCopied(true); window.setTimeout(() => setCopied(false), 1200);
+              }
+            })(); }}>
+            {copied ? t.misc.conversations.meta.copied : t.misc.conversations.meta.copy}
+          </button>
+        </div>
+      </div>
     </li>
   );
 }
