@@ -62,8 +62,6 @@ export type Workspace = Data & {
   toggleProject: (id: string) => void;
   reorderSession: (sessionId: string, projectId: string | null, beforeId: string | null) => void;
   togglePin: (id: string) => void;
-  /** 启动台的固定项：一次写整张有序表。顺序本身就是要存的东西，所以不是「固定某一个」。 */
-  setPinnedAppPorts: (ports: number[]) => void;
   /** 选中一条长期对话。传 null 清除选择。与终端选择相互独立。 */
   selectConversation: (id: string | null) => void;
   setFollowTerminalConversation: (follow: boolean) => void;
@@ -212,16 +210,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         const before = source.snapshot();
         dispatch({ type: "togglePin", id });
         syncOptimistic(patchWorkspace({ pinnedSessionIds }), dispatch, t.misc.store.togglePinFailed, before);
-      },
-      /*
-        启动台的固定项。**一次写整张表**，不是「固定某一个」——拖排序和固定/取消固定
-        产生的都是一张新的有序表，而顺序本身就是要存的东西。纯逻辑在
-        features/launchpad/apps.ts（togglePin / reorderPins）里，那边逐条测过。
-      */
-      setPinnedAppPorts: (ports: number[]) => {
-        const before = source.snapshot();
-        dispatch({ type: "setPinnedAppPorts", ports });
-        syncOptimistic(patchWorkspace({ pinnedAppPorts: ports }), dispatch, t.misc.store.pinAppFailed, before);
       },
       selectConversation: (id: string | null) => {
         const before = source.snapshot();

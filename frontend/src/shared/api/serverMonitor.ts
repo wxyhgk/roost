@@ -34,20 +34,7 @@ export type ListeningService = {
   label: string | null;
   /** 谁够得着：任何网卡 / 仅本机 / 绑在某张网卡上。服务端算好。 */
   scope: 'public' | 'local' | 'interface';
-  /**
-   * 这个端口上说的是不是 HTTP；只有请求时带了 `probe=1` 才有值。
-   *
-   * **null 和 false 不是一回事**：null 是「没问」，false 是「问了，不是」。启动台靠
-   * false 把 postgres 这类挡在外面，而把 null 当成 false 会让整个列表变空。
-   */
-  http: boolean | null;
 };
 export type PortsReport = { supported: boolean; services: ListeningService[] };
-/**
- * `probe` 让服务端多问一次每个端口说的是不是 HTTP。
- *
- * **只有启动台要它**：面板列端口，启动台列「点得开的东西」，而后者必须把 postgres 这类
- * 挡在外面。它要给每个端口开一条连接（本机 7 个实测 122ms），所以不是默认行为。
- */
-export const fetchListeningPorts = (signal: AbortSignal, options?: { probe?: boolean }) =>
-  request<PortsReport>(`/api/server/ports${options?.probe ? '?probe=1' : ''}`, { signal, cache: 'no-store' });
+export const fetchListeningPorts = (signal: AbortSignal) =>
+  request<PortsReport>('/api/server/ports', { signal, cache: 'no-store' });

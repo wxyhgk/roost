@@ -3,7 +3,7 @@ import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createServerMonitorProcess, normalizeServiceNames, type ServerMonitor } from '@roost/server-monitor';
-import { listeningServices, listeningSockets, listenScope, normalizeTty, probeHttp, processTable, shortCommand, terminalEnvOwners } from '@roost/terminal-runtime';
+import { listeningServices, listeningSockets, listenScope, normalizeTty, processTable, shortCommand, terminalEnvOwners } from '@roost/terminal-runtime';
 import type { TerminalService } from '@roost/terminal-runtime';
 import type { WorkspaceStore } from '@roost/workspace-store';
 import { readJson, sendError, HttpInputError } from './http';
@@ -70,19 +70,6 @@ export function createServerMonitorHandler(dataDir?: string, monitor: ServerMoni
           if (tty) ttyOwners.set(tty, session.id);
         }
         const services = listeningServices({ rows, listeners: probe.rows, envOwners, ttyOwners });
-        /*
-          `?probe=1`：再花一次往返问问每个端口上说的是不是 HTTP。
-
-          **只有启动台要这一格**，面板不要——它得知道哪些点得开，否则会把 postgres 也画成
-          「应用」，点进去只有一张错误页，而人会以为是 roost 坏了。按查询参数开，是因为
-          这要给每个端口开一条连接（本机 7 个端口实测 122ms），不该让只想看端口列表的人也付。
-        */
-        const wantProbe = url.searchParams.get('probe') === '1';
-        const httpPorts = wantProbe
-          ? new Set((await Promise.all([...new Set(services.map(s => s.port))]
-              .filter((port): port is number => port !== null)
-              .map(async port => await probeHttp(port) === 'http' ? port : null))).filter(port => port !== null))
-          : null;
         json(res, { supported: true, services: services.map(service => ({
           ...service,
           // 命令行可能夹带密钥，截断是有界性不是脱敏；父进程同理。
@@ -96,8 +83,6 @@ export function createServerMonitorHandler(dataDir?: string, monitor: ServerMoni
           label: shortCommand(service.command),
           /* 谁够得着这个端口。理由见 `listenScope`；和 label 一样在这一侧算好。 */
           scope: listenScope(service.address),
-          /** 这个端口上说的是不是 HTTP。没要求探测时是 null——**不是 false**，两者意思不一样。 */
-          http: httpPorts ? service.port !== null && httpPorts.has(service.port) : null,
         })) });
         return true;
       }

@@ -65,7 +65,7 @@ test("workspace CRUD preserves project grouping, ordering, selection, and closed
   const store = createWorkspaceStore({ dataDir: directory(t) });
   t.after(() => store.close());
   assert.deepEqual(store.loadWorkspace(), {
-    sessions: [], projects: [], selectedId: null, selectedConversationId: null, followTerminalConversation: false, expandedProjectIds: [], pinnedSessionIds: [], pinnedAppPorts: [], sessionSeq: 0, projectSeq: 0,
+    sessions: [], projects: [], selectedId: null, selectedConversationId: null, followTerminalConversation: false, expandedProjectIds: [], pinnedSessionIds: [], sessionSeq: 0, projectSeq: 0,
   });
   const project = store.createProject({ id: "p", name: "Project", color: "#fff" });
   const other = store.createProject();
@@ -272,61 +272,5 @@ test("projects reorder by sequence, keep their colours, and survive reopening", 
     assert.deepEqual(reopened.loadWorkspace().projects.map(p => p.name), before);
   } finally {
     reopened.close();
-  }
-});
-
-test("启动台的固定端口：存顺序，并且在存储层就把不合法的挡掉", (t) => {
-  const store = createWorkspaceStore({ dataDir: directory(t) });
-  t.after(() => store.close());
-
-  // 顺序本身就是要存的东西——用户拖出来的排布不能被重排。
-  store.setPinnedAppPorts([8080, 3000, 5173]);
-  assert.deepEqual(store.loadWorkspace().pinnedAppPorts, [8080, 3000, 5173]);
-
-  /*
-    **校验放在这一层，不在 HTTP 那一层。** 这些值来自请求体，而下游会把它们直接拼进
-    `/api/app/<端口>/`；只在路由里挡一次的话，任何别的写入路径（以后的批量导入、
-    迁移脚本）都会绕过去。
-  */
-  store.setPinnedAppPorts([0, -1, 70000, 1.5, Number.NaN, 5173, 5173, 65535]);
-  assert.deepEqual(store.loadWorkspace().pinnedAppPorts, [5173, 65535],
-    "越界、非整数、重复一律去掉，合法的保持原顺序");
-
-  // 上限：一个人不会固定几百个应用，而无上限的列表会被一次坏写入撑爆。
-  store.setPinnedAppPorts(Array.from({ length: 200 }, (_, i) => i + 1));
-  assert.equal(store.loadWorkspace().pinnedAppPorts.length, 64);
-
-  store.setPinnedAppPorts([]);
-  assert.deepEqual(store.loadWorkspace().pinnedAppPorts, []);
-});
-
-test("固定端口：库里的值不是经 setter 写进去的时候也不能信", (t) => {
-  /*
-    写侧总是过一遍校验，所以正常来回跑不到读侧那一段——**变异测试把读侧的校验删掉之后
-    所有用例照样绿**。但它不是死代码：手改过的库、旧版本写下的形状、截断的值都会走到
-    这里，而这些值下游会被直接拼进 `/api/app/<端口>/`。所以绕开 setter 直接写库来测。
-
-    整份坏掉时回退空表，而不是抛——这些是「记住上次怎么摆」的偏好，宁可丢排布，
-    也不该让整个工作区加载失败。
-  */
-  const dir = directory(t);
-  const store = createWorkspaceStore({ dataDir: dir });
-  store.close();
-  const write = (value: string) => {
-    const db = new DatabaseSync(join(dir, "workspace.sqlite"));
-    db.prepare("INSERT INTO meta (key, value) VALUES ('pinnedAppPorts', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(value);
-    db.close();
-  };
-  const read = () => {
-    const opened = createWorkspaceStore({ dataDir: dir });
-    try { return opened.loadWorkspace().pinnedAppPorts; } finally { opened.close(); }
-  };
-
-  write(JSON.stringify([5173, 0, 99999, "8080", null, 3000]));
-  assert.deepEqual(read(), [5173, 3000], "混进来的非法项逐个剔掉，合法的保留");
-
-  for (const broken of ['{"not":"an array"}', 'null', '不是 JSON', '']) {
-    write(broken);
-    assert.deepEqual(read(), [], `整份坏掉时回退空表：${broken || "（空串）"}`);
   }
 });

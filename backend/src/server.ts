@@ -88,7 +88,7 @@ export function createBackendServer({ store, runtime, workspaceRoot, access, aut
   const aiBridge = sessionBridge ?? createAiSessionBridge({ storage: store.aiSessions });
   const {
     createProject, deleteProjectRecord, deleteSessionRecord: deleteStoredSession, getProjectRecord, getSessionRecord, loadWorkspace,
-    setExpandedProjectIds, setPinnedSessionIds, setPinnedAppPorts, setSelectedId, setProjectName, setSessionClosed, setSessionCwd,
+    setExpandedProjectIds, setPinnedSessionIds, setSelectedId, setProjectName, setSessionClosed, setSessionCwd,
     setSessionProject, setSessionTitle, upsertSession,
   } = store;
   const aiConnections = new Map<string, Set<WebSocket>>();
@@ -327,7 +327,7 @@ export function createBackendServer({ store, runtime, workspaceRoot, access, aut
     if (req.method === "PATCH" && pathname === "/api/workspace") {
       const body = await readJson(req);
       try {
-        const allowed = ['selectedId', 'expandedProjectIds', 'pinnedSessionIds', 'pinnedAppPorts', 'selectedConversationId', 'followTerminalConversation'];
+        const allowed = ['selectedId', 'expandedProjectIds', 'pinnedSessionIds', 'selectedConversationId', 'followTerminalConversation'];
         if (Object.keys(body).some(key => !allowed.includes(key))) throw new ConversationError(400, 'invalid_request', 'unknown workspace preference');
         if ('selectedConversationId' in body || 'followTerminalConversation' in body) {
           store.patchConversationSelection({
@@ -348,10 +348,6 @@ export function createBackendServer({ store, runtime, workspaceRoot, access, aut
       }
       if (Array.isArray(body.pinnedSessionIds)) {
         setPinnedSessionIds(body.pinnedSessionIds.filter((id) => typeof id === "string"));
-      }
-      /* 端口的校验（整数、范围、去重、上限）在 preferences 那一侧集中做，理由见那里。 */
-      if (Array.isArray(body.pinnedAppPorts)) {
-        setPinnedAppPorts(body.pinnedAppPorts.filter((port) => typeof port === "number"));
       }
       json(res, 200, snapshot());
       return;

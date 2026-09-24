@@ -83,32 +83,7 @@ export function createPreferences(db: DatabaseSync) {
   const getExpandedProjectIds = () => stringListMeta("expandedProjectIds");
   const setPinnedSessionIds = (ids: string[]) => setStringListMeta("pinnedSessionIds", ids);
   const getPinnedSessionIds = () => stringListMeta("pinnedSessionIds");
-  /*
-    启动台上固定住的应用，按端口。
-
-    **用端口当身份，不用进程。** pid 每次重启都变，而人心里想的就是「5173 那个」——
-    dev server 重启之后固定项应该还在原位，否则固定这件事就白做了。代价是端口被另一个
-    程序占用时固定项会跟过去；那也正是人的预期。
-
-    校验（整数、1..65535、去重、有上限）集中在这里而不是分散在读写两侧：这张表里的值
-    来自 HTTP 请求体，而下游会把它直接拼进 `/api/app/<端口>/`。
-  */
-  const MAX_PINNED_APPS = 64;
-  const validPorts = (ports: readonly unknown[]) =>
-    [...new Set(ports.filter((port): port is number =>
-      typeof port === "number" && Number.isInteger(port) && port > 0 && port <= 65535))].slice(0, MAX_PINNED_APPS);
-  const setPinnedAppPorts = (ports: number[]) => setMeta("pinnedAppPorts", JSON.stringify(validPorts(ports)));
-  const getPinnedAppPorts = (): number[] => {
-    const raw = getMeta("pinnedAppPorts");
-    if (!raw) return [];
-    // 损坏值一律回退空表，理由同上面 stringListMeta：宁可丢排布，不该让工作区加载失败。
-    try {
-      const parsed: unknown = JSON.parse(raw);
-      return Array.isArray(parsed) ? validPorts(parsed) : [];
-    } catch { return []; }
-  };
   return { getMeta, setMeta, numberMeta, setSelectedId, setExpandedProjectIds, getExpandedProjectIds,
-    setPinnedSessionIds, getPinnedSessionIds, setPinnedAppPorts, getPinnedAppPorts,
-    getConversationSelection, patchConversationSelection };
+    setPinnedSessionIds, getPinnedSessionIds, getConversationSelection, patchConversationSelection };
 }
 export type Preferences = ReturnType<typeof createPreferences>;
