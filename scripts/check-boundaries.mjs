@@ -484,6 +484,34 @@ function checkUnwiredExports() {
 }
 checkUnwiredExports();
 
+/*
+  动态 `import()` 不许用模板字符串拼**裸包名**。
+
+  实测撞到的形状：`await import(\`shiki/dist/langs/${lang}\`)`。它在 node 里跑得通，
+  所以单元测试一路绿；但打包器分析不了模板字符串里的裸包名（相对路径它还能 glob，
+  裸包名不行），产物里原样留下一个裸规范符，浏览器解析不了 → promise reject →
+  被调用处的 try/catch 吞掉。
+
+  后果是**代码高亮在生产环境从来没工作过，而 165 KB 的依赖照常下载**——不报错、
+  不失败、就是不工作。dist 里一个语言分片都没有是唯一能看出来的痕迹，而没人会去看。
+
+  相对路径的模板字符串放行：那个打包器认得，会把匹配到的文件都切成分片。
+*/
+function checkDynamicImportSpecifiers() {
+  for (const owner of owners) {
+    for (const file of allFiles(resolve(root, owner, 'src'), /\.(tsx?|mts)$/)) {
+      const text = readFileSync(file, 'utf8');
+      for (const match of text.matchAll(/\bimport\(\s*`([^`]*)`/g)) {
+        const specifier = match[1];
+        if (specifier.startsWith('.') || specifier.startsWith('/')) continue;
+        errors.push(`${file.slice(root.length + 1)}: 动态 import 用模板字符串拼了裸包名 \`${specifier}\`` +
+          `——打包器分析不了，产物里会留下浏览器解析不了的规范符，而且失败是静默的。改成一张显式的映射表`);
+      }
+    }
+  }
+}
+checkDynamicImportSpecifiers();
+
 if (errors.length) {
   console.error(errors.join('\n'));
   process.exitCode = 1;
