@@ -30,6 +30,8 @@ export const workspace = {
     conversationId: "Conversation ID",
     more: "More actions",
     rename: "Rename session",
+    renameHintDouble: "Double-click to rename",
+    renameHintClick: "Click to rename",
     pin: "Pin session",
     unpin: "Unpin",
     pinned: "Pinned",

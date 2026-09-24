@@ -32,6 +32,8 @@ export type ListeningService = {
   terminalId: string | null;
   /** 列表一行用的短命令名，服务端算好（见后端注释）；拿不到进程时为 null。 */
   label: string | null;
+  /** 谁够得着：任何网卡 / 仅本机 / 绑在某张网卡上。服务端算好。 */
+  scope: 'public' | 'local' | 'interface';
 };
 export type PortsReport = { supported: boolean; services: ListeningService[] };
 export const fetchListeningPorts = (signal: AbortSignal) =>

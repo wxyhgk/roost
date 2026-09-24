@@ -112,53 +112,63 @@ function TrendCard({ icon, label, value, detail, series, percent, metric, onClic
 /*
   一行端口，点开看详情。
 
-  列表那一行只回答「几号端口、是什么」——那是扫视用的，塞多了反而看不快。而人真正要
-  往下问的是：**这东西是谁拉起来的、我在哪儿起的、它还占了别的端口吗、完整命令是什么**。
-  那些放进展开区。
+  **这一块是按右侧面板那个宽度（约 300px）设计的，不是按桌面表格。** 第一版排成四列
+  （端口 / 地址 / 命令 / pid），在真实宽度下地址列独占三分之一，而它旁边就是端口——
+  `5173` 和 `*:5173` 并排放着，那一列里唯一不重复的信息是冒号前面那一截。代价是命令名
+  被挤成 `postg…`、`Goog…`，整块面板二十多行长得一模一样，什么也读不出来。
 
-  命令行在列表行里是截断的（一行放不下），展开之后完整显示并可换行——排查时要看的
-  往往正是被截掉的那一段参数。
+  改成两行：第一行是「几号端口、是什么」，第二行是「谁起的、多大范围」。地址那一截收成
+  一个词（公开 / 仅本机 / 指定网卡），完整地址进展开区。
 */
-function PortRow({ service }: { service: ListeningService }) {
+function PortRow({ service, title }: { service: ListeningService; title: string | null }) {
   const m = t.serverMonitor;
-  const { selectSession, sessions } = useWorkspace('selectSession', 'sessions');
+  const { selectSession } = useWorkspace('selectSession');
   const [open, setOpen] = useState(false);
   const field = (label: string, value: ReactNode) => (
     <div className="flex gap-2"><span className="w-20 shrink-0 text-text-dim/70">{label}</span>
       <span className="min-w-0 flex-1 break-all">{value}</span></div>
   );
+  const scopeLabel = { public: m.portsScopePublic, local: m.portsScopeLocal, interface: m.portsScopeInterface }[service.scope];
+  /*
+    「公开」要看得见：这台机器从公网访问，一个本以为只监听本机、实际绑在 `*` 上的端口
+    是真实的暴露面。「仅本机」是常态，不该抢注意力，所以只有它是灰的。
+  */
+  const scopeTone = service.scope === 'local' ? 'text-text-dim/60' : 'text-warning';
   return (
     <li className="rounded-md border border-transparent hover:border-border">
       <button type="button" aria-expanded={open} onClick={() => setOpen(value => !value)}
-        className="flex w-full min-w-0 items-baseline gap-2 px-1 py-0.5 text-left text-caption">
-        <span className="w-14 shrink-0 text-right font-mono tabular-nums text-text">{service.port ?? '—'}</span>
-        <span className="w-32 shrink-0 truncate font-mono text-text-dim/80" title={service.address}>{service.address}</span>
-        {/*
-          列表行显示短名，不是原样的 argv：`node /Users/…/node_modules/.bin/vite` 截到
-          这一列宽之后剩下 `node /Users/…/n…`，**能认出它的那个词恰好在被截掉的那一头**。
-          完整命令在展开区里，鼠标停上去也有。
-        */}
-        <span className="min-w-0 flex-1 truncate" title={service.command ?? undefined}>{service.label ?? m.portsGone}</span>
-        <span className="shrink-0 font-mono tabular-nums text-text-dim/60">{service.pid}</span>
+        className="flex w-full min-w-0 flex-col gap-0.5 px-1 py-1 text-left text-caption">
+        <span className="flex w-full min-w-0 items-baseline gap-2">
+          <span className="w-12 shrink-0 text-right font-mono tabular-nums text-text">{service.port ?? '—'}</span>
+          {/* 命令名要拿到剩下的全部宽度——它是这一行里唯一能让人认出「这是什么」的东西。 */}
+          <span className="min-w-0 flex-1 truncate text-text" title={service.command ?? undefined}>{service.label ?? m.portsGone}</span>
+        </span>
+        <span className="flex w-full min-w-0 items-baseline gap-2 pl-14 text-text-dim">
+          <span className={`shrink-0 ${scopeTone}`} title={m.portsScopeHint[service.scope]}>{scopeLabel}</span>
+          <span className="min-w-0 flex-1 truncate">
+            {/*
+              归属挪到列表行里——它原来只在展开区，而那正是人扫这张表时最想知道的一格
+              （「这东西是我在哪儿起的」）。查不到标题说明那条会话已经关了，显示 id：
+              环境变量活得比会话长，而 id 正是这时候唯一能用的线索。
+            */}
+            {service.terminalId ? (title ?? `${service.terminalId}${m.portsSessionGone}`) : service.tty ?? ''}
+          </span>
+          <span className="shrink-0 font-mono tabular-nums text-text-dim/50">{service.pid}</span>
+        </span>
       </button>
       {open && (
         <div className="space-y-1 border-t border-border/50 px-2 py-1.5 text-caption text-text-dim">
           {field(m.portsCommand, <span className="font-mono">{service.command ?? m.portsGone}</span>)}
+          {field(m.portsAddress, <span className="font-mono">{service.address}</span>)}
           {field(m.portsPid, <span className="font-mono tabular-nums">{service.pid}</span>)}
           {service.parent && field(m.portsParent,
             <span className="font-mono">{service.parent}{service.ppid === null ? '' : ` · ${service.ppid}`}</span>)}
           {service.addresses.length > 1 && field(m.portsAll,
             <span className="font-mono">{service.addresses.join('  ')}</span>)}
           {field(m.portsTerminal, service.terminalId
-            /*
-              给出**会话的名字**，而不只是一个「去这个终端」的按钮：这一格要回答的是
-              「这东西是我在哪儿起的」，而 `s_gfl06lugvg` 回答不了，「roost-前端」才行。
-              查不到就显示 id——那条会话已经关掉了，而 id 正是这时候唯一能用的线索。
-            */
             ? <button type="button" className="rounded px-1 text-left text-text hover:bg-bg-hover"
                 onClick={() => selectSession(service.terminalId!)}>
-                {sessions.find(session => session.id === service.terminalId)?.title ?? service.terminalId}
-                <span className="ml-1 font-mono text-text-dim/60">{service.terminalId}</span>
+                {title ?? service.terminalId} · {m.portsGoTerminal}
               </button>
             /* 不属于任何 roost 会话（开机自启那些）——说清楚，别留空。tty 认得出时给 tty：
                那是从系统终端或 ssh 起的，和「认不出」不是一件事。 */
@@ -171,9 +181,11 @@ function PortRow({ service }: { service: ListeningService }) {
 
 function Ports() {
   const m = t.serverMonitor;
+  const { sessions } = useWorkspace('sessions');
   const [report, setReport] = useState<PortsReport | null>(null);
   const [failed, setFailed] = useState(false);
   const [revision, setRevision] = useState(0);
+  const [showOthers, setShowOthers] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
     setFailed(false);
@@ -191,16 +203,39 @@ function Ports() {
   */
   if (!report.supported) return <div className="text-caption text-text-dim">{m.portsUnsupported}</div>;
   if (!report.services.length) return <div className="text-caption text-text-dim">{m.portsEmpty}</div>;
+  /*
+    **分成两组，「其他」默认收起。** 本机 23 个监听端点里 12 个是浏览器的 helper 和开机
+    自启的服务——它们把真正要看的那几行埋在中间。收起来不是隐藏：计数还在，一下就能展开。
+  */
+  const titles = new Map(sessions.map(session => [session.id, session.title]));
+  const mine = report.services.filter(service => service.terminalId);
+  const others = report.services.filter(service => !service.terminalId);
+  const list = (services: typeof report.services) => (
+    <ul className="space-y-0.5">
+      {services.map(service => (
+        <PortRow key={`${service.pid}:${service.address}`} service={service}
+          title={service.terminalId ? titles.get(service.terminalId) ?? null : null} />
+      ))}
+    </ul>
+  );
+  const heading = (text: string) => <div className="px-1 pt-1 text-caption font-medium text-text-dim/70">{text}</div>;
   return (
-    <div className="space-y-2">
+    <div className="space-y-1">
       <div className="flex items-center justify-between text-caption text-text-dim">
         <span>{m.portsScope}</span>
         <button type="button" className="rounded px-1.5 py-0.5 hover:bg-bg-hover hover:text-text"
           onClick={() => setRevision(value => value + 1)}>{m.portsRefresh}</button>
       </div>
-      <ul className="space-y-1">
-        {report.services.map(service => <PortRow key={`${service.pid}:${service.address}`} service={service} />)}
-      </ul>
+      {mine.length > 0 && <>{heading(m.portsMine)}{list(mine)}</>}
+      {others.length > 0 && (
+        <>
+          <button type="button" aria-expanded={showOthers} onClick={() => setShowOthers(value => !value)}
+            className="w-full px-1 pt-1 text-left text-caption font-medium text-text-dim/70 hover:text-text">
+            {m.portsOthers} · {others.length}
+          </button>
+          {showOthers && list(others)}
+        </>
+      )}
     </div>
   );
 }

@@ -29,6 +29,8 @@ export const workspace = {
     conversationId: "对话 ID",
     more: "更多操作",
     rename: "重命名会话",
+    renameHintDouble: "双击改名",
+    renameHintClick: "点击改名",
     pin: "置顶会话",
     unpin: "取消置顶",
     pinned: "已置顶",

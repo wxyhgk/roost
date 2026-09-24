@@ -3,7 +3,7 @@ import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createServerMonitorProcess, normalizeServiceNames, type ServerMonitor } from '@roost/server-monitor';
-import { listeningServices, listeningSockets, normalizeTty, processTable, shortCommand, terminalEnvOwners } from '@roost/terminal-runtime';
+import { listeningServices, listeningSockets, listenScope, normalizeTty, processTable, shortCommand, terminalEnvOwners } from '@roost/terminal-runtime';
 import type { TerminalService } from '@roost/terminal-runtime';
 import type { WorkspaceStore } from '@roost/workspace-store';
 import { readJson, sendError, HttpInputError } from './http';
@@ -80,6 +80,8 @@ export function createServerMonitorHandler(dataDir?: string, monitor: ServerMoni
             两份实现各自漂移，所以算好了传过去，完整命令另外一格照旧。
           */
           label: shortCommand(service.command),
+          /* 谁够得着这个端口。理由见 `listenScope`；和 label 一样在这一侧算好。 */
+          scope: listenScope(service.address),
         })) });
         return true;
       }

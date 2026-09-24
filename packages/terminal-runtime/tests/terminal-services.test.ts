@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeTty, parseListeners, terminalServices, listeningServices, shortCommand } from '../src/terminal-services.ts';
+import { normalizeTty, parseListeners, terminalServices, listeningServices, shortCommand, listenScope } from '../src/terminal-services.ts';
 
 const proc = (pid: number, ppid: number, tty: string, args: string) => ({ pid, ppid, tty, args });
 
@@ -254,4 +254,44 @@ test('参数里独立成段的绝对路径收短，但 --flag=/a/b 不动', () =
 test('没有命令行时给 null，不给空串', () => {
   // 空串会在界面上画成一个空格子，而「进程已退出」是调用方要自己决定怎么说的话。
   for (const value of [null, undefined, '', '   ']) assert.equal(shortCommand(value), null);
+});
+
+/*
+  监听地址的范围。
+
+  这一格替掉了面板上那一整列地址——原来 `5173` 旁边并排放着 `*:5173`，重复的部分占了
+  窄面板三分之一宽度，把命令名挤成 `postg…`。冒号前面那一截才是唯一不重复的信息。
+*/
+test('通配地址算「公开」', () => {
+  for (const address of ['*:5173', '0.0.0.0:8080', '[::]:3000', '::' + ':9000'])
+    assert.equal(listenScope(address), 'public', address);
+});
+
+test('回环算「仅本机」——127.0.0.0/8 整段都是', () => {
+  for (const address of ['127.0.0.1:8787', '[::1]:9371', '127.1.2.3:5000'])
+    assert.equal(listenScope(address), 'local', address);
+});
+
+test('绑在具体网卡上不能算成「仅本机」', () => {
+  /*
+    **这是这里唯一会造成实际损害的错法**：把一个对局域网或 tailscale 开着的端口说成
+    只有自己连得上。这台机器从公网访问，这一格不是学术问题。
+  */
+  for (const address of ['203.0.113.4:60030', '198.51.100.7:60032', '[fd00::1]:60031'])
+    assert.equal(listenScope(address), 'interface', address);
+});
+
+test('认不出形状的地址不作任何承诺', () => {
+  /*
+    三格里只有 `interface` 不承诺范围。说一句「仅本机」才是这里唯一会造成实际损害的输出，
+    所以拿不准时落在这一格——unix socket 那种没有冒号的行走的就是这条（变异测试发现
+    原来的 `host === ''` 分支根本到不了：lsof 永远给 `host:port`）。
+  */
+  assert.equal(listenScope('some-unix-thing'), 'interface');
+});
+
+test('端口号本身不参与判断', () => {
+  // 地址里可以有多个冒号（IPv6），所以取的是**最后一个**冒号前面那一截。
+  assert.equal(listenScope('[::1]:127'), 'local', '端口恰好长得像回环地址也不算数');
+  assert.equal(listenScope('*:1'), 'public');
 });

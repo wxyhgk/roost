@@ -1,4 +1,5 @@
 import { useRef, useState, type MouseEvent } from "react";
+import { t } from "@roost/i18n";
 
 /** 菜单按钮、输入框这些自己有含义的元素，双击不该被改名接管。 */
 const interactive = (target: EventTarget | null) =>
@@ -86,7 +87,13 @@ export function InlineRename({
     return (
       <span
         className={className}
-        title={value}
+        /*
+          **tooltip 要说出这里能改名，不能只是把名字重复一遍。**
+          双击改名没有任何视觉痕迹——不知道的人永远不会去试，而这正是被问到的那一句
+          「我如何才能自己修改名字」。名字本身也留着：它常常是被 truncate 掉的。
+        */
+        title={editOnDoubleClick ? `${value} · ${t.session.renameHintDouble}`
+          : onDisplayClick ? `${value} · ${t.session.renameHintClick}` : value}
         onClick={onDisplayClick}
         {...(editOnDoubleClick ? doubleClickToEdit(() => onEditingChange(true)) : {})}
       >

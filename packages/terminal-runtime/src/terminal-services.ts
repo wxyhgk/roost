@@ -162,6 +162,37 @@ export function shortCommand(command: string | null | undefined): string | null 
   return (head + args).trim() || null;
 }
 
+/**
+ * 这个监听地址**谁够得着**。
+ *
+ * 面板原来把 `*:5173` 原样占一整列，而它旁边就是 `5173`——**那一列里唯一不重复的信息
+ * 就是冒号前面那一截**，却要占掉窄面板三分之一的宽度，把命令名挤成 `postg…`。
+ *
+ * 冒号前面那一截回答的是一个真问题：这个端口是只有本机连得上，还是任何网卡都行。
+ * 这台机器从公网访问，所以「我有哪些端口是对外开着的」不是学术问题。收成一个词。
+ */
+export type ListenScope = 'public' | 'local' | 'interface';
+
+export function listenScope(address: string): ListenScope {
+  const colon = address.lastIndexOf(':');
+  /*
+    压根没有冒号：不是 `host:port`，认不出来（`portOf` 对同一条也给 null）。
+    归到 `interface`——这三格里**只有它不作任何承诺**，而错误地说一句「仅本机」
+    才是这里唯一会造成实际损害的输出。
+  */
+  if (colon < 0) return 'interface';
+  const host = address.slice(0, colon);
+  if (host === '*' || host === '0.0.0.0' || host === '[::]' || host === '::') return 'public';
+  if (host === '127.0.0.1' || host === '[::1]' || host === '::1' || host === 'localhost'
+    // 127.0.0.0/8 整段都是回环，不只是 127.0.0.1。
+    || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) return 'local';
+  /*
+    绑在某一张具体网卡上。**不能算成「仅本机」**——那是这里唯一会造成实际损害的错法：
+    把一个对局域网（或 tailscale）开着的端口说成只有自己连得上。
+  */
+  return 'interface';
+}
+
 const portOf = (address: string): number | null => {
   const match = /:(\d{1,5})$/.exec(address);
   if (!match) return null;
