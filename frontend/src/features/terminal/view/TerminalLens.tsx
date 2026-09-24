@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { fetchConversation, listConversations, type Conversation } from "../../../shared/api/conversations";
 /*
   对话视图不进首屏。
@@ -106,6 +106,17 @@ export function ConversationLens({ terminalId, conversationId, current }: { term
     finally { if (version === epoch.current) setLoading(false); }
   }
   const active = selected || conversationId;
+  /*
+    **对象身份要稳。** 列表每 1.5 秒轮询一次，`items` 每次都是新数组、里面也是新对象。
+    直接把 `items.find(...)` 传下去，`ConversationDetail` 那边
+    `useEffect(() => setConversation(initial), [initial])` 就会每 1.5 秒触发一次，
+    带着整个面板（连同所有可见条目）重渲一遍。
+
+    只在这条对话**真的变了**的时候才换对象：id 不同，或者 revision 变了（改名、换分组）。
+  */
+  const found = items.find(item => item.id === active) ?? null;
+  const stamp = found ? `${found.id}:${found.revision}` : "";
+  const knownActive = useMemo(() => found, [stamp]);
   const blocked = sendBlock({ selectedHistory: !!selected, current, state, cliId });
   /*
     输入框往这个终端里打字：终端活着、前台是 AI CLI、而且没在翻历史，就给。
@@ -119,7 +130,7 @@ export function ConversationLens({ terminalId, conversationId, current }: { term
     </div>
     {error && <p role="status" className="px-3 text-caption text-text-dim">{t.bookmarks.historyFailed}</p>}
     {active && !current && !selected && <p className="border-b border-border px-3 py-1.5 text-caption text-text-dim">{t.bookmarks.historyFallback}</p>}
-    {active ? <ConversationContent key={active} conversationId={active} known={items.find(item => item.id === active) ?? null} readOnly={!!selected || !current} blocked={blocked} terminalId={terminalId} sendTarget={sendTarget} /> : <>
+    {active ? <ConversationContent key={active} conversationId={active} known={knownActive} readOnly={!!selected || !current} blocked={blocked} terminalId={terminalId} sendTarget={sendTarget} /> : <>
       <p role="status" className="p-4 text-caption text-text-dim">{loading ? t.bookmarks.loading : t.bookmarks.noTerminalHistory}</p>
       <div className="flex-1" />
       {sendTarget && <Suspense fallback={null}><LensComposer terminalId={sendTarget} /></Suspense>}
