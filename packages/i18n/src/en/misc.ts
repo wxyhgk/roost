@@ -166,6 +166,7 @@ export const misc = {
       gapDetail: (skipped: number) => `${skipped} records could not be saved, so this is not a complete record.`,
       resynced: "Reconnected and reloaded the history",
       disconnected: "Live sync disconnected",
+      outline: { label: "Question outline" },
       live: {
         working: "Working…",
         workingTool: (tool: string) => `Working… (${tool})`,

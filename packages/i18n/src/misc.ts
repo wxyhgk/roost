@@ -177,6 +177,7 @@ export const misc = {
 
         **说不出细节时就只说状态**，别编。工具名和摘要只有 blocked 期间才有值。
       */
+      outline: { label: "提问目录" },
       live: {
         working: "对面正在处理…",
         workingTool: (tool: string) => `对面正在处理…（${tool}）`,

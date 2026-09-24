@@ -20,6 +20,7 @@ import { rebindWithRetry } from "./rebind";
 import { fetchAiBinding, rebindAiSession } from "../../shared/api/conversations";
 import { useSessionActivity } from "../session-status/public";
 import { liveTurnOf } from "./liveTurn";
+import { activeOutlineIndex, outlineOf } from "./outline";
 import { createSession } from "../../shared/api/session";
 import { useWorkspace } from "../../shared/store";
 import { useOutgoing } from "./useOutgoing";
@@ -68,6 +69,7 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
   */
   const [firstItemIndex, setFirstItemIndex] = useState(1_000_000);
   const [loadingOlder, setLoadingOlder] = useState(false);
+  const [firstVisible, setFirstVisible] = useState(0);
   const itemsRef = useRef(history.items);
   itemsRef.current = history.items;
   const [run, setRun] = useState<SnapshotRun>(null);
@@ -98,6 +100,7 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
       return show;
     });
   }, [items]);
+  const outline = useMemo(() => outlineOf(items), [items]);
   const id = initial.id;
   const outgoing = useOutgoing(id);
 
@@ -244,6 +247,10 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
         和「用户主动翻上去」要分开），所以用现成的：`followOutput="auto"` 只在用户本来
         就在底部时才跟随，正是原来 `useFollowBottom` 手写的那条语义。
       */}
+      <div className="flex min-h-0 flex-1">
+      <ConversationOutline entries={outline} active={activeOutlineIndex(outline, firstVisible)}
+        // 传的是条目在 items 里的下标；虚拟化列表的索引带着 firstItemIndex 的偏移。
+        onJump={itemIndex => listRef.current?.scrollToIndex({ index: firstItemIndex + itemIndex, align: "start" })} />
       <Virtuoso
         ref={listRef}
         className="min-h-0 flex-1"
@@ -263,7 +270,9 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
         atTopStateChange={atTop => { if (atTop && history.hasMore && history.olderCursor) void loadOlder(); }}
         components={TRANSCRIPT_COMPONENTS}
         context={{ loading, loadingOlder, error, history, loadOlder, terminalId, jumpTarget, onJumpToTerminal, outgoing, readOnly }}
+        rangeChanged={range => setFirstVisible(range.startIndex - firstItemIndex)}
       />
+      </div>
 
       {/* 没有能打字的终端时不给输入框：发不出去，摆一个能打字的框只会让人白写一段。 */}
       {sendTo ? <>
@@ -271,6 +280,32 @@ export function ConversationDetail({ conversation: initial, onBack, onJumpToTerm
         <ConversationComposer send={direct} onJump={() => onJumpToTerminal?.(sendTo)} />
       </> : <SendBlocked blocked={blocked} readOnly={readOnly} conversation={conversation} terminalId={terminalId} />}
     </div>
+  );
+}
+
+/**
+ * 左边那一条竖排刻度：每一次提问一格，点击跳过去。
+ *
+ * **它不是滚动条。** 滚动条回答「我在整篇的哪里」，这条回答「我问过哪些、那一次在哪里」
+ * ——长对话里后者才是人真正要找的东西。判据在 `outline.ts` 里，单独测。
+ *
+ * 一次提问都没有时整条不渲染：一条空白的竖线只会占地方。
+ */
+function ConversationOutline({ entries, active, onJump }: {
+  entries: ReturnType<typeof outlineOf>; active: number; onJump: (itemIndex: number) => void;
+}) {
+  if (!entries.length) return null;
+  return (
+    <nav aria-label={t.misc.conversations.detail.outline.label}
+      className="flex w-4 shrink-0 flex-col items-center gap-[3px] overflow-hidden py-2">
+      {entries.map((entry, position) => (
+        <button key={entry.index} type="button" title={entry.label}
+          aria-current={position === active ? "true" : undefined}
+          onClick={() => onJump(entry.index)}
+          className={`h-px w-2 shrink-0 rounded-full transition-colors hover:bg-accent ${
+            position === active ? "bg-accent" : "bg-text-dim/40"}`} />
+      ))}
+    </nav>
   );
 }
 
