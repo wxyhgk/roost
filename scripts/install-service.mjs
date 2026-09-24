@@ -91,6 +91,20 @@ http://:${port} {
     handle @api {
         reverse_proxy 127.0.0.1:${backendPort}
     }
+    # 应用用绝对路径引资源时，靠 Referer 转回后端的代理。
+    #
+    # 少了这一条，浮动窗口里的应用会白屏：应用生成的是 /@vite/client、/assets/x.js
+    # 这种从根算起的地址，前缀丢了，而下面那条 try_files … /index.html 会把它们一律
+    # 当成前端路由，回一份 roost 自己的 index.html——iframe 里拿到的是 roost 的页面
+    # 而不是那个脚本，浏览器只报一句 MIME 不对。
+    #
+    # 判据单向且安全：roost 自己的页面永远不会带上 /api/app/<端口>/ 的 Referer，
+    # 所以它的资源不会被劫到应用那边。真正的判断在后端 app-proxy.ts，这里只负责把
+    # 这类请求送过去——caddy 默认只转 /api/*，不加这条它根本到不了后端。
+    @appReferer header_regexp Referer ^https?://[^/]+/api/app/[0-9]{1,5}/
+    handle @appReferer {
+        reverse_proxy 127.0.0.1:${backendPort}
+    }
     handle_path /assets/* {
         root * ${JSON.stringify(assetsDir)}
         @assetFile {

@@ -165,6 +165,30 @@ test('Caddy 两个 root 都指向发布后的位置，不指仓库里的构建�
   assert.match(text, /try_files \{path\} \/index\.html/);
 });
 
+test('带应用 Referer 的请求要转给后端，而且排在 SPA 兜底之前', () => {
+  /*
+    浮动窗口里的应用引的是 `/@vite/client`、`/assets/x.js` 这种从根算起的地址。
+    **caddy 默认只转 `/api/*`**，所以少了这条匹配，这些请求根本到不了后端的代理，
+    而是被 `try_files … /index.html` 当成前端路由，回一份 roost 自己的 index.html——
+    iframe 里于是拿到 HTML 而不是脚本，只报一句 MIME 不对。
+
+    顺序也要测：caddy 的 handle 块按定义先后互斥匹配，排在 /assets/* 和兜底之后就等于
+    没写——而这一点在生成的文本里看不出来，只有位置能说明。
+  */
+  const text = caddyfile({ port: 8080, backendPort: 8787, assetsDir: '/share/roost/assets', webDir: '/share/roost/web' });
+  // 用字面量比，不用正则：这一行本身就是个正则，再套一层转义只会把测试写错（第一版就是）。
+  assert.ok(text.includes('@appReferer header_regexp Referer ^https?://[^/]+/api/app/[0-9]{1,5}/'),
+    '匹配器要认出 /api/app/<端口>/ 形态的 Referer');
+  const referer = text.indexOf('@appReferer');
+  assert.ok(referer > 0 && referer < text.indexOf('handle_path /assets/*'), '必须排在 /assets/* 之前');
+  /*
+    找的是**指令本身**，不是 `try_files` 这个词：上面那段注释里就提到了它，
+    按词去找会命中注释，而注释排在前面，于是这条断言恒假。同一个坑这个月踩过三次
+    （`return null;\n}`、`transcript_unavailable`、这一次），锚点必须唯一。
+  */
+  assert.ok(referer < text.indexOf('try_files {path} /index.html'), '必须排在 SPA 兜底之前');
+});
+
 test('后端脚本先等终端 owner 就绪再启动', () => {
   const text = backendScript('/opt/node/bin/node', '/src/roost');
   const wait = text.indexOf('wait-terminal-owner.mts');

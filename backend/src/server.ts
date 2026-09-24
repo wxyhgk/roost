@@ -1,5 +1,6 @@
 import { createSubscriptionsHandler } from './subscriptions/handler';
 import { createServerMonitorHandler } from './server-monitor';
+import { createAppProxy, parseAppPath, refererPort } from './app-proxy';
 import { createAiCommandHandler, commandControl } from './ai-commands';
 import { createDirectInputHandler } from './direct-input';
 import { createClaudeObserver } from "./claude-observer";
@@ -30,7 +31,7 @@ import { handleAiHistory } from "./ai-history";
 import { handleConversations } from "./conversations";
 import { handleConversationRuntime } from "./conversation-runtime";
 import { createConversationMessagingHandler } from "./peer-messages";
-import { createAuthentication, type AuthOptions } from "./auth";
+import { AUTH_COOKIE_NAME, createAuthentication, type AuthOptions } from "./auth";
 import { createFileAccess, FileAccessError } from "./file-access";
 import { HttpInputError, readJson, sendError } from "./http";
 import { listDir, walkFiles, readPreview, statRawFile, writeFileAtomic, createPath, renamePath, deletePath, FileWriteError, MAX_FILE_REQUEST_BYTES, MAX_RAW_BYTES } from "./fs";
@@ -73,6 +74,7 @@ export function createBackendServer({ store, runtime, workspaceRoot, access, aut
   sessionBridge?: AiSessionBridge;
 }) {
   const serverMonitor = createServerMonitorHandler(monitorDataDir, undefined, { runtime, store });
+  const appProxy = createAppProxy(AUTH_COOKIE_NAME);
   const subscriptions = createSubscriptionsHandler(monitorDataDir);
   const checkAccess = createAccessPolicy(access);
   const authentication = createAuthentication(auth);
@@ -165,6 +167,21 @@ export function createBackendServer({ store, runtime, workspaceRoot, access, aut
 
     if (await authentication.handle(req, res, url)) return;
     if (!authentication.require(req, res)) return;
+    /*
+      本机端口的反向代理。**放在 `require` 之后**：代理口子和 roost 的其余接口共用同一道
+      门，没登录就一个字节都转不出去。放在其他路由之前，是因为它按前缀整段接管，
+      不该让后面任何一条规则先把 `/api/app/...` 截走。
+
+      第二条是对**绝对路径**的救济：应用引 `/assets/x.js` 时前缀丢了，靠 Referer 认回去。
+      没有它绝大多数应用一放进窗口就白屏。方向是单向的，roost 自己的页面不会带上
+      `/api/app/<port>/` 的 Referer，所以不会被劫走。理由详见 app-proxy.ts。
+    */
+    const appPath = parseAppPath(req.url ?? '/');
+    if (appPath) { appProxy.handle(req, res, appPath.port, appPath.path); return; }
+    if (!pathname.startsWith('/api/')) {
+      const fromReferer = refererPort(req.headers.referer);
+      if (fromReferer !== null) { appProxy.handle(req, res, fromReferer, req.url ?? '/'); return; }
+    }
     if (await serverMonitor.handle(req, res, url)) return;
     if (await subscriptions.handle(req, res, url)) return;
     if (['/api/fs', '/api/fs/tree', '/api/file', '/api/file/raw', '/api/fs/file'].includes(pathname) && searchParams.has('root')) {
@@ -1272,6 +1289,9 @@ function deviceLabel(agent: string | undefined): string {
         return;
       }
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
+      /* 应用自己的 WebSocket（vite 热更新、Jupyter 内核）。只认显式前缀，理由见 app-proxy.ts。 */
+      const appPath = parseAppPath(req.url ?? '/');
+      if (appPath) { appProxy.handleUpgrade(req, socket, head, appPath.port, appPath.path); return; }
       const conversationStream = url.pathname.match(/^\/api\/conversations\/([^/]+)\/stream$/);
       if (conversationStream) {
         const id = decodeURIComponent(conversationStream[1]);
