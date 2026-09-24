@@ -30,7 +30,7 @@ export function ConversationCatalog({ onClose }: { onClose: () => void }) {
           <h2 className="flex-1 text-title font-semibold text-text">{t.misc.conversations.catalogTitle}</h2>
           <IconButton title={t.misc.conversations.close} onClick={onClose}><IconClose /></IconButton>
         </header>
-        <div className="flex min-h-0 flex-1 flex-col"><ConversationList /></div>
+        <div className="flex min-h-0 flex-1 flex-col"><ConversationList browse /></div>
       </div>
     </div>,
     document.body,

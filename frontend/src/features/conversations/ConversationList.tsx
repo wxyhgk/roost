@@ -23,7 +23,18 @@ import { t } from "@roost/i18n";
  *
  * 用户看到的是标题，conversationId 只在内部用。
  */
-export function ConversationList() {
+/**
+ * @param browse  **以浏览开始，而不是接着上次那条。**
+ *
+ * 选中的对话存在工作区偏好里，跨刷新都在，而且和终端那边共用——那对常驻面板是对的
+ * （「切终端、刷新，我在看的那条还在」）。但目录浮层的用途正相反：**人是来找别的那条的**。
+ * 继承那个选择的结果是，点开目录直接落进当前这条的详情，21 条记录一条都没露面。
+ * 实测撞到：用户点了图标，看到的是他刚才那个终端的内容，以为「没有历史记录」。
+ *
+ * 浏览模式下选中只走局部状态，**不碰全局选择**——从目录里翻一条看看，不该把终端那边
+ * 正在跟的对话改掉。
+ */
+export function ConversationList({ browse = false }: { browse?: boolean } = {}) {
   // 对话选择存在工作区偏好里，**不放组件局部状态**：切换终端、关掉终端、
   // 甚至刷新页面，选中的对话都该还在——这正是「独立选择」的含义。
   const { selectSession, selectedConversationId, selectConversation } =
@@ -69,6 +80,8 @@ export function ConversationList() {
   // 偏好里存的是 ID。列表里有就直接用；没有（比如刚刷新、或它不在当前筛选结果里）
   // 就按 ID 单独取一次，免得「选中的对话」因为翻页翻不到而显示不出来。
   useEffect(() => {
+    // 浏览模式不继承全局选择；这里选了什么由下面的 onOpen 直接写 open。
+    if (browse) return;
     if (!selectedConversationId) { setOpen(null); return; }
     if (open?.id === selectedConversationId) return;
     const known = state.items.find(item => item.id === selectedConversationId);
@@ -79,17 +92,17 @@ export function ConversationList() {
       // 取不到就退回列表：对话可能已被删除，而不是界面坏了。
       .catch(() => { if (!cancelled) setOpen(null); });
     return () => { cancelled = true; };
-  }, [selectedConversationId, state.items, open?.id]);
+  }, [browse, selectedConversationId, state.items, open?.id]);
 
   const searching = state.filters.q !== undefined && state.filters.q !== "";
 
   // 详情整块替换列表，而不是并排：右侧面板本来就窄，分栏两边都放不下。
   // 列表状态留在这里，返回时不用重新加载。
-  if (open && open.id === selectedConversationId) {
+  if (open && (browse || open.id === selectedConversationId)) {
     return (
       <div className="flex min-h-0 flex-1 flex-col"><FollowTerminal /><ConversationDetail key={open.id}
         conversation={open}
-        onBack={() => selectConversation(null)}
+        onBack={() => { if (browse) setOpen(null); else selectConversation(null); }}
         onJumpToTerminal={sessionId => { selectSession(sessionId); }}
       /></div>
     );
@@ -129,7 +142,7 @@ export function ConversationList() {
               {group.label}
             </h3>
             <ul className="flex flex-col">
-              {group.items.map(item => <Row key={item.id} conversation={item} onOpen={c => selectConversation(c.id)} />)}
+              {group.items.map(item => <Row key={item.id} conversation={item} onOpen={c => { if (browse) setOpen(c); else selectConversation(c.id); }} />)}
             </ul>
           </section>
         ))}
