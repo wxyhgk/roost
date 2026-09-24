@@ -13,8 +13,17 @@ import { useSyncExternalStore } from 'react';
 import type { RightView } from '../../shared/view';
 import { cascadeRect, clampToViewport, maximizedRect, raise, reflow, type Rect, type Viewport } from './geometry';
 
-/** 窗口里放什么。现在只有右侧面板那几个视图；启动台做出来之后这里会多一个 `app`。 */
-export type WindowContent = { kind: 'panel'; view: RightView };
+/**
+ * 窗口里放什么。
+ *
+ * `app` 是启动台开出来的本机服务，内容是一个指向反代地址的 iframe。**它是可选动作，
+ * 不是默认动作**：启动台默认在新标签页打开，理由是被代理的应用和 roost 同源——同源
+ * iframe 不是安全边界，里面的脚本够得到 roost 的接口和 `parent.document`。自己起的
+ * dev server 想并排看就并排看，来路不明的走标签页。
+ */
+export type WindowContent =
+  | { kind: 'panel'; view: RightView }
+  | { kind: 'app'; port: number; name: string };
 
 export type WindowState = {
   id: string;
@@ -81,11 +90,15 @@ export function setViewport(viewport: Viewport) {
  * 「已经开着还再开一个」看起来像是更听话，实际上是把同一块内容复制成两份各自滚动、
  * 各自加载的副本，而人想要的只是「把它拿到前面来」。
  */
+/** 同一份内容的身份。panel 看视图，app 看端口——同一个应用不该开出两个窗口。 */
+const contentKey = (content: WindowContent) =>
+  content.kind === 'panel' ? `panel:${content.view}` : `app:${content.port}`;
+
 export function openWindow(content: WindowContent) {
-  const existing = state.windows.find(window => window.content.kind === content.kind
-    && window.content.view === content.view);
+  const key = contentKey(content);
+  const existing = state.windows.find(window => contentKey(window.content) === key);
   if (existing) { focusWindow(existing.id); return existing.id; }
-  const id = `w_${content.view}_${Date.now().toString(36)}`;
+  const id = `w_${key}_${Date.now().toString(36)}`;
   const window: WindowState = {
     id, content, shaded: false, restore: null,
     rect: cascadeRect(state.windows.map(other => other.rect), state.viewport),

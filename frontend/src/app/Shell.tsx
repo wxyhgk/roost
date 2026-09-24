@@ -14,6 +14,7 @@ import { TerminalPane } from "../features/terminal/view/TerminalPane";
 import { TopBar } from "./TopBar";
 import { ErrorBoundary } from '../shared/ui/ErrorBoundary';
 import { WindowLayer } from '../features/windows/WindowLayer';
+import { AppFrame } from '../features/launchpad/AppFrame';
 import { EXTERNAL_EDITORS } from '../plugins/external';
 
 /*
@@ -295,12 +296,14 @@ export function Shell() {
           所以盖在上面不会挡住终端和侧栏的点击。
         */}
         <WindowLayer
-          titleOf={content => panelTitles()[content.view]}
-          renderContent={(content, visible) => (
-            <ErrorBoundary region={panelTitles()[content.view]}>
-              <RightPanel view={content.view} onChangeView={() => {}} visible={visible} inWindow />
-            </ErrorBoundary>
-          )}
+          titleOf={content => content.kind === 'app' ? `${content.name} · :${content.port}` : panelTitles()[content.view]}
+          renderContent={(content, visible) => content.kind === 'app'
+            ? <AppFrame port={content.port} name={content.name} />
+            : (
+              <ErrorBoundary region={panelTitles()[content.view]}>
+                <RightPanel view={content.view} onChangeView={() => {}} visible={visible} inWindow />
+              </ErrorBoundary>
+            )}
         />
       </div>
       <StatusBar monitorVisible={rightView === 'server' && !rightCollapsed} onOpenMonitor={tab => { setMonitorTarget(previous => ({ tab, revision: previous.revision + 1 })); showRight('server'); }} />

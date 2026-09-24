@@ -269,3 +269,41 @@ export async function listeningSockets(signal?: AbortSignal): Promise<ListenerPr
     return { supported: false, rows: [] };
   }
 }
+
+/*
+  这个端口上说的是不是 HTTP。
+
+  **启动台需要这一格，否则它会把 postgres 和 redis 也画成「应用」。** 点进去只会得到
+  一张错误页，而「点了没用」这件事比列表里少一项更糟——人会以为是 roost 坏了。
+
+  判据是发一个真的请求过去看它回什么，不是猜端口号。猜端口号那套（5432 是 postgres、
+  6379 是 redis）在这台机器上一开始就不成立：blinko 那个 postgres 跑在 5433。
+
+  只连回环，只等很短一会儿：这是点开启动台时批量做的，不能因为某个端口不响应就把整个
+  列表拖住。超时按「不是 HTTP」算——一个要等两秒才肯说话的东西，当不了「点一下就开」的应用。
+*/
+export type PortProbe = 'http' | 'other';
+
+export async function probeHttp(port: number, timeoutMs = 700): Promise<PortProbe> {
+  const { createConnection } = await import('node:net');
+  return new Promise<PortProbe>(resolve => {
+    let settled = false;
+    const done = (result: PortProbe) => { if (!settled) { settled = true; socket.destroy(); resolve(result); } };
+    const socket = createConnection({ host: '127.0.0.1', port });
+    socket.setTimeout(timeoutMs, () => done('other'));
+    socket.on('error', () => done('other'));
+    socket.on('connect', () => {
+      /*
+        故意发一个**不带 Host 的 HTTP/1.0** 请求：HTTP/1.1 要求 Host，而少了它合规的
+        服务器会回 400——那也是一个 HTTP 响应，照样能认出来。用 1.0 则连 400 都省了。
+        `HEAD` 是为了别把一个大页面拉下来。
+      */
+      socket.write('HEAD / HTTP/1.0\r\n\r\n');
+    });
+    socket.on('data', chunk => {
+      // 只看头几个字节。非 HTTP 的服务要么不说话（走 timeout），要么回自己的协议前导。
+      done(chunk.toString('latin1', 0, 5) === 'HTTP/' ? 'http' : 'other');
+    });
+    socket.on('close', () => done('other'));
+  });
+}

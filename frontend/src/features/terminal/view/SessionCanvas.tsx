@@ -4,6 +4,9 @@ import type { Session } from "../../../shared/types";
 import { SessionCard } from "./SessionCard";
 import { Empty } from "../../../shared/ui/Empty";
 import { t } from "@roost/i18n";
+import { Suspense, lazy } from "react";
+/* 懒加载：画布首屏不该为一块「偶尔看一眼」的内容多付字节。 */
+const Launchpad = lazy(() => import("../../launchpad/Launchpad").then(module => ({ default: module.Launchpad })));
 
 /**
  * 中间栏的画布：一屏卡片，一眼看清每个终端在干什么；点进去才是真终端。
@@ -50,6 +53,15 @@ export function SessionCanvas({ sessions, selectedId, onOpen, onNew }: {
           </button>
         </li>
       </ul>
+      {/*
+        启动台放在会话下面，不是上面：这块画布首先回答「我的终端在哪儿」，那是每次都要的；
+        「机器上还跑着什么」是偶尔要的。把偶尔的放在必然的上面，等于每次都多滚一屏。
+      */}
+      <div className="mt-5 border-t border-border/50 pt-4">
+        <Suspense fallback={null}>
+          <Launchpad />
+        </Suspense>
+      </div>
     </div>
   );
 }

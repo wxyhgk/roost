@@ -368,6 +368,20 @@ export const misc = {
     retry: "Retry",
   },
 
+  launchpad: {
+    title: "Apps",
+    hint: "Services running on this machine. Click to open in a new tab",
+    empty: "No services to open",
+    unsupported: "Ports are not visible on this machine (no lsof, or blocked by policy)",
+    loading: "Looking…",
+    failed: "Could not list services",
+    refresh: "Look again",
+    openTab: "New tab",
+    openWindow: "Open as window",
+    reload: "Reload",
+    alsoOn: (ports: string) => `Same process also on ${ports}`,
+    windowWarning: "An app in a window shares roost's origin and can read your roost session. Use it for services you started yourself",
+  },
   windows: {
     openAsWindow: "Open as window",
     close: "Close window",
