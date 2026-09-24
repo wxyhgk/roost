@@ -57,15 +57,36 @@
   --color-bg: #111113;
   --color-bg-panel: #202023;
   --color-bg-raised: #2c2c2e;
-  --color-bg-hover: #38383b;
-  --color-bg-active: #46464a;
-  --color-border: #3a3a3e;
+  /*
+    悬停/选中/分隔线改成**半透明叠加**，不再是实心灰。
+
+    实心灰只在自己那一层的背景上对；面板、外壳、浮动窗口三种底色不一样，同一个
+    `bg-bg-hover` 压上去深浅就不一致，于是只能靠描边把每一块框住——`border-border`
+    在这份代码里用了 172 次，界面看起来全是格子。叠加层则自动跟着它压在谁身上走。
+
+    分隔线一并调淡（原来 #3a3a3e ≈ 白 18%，现在 10%）：用填充和留白分隔，线只在真的
+    需要时出现。
+  */
+  --color-bg-hover: rgba(255, 255, 255, 0.075);
+  --color-bg-active: rgba(255, 255, 255, 0.12);
+  --color-border: rgba(255, 255, 255, 0.10);
   --color-terminal-selection: #48484a;
   --color-scrollbar: rgba(255, 255, 255, 0.25);
   --color-scrollbar-hover: rgba(255, 255, 255, 0.40);
   --color-text: #f5f5f7;
-  --color-text-dim: #8e8e93;
-  --color-accent: #ffffff;
+  /* 次要文字用同一个前景色调透明度，而不是另换一个灰：换灰会在不同底色上偏色。 */
+  --color-text-dim: rgba(255, 255, 255, 0.60);
+  /*
+    **强调色从纯白换成系统蓝。**
+
+    机制本来就在——`--color-accent` 在 61 处用着——只是值是 `#ffffff`，于是选中态是灰底
+    加灰边，眼睛没有落点。这一版仍然是单色设计，只是给「选中/进行中」这一件事留一个颜色。
+
+    注意 `shared/theme.tsx` 的 `xtermThemeFromCss` 把 `--accent` 当光标色的兜底
+    （`--terminal-fg || --accent`）。两个主题都定义了 `--terminal-fg`，所以兜底轮不到；
+    以后加一个不定义它的终端配色时，光标会变成这个蓝色。
+  */
+  --color-accent: #0a84ff;
   --color-bar: #1c1c1e;
   --color-bar-text: #ffffff;
   --color-bar-dim: rgba(255, 255, 255, 0.6);
@@ -147,8 +168,14 @@
    read the light override. */
 :root {
   color-scheme: dark;
-  --shadow-pop: 0 4px 16px rgba(0, 0, 0, 0.4);
-  --shadow-modal: 0 12px 40px rgba(0, 0, 0, 0.45);
+  /*
+    浮层加一圈 0.5px 的半透明内描边。
+
+    纯阴影在深色背景上几乎看不出层次——两块都是深灰，阴影又被背景吃掉，于是弹层看着像
+    贴在页面上而不是浮在上面。那圈极细的亮边是「它有厚度」的主要信号，阴影只负责距离感。
+  */
+  --shadow-pop: 0 0 0 0.5px rgba(255, 255, 255, 0.10), 0 8px 24px rgba(0, 0, 0, 0.40);
+  --shadow-modal: 0 0 0 0.5px rgba(255, 255, 255, 0.12), 0 18px 48px rgba(0, 0, 0, 0.45);
 }
 html[data-theme="light"] {
   /* Strict black & white: surfaces white, text black, hairlines black-based.
@@ -161,13 +188,15 @@ html[data-theme="light"] {
   --color-bg: #f4f4f6;
   --color-bg-panel: #ffffff;
   --color-bg-raised: #ffffff;
-  --color-bg-hover: #ededf0;
-  --color-bg-active: #e1e1e6;
-  --color-border: #bdbdbd;
+  /* 同深色，改成黑色叠加；字面值按主题各写一份，不用相对颜色语法（仓库惯例）。 */
+  --color-bg-hover: rgba(0, 0, 0, 0.045);
+  --color-bg-active: rgba(0, 0, 0, 0.08);
+  --color-border: rgba(0, 0, 0, 0.12);
   --color-terminal-selection: #d1d1d6;
   --color-text: #000000;
-  --color-text-dim: #666666;
-  --color-accent: #000000;
+  --color-text-dim: rgba(0, 0, 0, 0.58);
+  /* 浅色也给强调色：只给深色加的话，浅色的选中态仍然是灰底加灰边，眼睛照样没落点。 */
+  --color-accent: #007aff;
   --color-scrollbar: rgba(0, 0, 0, 0.25);
   --color-scrollbar-hover: rgba(0, 0, 0, 0.40);
   --color-danger: #c62828;
@@ -178,8 +207,9 @@ html[data-theme="light"] {
   --color-warning-soft: rgba(154, 103, 0, 0.12);
   color-scheme: light;
   /* White surfaces need far less alpha than the dark ramp to read as elevation. */
-  --shadow-pop: 0 4px 12px rgba(0, 0, 0, 0.12);
-  --shadow-modal: 0 12px 32px rgba(0, 0, 0, 0.18);
+  /* 浅色底上那圈描边要是黑的，否则在白面板上看不见。 */
+  --shadow-pop: 0 0 0 0.5px rgba(0, 0, 0, 0.08), 0 8px 24px rgba(0, 0, 0, 0.10);
+  --shadow-modal: 0 0 0 0.5px rgba(0, 0, 0, 0.10), 0 18px 48px rgba(0, 0, 0, 0.16);
 }
 
 /* Aliases for xtermThemeFromCss() which reads --bg, --text, --accent, --border */
