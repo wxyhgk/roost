@@ -121,7 +121,7 @@ function TrendCard({ icon, label, value, detail, series, percent, metric, onClic
 */
 function PortRow({ service }: { service: ListeningService }) {
   const m = t.serverMonitor;
-  const { selectSession } = useWorkspace('selectSession');
+  const { selectSession, sessions } = useWorkspace('selectSession', 'sessions');
   const [open, setOpen] = useState(false);
   const field = (label: string, value: ReactNode) => (
     <div className="flex gap-2"><span className="w-20 shrink-0 text-text-dim/70">{label}</span>
@@ -133,7 +133,12 @@ function PortRow({ service }: { service: ListeningService }) {
         className="flex w-full min-w-0 items-baseline gap-2 px-1 py-0.5 text-left text-caption">
         <span className="w-14 shrink-0 text-right font-mono tabular-nums text-text">{service.port ?? '—'}</span>
         <span className="w-32 shrink-0 truncate font-mono text-text-dim/80" title={service.address}>{service.address}</span>
-        <span className="min-w-0 flex-1 truncate">{service.command ?? m.portsGone}</span>
+        {/*
+          列表行显示短名，不是原样的 argv：`node /Users/…/node_modules/.bin/vite` 截到
+          这一列宽之后剩下 `node /Users/…/n…`，**能认出它的那个词恰好在被截掉的那一头**。
+          完整命令在展开区里，鼠标停上去也有。
+        */}
+        <span className="min-w-0 flex-1 truncate" title={service.command ?? undefined}>{service.label ?? m.portsGone}</span>
         <span className="shrink-0 font-mono tabular-nums text-text-dim/60">{service.pid}</span>
       </button>
       {open && (
@@ -145,9 +150,18 @@ function PortRow({ service }: { service: ListeningService }) {
           {service.addresses.length > 1 && field(m.portsAll,
             <span className="font-mono">{service.addresses.join('  ')}</span>)}
           {field(m.portsTerminal, service.terminalId
-            ? <button type="button" className="rounded px-1 text-text hover:bg-bg-hover"
-                onClick={() => selectSession(service.terminalId!)}>{m.portsGoTerminal}</button>
-            /* 没有控制终端的服务（开机自启那些）本来就不属于任何终端——说清楚，别留空。 */
+            /*
+              给出**会话的名字**，而不只是一个「去这个终端」的按钮：这一格要回答的是
+              「这东西是我在哪儿起的」，而 `s_gfl06lugvg` 回答不了，「roost-前端」才行。
+              查不到就显示 id——那条会话已经关掉了，而 id 正是这时候唯一能用的线索。
+            */
+            ? <button type="button" className="rounded px-1 text-left text-text hover:bg-bg-hover"
+                onClick={() => selectSession(service.terminalId!)}>
+                {sessions.find(session => session.id === service.terminalId)?.title ?? service.terminalId}
+                <span className="ml-1 font-mono text-text-dim/60">{service.terminalId}</span>
+              </button>
+            /* 不属于任何 roost 会话（开机自启那些）——说清楚，别留空。tty 认得出时给 tty：
+               那是从系统终端或 ssh 起的，和「认不出」不是一件事。 */
             : <span>{service.tty ?? m.portsNoTerminal}</span>)}
         </div>
       )}

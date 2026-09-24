@@ -3,7 +3,7 @@ import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createServerMonitorProcess, normalizeServiceNames, type ServerMonitor } from '@roost/server-monitor';
-import { listeningServices, listeningSockets, normalizeTty, processTable } from '@roost/terminal-runtime';
+import { listeningServices, listeningSockets, normalizeTty, processTable, shortCommand, terminalEnvOwners } from '@roost/terminal-runtime';
 import type { TerminalService } from '@roost/terminal-runtime';
 import type { WorkspaceStore } from '@roost/workspace-store';
 import { readJson, sendError, HttpInputError } from './http';
@@ -55,22 +55,31 @@ export function createServerMonitorHandler(dataDir?: string, monitor: ServerMoni
         const [rows, probe] = await Promise.all([processTable(), listeningSockets()]);
         if (!probe.supported) { json(res, { supported: false, services: [] }); return true; }
         /*
-          **把 tty 翻译回 roost 的终端。** 「8080 是谁占着」之后紧接着的问题是
-          「那玩意是我在哪儿起的」，而控制终端在进程被过继给 launchd 之后仍然保留，
-          是唯一还能回答这个问题的线索。对不上就是 null——别猜：开机自启的服务本来就
-          不属于任何终端，硬塞一个会把人引到错的地方。
+          **归属回 roost 的终端。** 「8080 是谁占着」之后紧接着的问题是「那玩意是我在哪儿起的」。
+
+          第一版只比 tty，而实测本机 19 个监听端点里 tty 一个都没有——想认出来的恰好是那些
+          已经脱离终端的常驻服务。判据换成会话注入的环境变量之后同一批认出 10 个，tty 退为
+          退路。优先级写在 `listeningServices` 里，两个调用方（这里和 CLI）共用同一份。
+
+          环境变量要 fork 一次 ps（macOS），所以只查真的在监听的那些 pid，不是整张进程表。
         */
-        const byTty = new Map<string, string>();
+        const envOwners = await terminalEnvOwners(probe.rows.map(row => row.pid));
+        const ttyOwners = new Map<string, string>();
         for (const session of terminals.store.loadWorkspace().sessions) {
           const tty = normalizeTty(terminals.runtime.getSession(session.id)?.ptsName);
-          if (tty) byTty.set(tty, session.id);
+          if (tty) ttyOwners.set(tty, session.id);
         }
-        json(res, { supported: true, services: listeningServices({ rows, listeners: probe.rows }).map(service => ({
+        json(res, { supported: true, services: listeningServices({ rows, listeners: probe.rows, envOwners, ttyOwners }).map(service => ({
           ...service,
           // 命令行可能夹带密钥，截断是有界性不是脱敏；父进程同理。
           command: service.command?.slice(0, 512) ?? null,
           parent: service.parent?.slice(0, 256) ?? null,
-          terminalId: service.tty ? byTty.get(service.tty) ?? null : null,
+          /*
+            列表那一行显示的短名。**在这一侧算**：`shortCommand` 住在 terminal-runtime，
+            而那个包不在 `allowed.frontend` 里（它连着 node-pty）。复制一份到前端就会有
+            两份实现各自漂移，所以算好了传过去，完整命令另外一格照旧。
+          */
+          label: shortCommand(service.command),
         })) });
         return true;
       }

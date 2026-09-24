@@ -20,8 +20,18 @@ export type ListeningService = {
   tty: string | null;
   /** 这个进程监听的全部地址。 */
   addresses: string[];
-  /** 对得上的 roost 终端；对不上就是 null——**不猜**。 */
+  /**
+   * 对得上的 roost 会话；对不上就是 null——**不猜**。
+   *
+   * 判据是会话注入的环境变量，tty 只是退路：上线的第一版只比 tty，而实测本机 19 个
+   * 监听端点里 tty 一个都没有命中（常驻服务全都脱离了控制终端），这一列当时全是空的。
+   *
+   * 它可能指向一条**已经关掉**的会话——环境变量活得比会话长。那种情况下 sessions 里
+   * 查不到标题，直接显示 id：那正是「关了之后找不回 id」想要的答案。
+   */
   terminalId: string | null;
+  /** 列表一行用的短命令名，服务端算好（见后端注释）；拿不到进程时为 null。 */
+  label: string | null;
 };
 export type PortsReport = { supported: boolean; services: ListeningService[] };
 export const fetchListeningPorts = (signal: AbortSignal) =>

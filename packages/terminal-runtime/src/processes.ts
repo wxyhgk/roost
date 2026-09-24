@@ -22,6 +22,61 @@ export type ProcRow = { pid: number; ppid: number; args: string; pgid?: number; 
    */
   tty?: string };
 
+/*
+  把进程归属回 roost 的某条终端。
+
+  **tty 这条判据在真机上几乎从不命中。** 实测这台机器 19 个监听端点里 tty 认出 0 个：
+  凡是长期跑着的服务都已经被过继给 launchd 并脱离了控制终端（`ps` 报 `??`），而那恰好
+  就是我们想认出来的那一类——短命的前台进程本来也不需要谁去查它占了哪个端口。
+  也就是说，「从哪条终端起的」这个功能上线时对本机的实际命中率是零。
+
+  **环境变量活得比 tty 久。** 守护进程给每条会话注了 `ROOST_*_TERMINAL=<会话id>`
+  （见 `terminal-daemon/src/owner.ts` 的 `sessionEnv`），子孙进程一律继承，而**过继给
+  launchd 不改环境**。同一批端点里这条判据认出 10 个，其中一个还指向一条已经关掉的
+  会话——而那正是「关了之后找不回 id」想解决的事。
+
+  **只取会话 id，别的一个字节都不留。** 同一份环境里还有 `ROOST_CLAUDE_TOKEN`
+  这类凭据，以及用户自己的密钥。所以这里当场用正则取出 id 就把缓冲区丢掉，
+  绝不把 env 整体返回给调用方——这个函数的返回类型是 `Map<number, string>`，
+  想顺手多带一点出去都没有地方放。
+*/
+const TERMINAL_ENV = /(?:^|\0|\s)ROOST_(?:TERMINAL|CLAUDE_TERMINAL|QWEN_TERMINAL|OPENCODE_TERMINAL)=(s_[A-Za-z0-9]+)/;
+
+export async function terminalEnvOwners(pids: Iterable<number>, signal?: AbortSignal): Promise<Map<number, string>> {
+  const owners = new Map<number, string>();
+  const wanted = [...new Set(pids)].filter(pid => Number.isInteger(pid) && pid > 0);
+  if (!wanted.length || process.platform === 'win32') return owners;
+  if (process.platform === 'linux') {
+    // /proc 上是直接读文件，没有 fork，几百个进程也无所谓。
+    const { readFile } = await import('node:fs/promises');
+    for (const pid of wanted) {
+      try {
+        const match = TERMINAL_ENV.exec(await readFile(`/proc/${pid}/environ`, 'utf8'));
+        if (match) owners.set(pid, match[1]);
+      } catch { /* 进程没了，或不是自己的：跳过，不猜。 */ }
+    }
+    return owners;
+  }
+  /*
+    macOS / BSD：只能靠 `ps -E`，而它**只吐得出自己的进程**——别人的进程不会报错，
+    只是没有 env，于是自然地归到「认不出」。一次一个 pid 是为了能可靠分行：env 的值里
+    可以带换行，批量查一次再按行切会把归属串到隔壁 pid 上。并发 8 路压住 fork 的代价。
+  */
+  const queue = wanted.slice();
+  const worker = async () => {
+    for (let pid = queue.pop(); pid !== undefined; pid = queue.pop()) {
+      try {
+        const { stdout } = await execFileAsync('ps', ['-Eww', '-o', 'command=', '-p', String(pid)],
+          { timeout: 2000, signal, maxBuffer: 1024 * 1024 });
+        const match = TERMINAL_ENV.exec(stdout);
+        if (match) owners.set(pid, match[1]);
+      } catch { /* 同上。超时和进程消失都走这里。 */ }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(8, queue.length) }, worker));
+  return owners;
+}
+
 export async function processTable(signal?: AbortSignal) {
   try {
     if (process.platform === 'win32') {

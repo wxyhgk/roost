@@ -98,14 +98,69 @@ export type ListeningService = {
   /**
    * 控制终端，如 `ttys002`；没有则为 null。
    *
-   * **这是把一个后台服务归属回某条终端的唯一可靠判据。** 父子关系一退出就断（`npm run dev &`
-   * 那次工具调用返回后就被过继给 PID 1），而 tty 在过继之后仍然保留。调用方拿它去比对
-   * 各条 PTY 的 ptsName，就能回答「这个端口是从哪个终端起的」。
+   * 归属判据之一，但**在真机上几乎从不命中**：长期跑着的服务都已经脱离控制终端
+   * （实测 19 个监听端点里 0 个还有 tty）。真正管用的是环境变量，见 `terminalId`。
+   * 这一格仍然留着——它偶尔能认出从系统终端（而非 roost）起的进程，那时 `terminalId`
+   * 是 null 而这里有值，两者说的不是一件事。
    */
   tty: string | null;
+  /**
+   * 这个服务属于 roost 的哪条会话；认不出就是 null。
+   *
+   * **判据的优先级是「环境变量 → tty」，而不是反过来。** 环境变量由守护进程在建会话时注入，
+   * 子孙进程一律继承，过继给 launchd 也不会丢；tty 一脱离终端就没了。用错顺序的代价是
+   * 实测的：只靠 tty 时这一列全空。
+   *
+   * 认不出就是 null，**不猜**。开机自启的服务本来就不属于任何终端，硬塞一个会把人引到
+   * 错的地方去找。
+   */
+  terminalId: string | null;
   /** 这个进程监听的**全部**地址。列表按端口逐行展开，而详情要一次看全。 */
   addresses: string[];
 };
+
+/*
+  给列表一行用的短命令名。
+
+  原样的 argv 在一行里没法看：`node /Users/virtualized/Code/roost/node_modules/.bin/vite`
+  截到一列宽之后剩下 `node /Users/virtualized/Code/roost/n…`——**信息量为零**，
+  真正能认出它的那个词（`vite`）恰好在被截掉的那一头。绝对路径在这个位置全是噪声：
+  「哪个可执行文件」用 basename 就够了，完整路径在展开的详情里另有一份。
+
+  **不能按空格切开再逐段处理。** `ps` 给的是拼平的一行，而可执行文件的路径里就可以有空格
+  （`/Applications/Google Chrome.app/Contents/MacOS/Google Chrome Helper`）；按空格切会把
+  它切成 `/Applications/Google` 和 `Chrome.app/...`，取 basename 之后变成
+  `Google Chrome.app/Contents/MacOS/Goo…`——比不处理还糟。第一版就是这么糟的。
+
+  所以先在**第一个 ` -` 处**把可执行文件和参数分开（几乎所有程序的第一个参数都是选项，
+  或者干脆没有参数），只对前半段取 basename。参数保持原样，只把其中独立成段的绝对路径
+  收短：`--port 5199`、`-c listen_addresses=…` 经常正是分辨同一个程序两个实例的唯一依据
+  （本机就有两个 vite）。
+*/
+export function shortCommand(command: string | null | undefined): string | null {
+  const text = command?.trim();
+  if (!text) return null;
+  const split = text.search(/\s-/);
+  let head = split < 0 ? text : text.slice(0, split);
+  const tail = split < 0 ? '' : text.slice(split + 1);
+  if (head.includes('/')) head = head.slice(head.lastIndexOf('/') + 1);
+  /*
+    `node foo.js` / `Python x.py` 这类里，解释器名本身不区分任何东西——本机 19 个端点里
+    5 个都是 node。丢掉它，把宽度让给真正有信息的那一段。但 `node -e …` 要留着 node：
+    那时 tail 才是参数，head 里只有解释器，丢了就什么都不剩。
+  */
+  const words = head.split(/\s+/);
+  if (words.length > 1 && /^(?:node|python\d?(?:\.\d+)?|ruby|perl|bun|deno)$/i.test(words[0])) {
+    words.shift();
+    head = words.join(' ');
+  }
+  const args = tail
+    ? ' ' + tail.split(/\s+/).map(token =>
+        // 只收独立成段的绝对路径；`--flag=/a/b` 不动——那个路径往往就是这个参数的意思。
+        /^\/\S*\/[^/\s]+$/.test(token) ? token.slice(token.lastIndexOf('/') + 1) : token).join(' ')
+    : '';
+  return (head + args).trim() || null;
+}
 
 const portOf = (address: string): number | null => {
   const match = /:(\d{1,5})$/.exec(address);
@@ -117,6 +172,10 @@ const portOf = (address: string): number | null => {
 export function listeningServices(options: {
   rows: readonly ProcRow[];
   listeners: readonly ListenerRow[];
+  /** pid → 会话 id，取自进程环境（`terminalEnvOwners`）。首选判据。 */
+  envOwners?: ReadonlyMap<number, string>;
+  /** tty → 会话 id，取自各条 PTY 的 ptsName。环境变量认不出时的退路。 */
+  ttyOwners?: ReadonlyMap<string, string>;
 }): ListeningService[] {
   const byPid = new Map(options.rows.map(row => [row.pid, row]));
   // 一个进程的全部监听地址：列表按端口逐行展开，而详情要一次看全。
@@ -134,12 +193,14 @@ export function listeningServices(options: {
     if (seen.has(key)) continue;
     seen.add(key);
     const row = byPid.get(listener.pid);
+    const tty = normalizeTty(row?.tty);
     services.push({
       address: listener.address, port: portOf(listener.address), pid: listener.pid,
       command: row?.args ?? null,
       ppid: row?.ppid ?? null,
       parent: row && byPid.get(row.ppid)?.args ? byPid.get(row.ppid)!.args : null,
-      tty: normalizeTty(row?.tty),
+      tty,
+      terminalId: options.envOwners?.get(listener.pid) ?? (tty ? options.ttyOwners?.get(tty) ?? null : null),
       addresses: allAddresses.get(listener.pid) ?? [listener.address],
     });
   }

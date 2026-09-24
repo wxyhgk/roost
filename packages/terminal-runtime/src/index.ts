@@ -324,9 +324,9 @@ export function createTerminalRuntime(options: TerminalRuntimeOptions) {
  * 前台归属判断对外开放：daemon 的写入闸要用它回答「这些字节会被谁收到」。
  * 三态语义（尤其 `undefined` 必须当成「不写」）见 processes.ts 里那个函数的注释。
  */
-export { foregroundCli, listeningSockets, processTable } from "./processes";
+export { foregroundCli, listeningSockets, processTable, terminalEnvOwners } from "./processes";
 /** 「这个终端里在跑什么、监听哪个端口」。判据是控制终端，不是父子关系——见该文件顶上。 */
-export { terminalServices, listeningServices, normalizeTty, type TerminalProcess, type ListeningService } from "./terminal-services";
+export { terminalServices, listeningServices, normalizeTty, shortCommand, type TerminalProcess, type ListeningService } from "./terminal-services";
 
 export type TerminalRuntime = ReturnType<typeof createTerminalRuntime>;
 

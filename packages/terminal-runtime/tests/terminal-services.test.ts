@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeTty, parseListeners, terminalServices, listeningServices } from '../src/terminal-services.ts';
+import { normalizeTty, parseListeners, terminalServices, listeningServices, shortCommand } from '../src/terminal-services.ts';
 
 const proc = (pid: number, ppid: number, tty: string, args: string) => ({ pid, ppid, tty, args });
 
@@ -163,4 +163,95 @@ test('父进程在 ps 里已经没了时给 null，不给空串', () => {
   const [only] = listeningServices({ rows, listeners: [{ pid: 10, address: '*:80' }] });
   assert.equal(only!.ppid, 999, 'ppid 本身是知道的');
   assert.equal(only!.parent, null, '但那个进程是什么，我们不知道——不知道就说不知道');
+});
+
+/*
+  归属：这个端口是从 roost 的哪条会话起的。
+
+  这几条在意的不是「能不能认出来」，而是**两个判据的优先级**。上线的第一版只比 tty，
+  在真机上一个都认不出（19 个监听端点里 0 个还有控制终端），所以顺序不是风格问题。
+*/
+test('环境变量优先于 tty，不是反过来', () => {
+  const rows = [{ pid: 10, ppid: 1, args: 'node app.js', tty: 'ttys002' }] as never;
+  const [only] = listeningServices({
+    rows, listeners: [{ pid: 10, address: '*:3000' }],
+    envOwners: new Map([[10, 's_env']]),
+    ttyOwners: new Map([['ttys002', 's_tty']]),
+  });
+  assert.equal(only!.terminalId, 's_env', '两个判据都命中时取环境变量那个');
+  assert.equal(only!.tty, 'ttys002', 'tty 本身照常透出——它回答的是另一个问题');
+});
+
+test('环境变量认不出时退回 tty', () => {
+  const rows = [{ pid: 10, ppid: 1, args: 'node app.js', tty: 'ttys002' }] as never;
+  const [only] = listeningServices({
+    rows, listeners: [{ pid: 10, address: '*:3000' }],
+    envOwners: new Map([[99, 's_other']]),
+    ttyOwners: new Map([['ttys002', 's_tty']]),
+  });
+  assert.equal(only!.terminalId, 's_tty');
+});
+
+test('两个判据都认不出就是 null——不猜', () => {
+  /*
+    开机自启的服务本来就不属于任何终端。硬塞一个会把人引到错的地方去找，
+    而「—」是个诚实且有用的答案（本机的 8080/8787 正是这一格）。
+  */
+  const rows = [{ pid: 10, ppid: 1, args: 'caddy run', tty: '??' }] as never;
+  const [only] = listeningServices({
+    rows, listeners: [{ pid: 10, address: '*:8080' }],
+    envOwners: new Map(), ttyOwners: new Map([['ttys002', 's_tty']]),
+  });
+  assert.equal(only!.terminalId, null);
+  assert.equal(only!.tty, null, '`??` 不是一个 tty');
+});
+
+test('一个判据都不给时也不炸，terminalId 为 null', () => {
+  // 调用方可以只要「谁占着这个端口」而不关心归属（两个可选参数都不传）。
+  const rows = [{ pid: 10, ppid: 1, args: 'node app.js', tty: 'ttys002' }] as never;
+  const [only] = listeningServices({ rows, listeners: [{ pid: 10, address: '*:3000' }] });
+  assert.equal(only!.terminalId, null);
+});
+
+/*
+  列表那一行显示的短命令名。
+
+  这不是装饰：截到一列宽之后，能认出这东西的那个词必须还在。
+*/
+test('丢掉可执行文件的路径，留下能认出它的那个词', () => {
+  assert.equal(shortCommand('node /Users/me/Code/roost/node_modules/.bin/vite'), 'vite',
+    '解释器名不区分任何东西（本机 19 个端点里 5 个都是 node），路径是噪声');
+  assert.equal(shortCommand('/opt/homebrew/bin/postgres -D data -p 5433'), 'postgres -D data -p 5433',
+    '参数要留着——同一个程序的两个实例往往只靠参数分得开');
+});
+
+test('可执行文件路径里有空格也要收对', () => {
+  /*
+    **这是第一版真正错掉的那一格。** 按空格切开再逐段取 basename，
+    `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` 会变成
+    `Google Chrome.app/Contents/MacOS/Goo…`——比不处理还糟。
+  */
+  assert.equal(
+    shortCommand('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --headless=new --remote-debugging-port=9357'),
+    'Google Chrome --headless=new --remote-debugging-port=9357');
+});
+
+test('解释器后面紧跟选项时不能把解释器丢掉', () => {
+  // `node -e …` 丢了 node 就只剩一串 `-e`，什么都认不出。
+  assert.equal(shortCommand('node -e require("http").createServer()'), 'node -e require("http").createServer()');
+  assert.equal(shortCommand('python -m retainpdf_ai'), 'python -m retainpdf_ai');
+  // 大小写也算：macOS 自带的那个叫 `Python`（本机实测 serve_static.py 那一行）。
+  assert.equal(shortCommand('/Library/Developer/CommandLineTools/usr/bin/Python serve_static.py --host 0.0.0.0'),
+    'serve_static.py --host 0.0.0.0');
+});
+
+test('参数里独立成段的绝对路径收短，但 --flag=/a/b 不动', () => {
+  assert.equal(shortCommand('caddy run --config /etc/caddy/Caddyfile'), 'caddy run --config Caddyfile');
+  assert.equal(shortCommand('app --socket=/tmp/x/app.sock'), 'app --socket=/tmp/x/app.sock',
+    '等号后面的路径往往就是这个参数的意思所在，收短了会认错');
+});
+
+test('没有命令行时给 null，不给空串', () => {
+  // 空串会在界面上画成一个空格子，而「进程已退出」是调用方要自己决定怎么说的话。
+  for (const value of [null, undefined, '', '   ']) assert.equal(shortCommand(value), null);
 });
