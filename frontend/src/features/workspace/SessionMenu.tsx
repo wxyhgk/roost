@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { IconClose, IconCopy, IconDots, IconEdit, IconNote, IconPin } from "../../shared/icons";
 import { IconButton } from "../../shared/ui/IconButton";
 import { useWorkspace } from "../../shared/store";
+import { fetchResumePlan } from "../../shared/api/session";
 import { writeClipboard } from "../../shared/clipboard";
 import type { Session } from "../../shared/types";
 import { t } from "@roost/i18n";
@@ -28,6 +29,24 @@ export function SessionMenu({ session, onRename, onNote, onOpenChange }: {
   const pinned = pinnedSessionIds.includes(session.id);
   const [menuOpen, setMenuOpen] = useState(false);
   const [killOpen, setKillOpen] = useState(false);
+  /*
+    **会话 id 要随手可取。** 终端上那个 × 走的是删除，删完之后想在自己的 shell 里
+    `claude --resume <id>` 接着跑，就得先去对话目录里翻出那条对话、展开详情才能拿到原生
+    id——而那一路全是为「在网页里看」设计的。所以在这儿直接给。
+
+    恢复命令由**服务端**拼（`GET /api/sessions/:id/resume`）：哪个 CLI、参数怎么写、
+    这条会话还能不能接，都是服务端才知道的事，前端拼等于把那套判断复制一遍。
+  */
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const copy = (key: string, value: () => Promise<string | null> | string | null) => () => {
+    void (async () => {
+      const text = await value();
+      if (!text || !(await writeClipboard(text))) { setCopiedKey(null); return; }
+      setCopiedKey(key);
+      if (copyTimer.current !== null) window.clearTimeout(copyTimer.current);
+      copyTimer.current = window.setTimeout(() => setCopiedKey(null), 1200);
+    })();
+  };
   const [copied, setCopied] = useState(false);
   const copyTimer = useRef<number | null>(null);
   useEffect(() => () => { if (copyTimer.current !== null) window.clearTimeout(copyTimer.current); }, []);
@@ -82,6 +101,22 @@ export function SessionMenu({ session, onRename, onNote, onOpenChange }: {
                     copyTimer.current = window.setTimeout(() => setCopied(false), 1200);
                   })();
                 }}
+              >
+                <IconCopy />
+              </SessionMenuItem>
+              <SessionMenuItem
+                label={copiedKey === "id" ? t.session.copyIdDone : t.session.copyId}
+                onSelect={copy("id", () => session.id)}
+              >
+                <IconCopy />
+              </SessionMenuItem>
+              <SessionMenuItem
+                label={copiedKey === "resume" ? t.session.copyResumeDone : t.session.copyResume}
+                onSelect={copy("resume", async () => {
+                  // 接不上时（CLI 不支持、没有原生会话）服务端会说，这里不编一条假命令。
+                  const plan = await fetchResumePlan(session.id).catch(() => null);
+                  return plan?.available ? plan.command.join(" ") : null;
+                })}
               >
                 <IconCopy />
               </SessionMenuItem>
