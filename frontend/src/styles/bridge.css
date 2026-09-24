@@ -1,0 +1,17 @@
+/*
+  **给 JavaScript 读的别名，不是给 CSS 用的。**
+
+  `shared/theme.tsx` 的 `xtermThemeFromCss` 用 `getComputedStyle` 读 `--bg` / `--text` /
+  `--accent` / `--terminal-selection`，把它们喂给 xterm——终端的配色就是这么跟着主题走的。
+
+  所以这几行**不能当成普通的样式删掉或改名**：它们没有任何 CSS 规则在用，静态分析看起来
+  像死代码，而删掉的后果是终端配色整个失效。单独成一个文件就是为了让这件事一眼可见。
+*/
+/* Aliases for xtermThemeFromCss() which reads --bg, --text, --accent, --border */
+:root {
+  --bg: var(--color-bg);
+  --text: var(--color-text);
+  --accent: var(--color-accent);
+  --border: var(--color-border);
+  --terminal-selection: var(--color-terminal-selection);
+}

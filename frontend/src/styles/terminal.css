@@ -1,0 +1,125 @@
+/*
+  终端自己的东西：16 色 ANSI 调色板（深浅各一套），以及 xterm 滚动条的覆盖。
+
+  中间那段全局 `::-webkit-scrollbar` 也留在这儿——它和下面 `.term-fit` 那几条是同一件事
+  的两端（页面滚动条和终端内滚动条要长得一样），拆开反而要在两个文件里对着改。
+*/
+html[data-terminal-theme="dark"] {
+  --terminal-bg: #111113;
+  --terminal-fg: #f5f5f7;
+  --terminal-selection: #48484a;
+  --terminal-black: #000000;
+  --terminal-red: #cd3131;
+  --terminal-green: #0dbc79;
+  --terminal-yellow: #e5e510;
+  --terminal-blue: #2472c8;
+  --terminal-magenta: #bc3fbc;
+  --terminal-cyan: #11a8cd;
+  --terminal-white: #e5e5e5;
+  --terminal-bright-black: #666666;
+  --terminal-bright-red: #f14c4c;
+  --terminal-bright-green: #23d18b;
+  --terminal-bright-yellow: #f5f543;
+  --terminal-bright-blue: #3b8eea;
+  --terminal-bright-magenta: #d670d6;
+  --terminal-bright-cyan: #29b8db;
+  --terminal-bright-white: #ffffff;
+}
+html[data-terminal-theme="light"] {
+  --terminal-bg: #ffffff;
+  --terminal-fg: #000000;
+  --terminal-selection: #d1d1d6;
+  --terminal-black: #000000;
+  --terminal-red: #cd3131;
+  --terminal-green: #00bc00;
+  --terminal-yellow: #949800;
+  --terminal-blue: #0451a5;
+  --terminal-magenta: #bc05bc;
+  --terminal-cyan: #0598bc;
+  --terminal-white: #555555;
+  --terminal-bright-black: #666666;
+  --terminal-bright-red: #a51d2d;
+  --terminal-bright-green: #107b2f;
+  --terminal-bright-yellow: #7a6300;
+  --terminal-bright-blue: #0451a5;
+  --terminal-bright-magenta: #8b0f8b;
+  --terminal-bright-cyan: #04788f;
+  --terminal-bright-white: #a5a5a5;
+}
+.term-fit .xterm,
+.term-fit .xterm-viewport {
+  height: 100%;
+  width: 100%;
+  background: var(--terminal-bg, var(--color-bg));
+}
+.term-fit .xterm-viewport {
+  overflow-x: hidden;
+  overflow-y: auto;
+  background-color: var(--terminal-bg, var(--color-bg)) !important;
+}
+.term-fit canvas {
+  display: block;
+}
+
+/* Apple-style slim scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-scrollbar) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-scrollbar);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-scrollbar-hover);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/*
+  xterm custom DOM scrollbar override (inline styles from xterm.js)
+
+  宽度提成变量，是因为**算列数的那边也要用同一个数**：xterm 6 用的是 VS Code 那套
+  ScrollableElement，滚动条浮在内容上面、不占布局宽度，所以 fit 必须自己给它让出位置。
+  原来 CSS 写 6、fit.ts 写死 14，两边不一致，右边就白白多空掉一整列
+  （实测 box=1068 cell=7.8：让 14 得 135 列，让 6 得 136 列）。
+*/
+:root {
+  --terminal-scrollbar-width: 6px;
+}
+.term-fit .xterm-scrollable-element > .scrollbar {
+  width: var(--terminal-scrollbar-width) !important;
+}
+.term-fit .xterm-scrollable-element > .scrollbar > .slider {
+  background: var(--color-scrollbar) !important;
+  border-radius: 3px !important;
+  min-height: 24px !important;
+}
+.term-fit .xterm-scrollable-element > .scrollbar > .slider:hover {
+  background: var(--color-scrollbar-hover) !important;
+}
+.term-fit .xterm-scrollable-element > .shadow {
+  display: none !important;
+}
+
+/* Shiki code highlight output */
+/*
+ * Markdown 预览的排版。
+ *
+ * 颜色一律走设计令牌，一个都不硬编码：这个面板跟随明暗主题，
+ * 写死颜色的结果是浅色下一片黑、或深色下一片白。
+ * 宽内容（表格、代码块）各自横向滚动，不允许把整个面板撑出横向滚动条。
+ */

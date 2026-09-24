@@ -1,0 +1,196 @@
+/*
+  设计令牌：颜色、字体族、字号体系，以及深浅两套主题。
+
+  **这是整套视觉的唯一真源。** 组件里不该再出现第二个写死的颜色或尺寸——底下那几个
+  文件和所有组件都只引用这里的变量。改配色、改主题、改字号体系，都只改这一个文件。
+*/
+@theme {
+  /* Apple-style monochrome, dark */
+  --color-bg: #111113;
+  --color-bg-panel: #202023;
+  --color-bg-raised: #2c2c2e;
+  /*
+    悬停/选中/分隔线改成**半透明叠加**，不再是实心灰。
+
+    实心灰只在自己那一层的背景上对；面板、外壳、浮动窗口三种底色不一样，同一个
+    `bg-bg-hover` 压上去深浅就不一致，于是只能靠描边把每一块框住——`border-border`
+    在这份代码里用了 172 次，界面看起来全是格子。叠加层则自动跟着它压在谁身上走。
+
+    分隔线一并调淡（原来 #3a3a3e ≈ 白 18%，现在 10%）：用填充和留白分隔，线只在真的
+    需要时出现。
+  */
+  --color-bg-hover: rgba(255, 255, 255, 0.075);
+  --color-bg-active: rgba(255, 255, 255, 0.12);
+  --color-border: rgba(255, 255, 255, 0.10);
+  --color-terminal-selection: #48484a;
+  --color-scrollbar: rgba(255, 255, 255, 0.25);
+  --color-scrollbar-hover: rgba(255, 255, 255, 0.40);
+  --color-text: #f5f5f7;
+  /* 次要文字用同一个前景色调透明度，而不是另换一个灰：换灰会在不同底色上偏色。 */
+  --color-text-dim: rgba(255, 255, 255, 0.60);
+  /*
+    **强调色从纯白换成系统蓝。**
+
+    机制本来就在——`--color-accent` 在 61 处用着——只是值是 `#ffffff`，于是选中态是灰底
+    加灰边，眼睛没有落点。这一版仍然是单色设计，只是给「选中/进行中」这一件事留一个颜色。
+
+    注意 `shared/theme.tsx` 的 `xtermThemeFromCss` 把 `--accent` 当光标色的兜底
+    （`--terminal-fg || --accent`）。两个主题都定义了 `--terminal-fg`，所以兜底轮不到；
+    以后加一个不定义它的终端配色时，光标会变成这个蓝色。
+  */
+  --color-accent: #0a84ff;
+  /*
+    **抬升面的内描边高光。**
+
+    一块比背景浅的方块，只靠「更浅」是读不出厚度的——深色界面里两块深灰挨着，边界全靠
+    那根 1px 的分隔线，而分隔线是「这里有条缝」不是「这块浮起来了」。真正给出厚度的是
+    沿着上沿那道极细的亮边：现实里的抬升面会在朝光的那一侧收到一点高光。
+
+    用 `inset 0 0 0 .7px` 而不是 `border`：border 会挤占布局盒，而且圆角处会和内容裁切
+    打架；内阴影画在盒子里侧，不影响任何尺寸。
+  */
+  --color-rim: rgba(255, 255, 255, 0.14);
+  /*
+    抬升面不是纯色，是一道 160° 的微渐变——上偏亮、下偏暗，均值仍是 `--color-bg-raised`。
+
+    差别只有百分之几的亮度，但它让一整块面不再是「一片死灰」：同一块表面上有明暗，
+    眼睛才读得出它是个有朝向的物体。这是「高级感」里最便宜的一项。
+  */
+  --surface-raised: linear-gradient(160deg, #333337, #262629);
+  --color-bar: #1c1c1e;
+  --color-bar-text: #ffffff;
+  --color-bar-dim: rgba(255, 255, 255, 0.6);
+  /* 外壳上的悬停底与分隔线。和 --color-bar-dim 一样按主题写死字面值——
+     仓库里所有半透明都是这么定的，不用相对颜色语法。 */
+  --color-bar-hover: rgba(255, 255, 255, 0.1);
+  --color-bar-line: rgba(255, 255, 255, 0.15);
+  --color-danger: #ff453a;
+  --color-success: #30d158;
+  --color-warning: #ffd60a;
+  --color-danger-soft: rgba(255, 69, 58, 0.12);
+  --color-success-soft: rgba(48, 209, 88, 0.12);
+  --color-warning-soft: rgba(255, 214, 10, 0.12);
+  /*
+    字体回退是**按字形**发生的，不是按整段文字：拉丁字母从前面的西文字体取，中文取不到
+    就继续往后找。所以中日韩字体放在末尾是对的，而**不写**它们并不等于「用系统默认」
+    ——Windows 上那多半是宋体，正文里看着很刺眼。
+
+    原来这两条是纯 macOS 视角写的：Windows 上 -apple-system / SF Pro Text / SF Mono
+    一个都没有，而中文完全没有指定。
+  */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "Helvetica Neue",
+    system-ui, ui-sans-serif,
+    "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+  /*
+    IBM Plex Mono 排第一，不再排在 ui-monospace 后面。
+
+    它是 index.html 里**真的下载了**的那一份（终端字体栈的第一位也是它）。排在
+    ui-monospace 之后意味着凡是系统自带等宽字体的平台都用不到它——白下一份字体，还让
+    界面里的等宽文字和终端里的长得不一样。
+  */
+  --font-mono: "IBM Plex Mono", "SF Mono", ui-monospace, Consolas, "Liberation Mono",
+    "PingFang SC", "Microsoft YaHei", monospace;
+  /*
+    字号体系。**这里原来只有两档有名字，实际在用的有七档**——除了下面三个令牌，
+    代码里还有 77 处 `text-xs`(12px)、32 处 `text-sm`(14px) 和几处 16/18px，全是
+    Tailwind 的默认值。后果不是「没有层次」，是**没人管**：11 和 12 混用、13 和 14
+    混用，差 1px 不携带任何含义，用哪个全看写的人随手。那 109 处已经并回三档，
+    `text-xs`/`text-sm` 现在是 0 处——**新代码只在这三个令牌里挑**：
+
+      11px  --text-caption   元数据、说明、状态读数（macOS Small）
+      13px  --text-body      正文与控件（macOS Regular）——默认选它
+      15px  --text-title     对话框与区块标题（macOS Title 3）
+
+    **标题和「身份」是两个角色，别混。** 「设置」「资料库」「对话目录」是标题，走
+    `--text-title`；而模态头栏里的**文件名、路径**是这个窗口在说「我是关于哪个东西的」，
+    那是身份，走 `--text-body`（通常还配等宽）。四个 agent 并行收敛时正是在这里判成了
+    两派——一派按「它在对话框头上所以是标题」，一派按「它是个文件名所以是正文」。
+    两边各自局部自洽，合起来就不一致了。
+
+    **12 和 14 没有被扶正成令牌**：给一个没有语义差的尺寸起名字，等于鼓励继续在
+    11/12 和 13/14 之间随手挑。它们被并回了 11 和 13，不是被命名。
+
+    **「二级按钮用几号」这个问题不成立**，因为没有「二级按钮」这个角色。并档时四路
+    并行各判各的，看着像分歧，把角色摆出来之后三方是自发一致的：
+
+      说明、标签、状态、元数据、筛选 chip  → caption
+      输入框（用户要往里打字）              → body
+      和正文同排的行内动作（重试/确认）      → body，**跟随它所在那一行**
+
+    只包图标的按钮身上那个字号类不参与渲染（图标由 size-* 定尺寸），别拿它当证据去
+    推断某个目录「选了 11」或「选了 13」——server-monitor 那个共用常量 8 处用法里有
+    7 处如此，唯一有字的那处才是它真正要服务的对象。
+
+    16/18px 不在体系内：那三处对话框标题是 Tailwind 默认值，已经换成 --text-title。
+    剩下几处刻意在体系外，都是**另一根轴**，不要并进来：仪表数字（text-lg/2xl/3xl）、
+    小于 caption 的微型文字（9/10px 的角标与 chip）、以及代码块的 12.5px（见
+    FileGlyphs.tsx，和 index.css 两处耦合）。
+  */
+  --text-caption: 11px;
+  --text-caption--line-height: 1.45;
+  --text-body: 13px;
+  --text-body--line-height: 1.45;
+  --text-title: 15px;
+  --text-title--line-height: 1.3;
+}
+/* Dark is the base; the light block below overrides. Shadows are plain properties, not
+   @theme tokens, because Tailwind inlines a theme shadow into the utility and would never
+   read the light override. */
+:root {
+  color-scheme: dark;
+  /*
+    浮层加一圈 0.5px 的半透明内描边。
+
+    纯阴影在深色背景上几乎看不出层次——两块都是深灰，阴影又被背景吃掉，于是弹层看着像
+    贴在页面上而不是浮在上面。那圈极细的亮边是「它有厚度」的主要信号，阴影只负责距离感。
+  */
+  --shadow-pop: inset 0 0 0 0.7px var(--color-rim), 0 12px 32px rgba(0, 0, 0, 0.36);
+  --shadow-modal: inset 0 0 0 0.7px var(--color-rim), 0 24px 60px rgba(0, 0, 0, 0.48);
+}
+html[data-theme="light"] {
+  /* Strict black & white: surfaces white, text black, hairlines black-based.
+     Functional tones collapse to black; dark theme keeps its hues. */
+  --color-bar: #e7e7eb;
+  --color-bar-text: #1c1c1e;
+  --color-bar-dim: rgba(28, 28, 30, 0.62);
+  --color-bar-hover: rgba(28, 28, 30, 0.08);
+  --color-bar-line: rgba(28, 28, 30, 0.14);
+  --color-bg: #f4f4f6;
+  --color-bg-panel: #ffffff;
+  --color-bg-raised: #ffffff;
+  /* 同深色，改成黑色叠加；字面值按主题各写一份，不用相对颜色语法（仓库惯例）。 */
+  --color-bg-hover: rgba(0, 0, 0, 0.045);
+  --color-bg-active: rgba(0, 0, 0, 0.08);
+  --color-border: rgba(0, 0, 0, 0.12);
+  --color-terminal-selection: #d1d1d6;
+  --color-text: #000000;
+  --color-text-dim: rgba(0, 0, 0, 0.58);
+  /*
+    **浅色不要强调色。** 上面那句「严格黑白」是这套浅色的设计声明，不是疏漏；
+    半透明用黑色 alpha 写字面值，同样属于黑白。
+
+    一度给它加过 #007aff，和深色对齐。代价说清楚：浅色的选中态因此仍然是灰底加灰边，
+    不像深色那样有个蓝环可以落眼。这是知情之后的取舍——保住「浅色是严格黑白」这条声明，
+    比两个主题的选中态长得一模一样更重要。
+  */
+  --color-accent: #000000;
+  /*
+    浅色这一侧 rim 是**黑的**，而且淡得多：白底上那道「高光」其实是一圈极淡的暗边，
+    用白色描边在白面板上什么都看不见。渐变方向同深色，上偏亮下偏暗。
+  */
+  --color-rim: rgba(0, 0, 0, 0.055);
+  --surface-raised: linear-gradient(160deg, #ffffff, #f6f6f8);
+  --color-scrollbar: rgba(0, 0, 0, 0.25);
+  --color-scrollbar-hover: rgba(0, 0, 0, 0.40);
+  --color-danger: #c62828;
+  --color-success: #218739;
+  --color-warning: #9a6700;
+  --color-danger-soft: rgba(198, 40, 40, 0.10);
+  --color-success-soft: rgba(33, 135, 57, 0.10);
+  --color-warning-soft: rgba(154, 103, 0, 0.12);
+  color-scheme: light;
+  /* White surfaces need far less alpha than the dark ramp to read as elevation. */
+  /* 浅色底上那圈描边要是黑的，否则在白面板上看不见。 */
+  --shadow-pop: inset 0 0 0 0.7px var(--color-rim), 0 12px 32px rgba(20, 30, 60, 0.14);
+  --shadow-modal: inset 0 0 0 0.7px var(--color-rim), 0 24px 60px rgba(20, 30, 60, 0.20);
+}

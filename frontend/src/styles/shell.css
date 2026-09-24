@@ -1,0 +1,49 @@
+/*
+  外壳的骨架：html/body/#root 的尺寸，以及分栏的拖动条。
+
+  变化原因是「整个应用怎么铺在视口里」——和配色、和某个特性的样式都不相干。
+*/
+html,
+body,
+#root {
+  height: 100%;
+  min-height: 100dvh;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 13px;
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Resize handle pseudo-element */
+.resize {
+  width: 5px;
+  background: transparent;
+  position: relative;
+}
+.resize::after {
+  content: "";
+  position: absolute;
+  inset: 0 2px;
+  background: var(--color-border);
+}
+.resize:hover::after,
+.resize[data-resize-handle-active]::after {
+  background: var(--color-accent);
+}
+
+/* xterm.js internal DOM */
+/*
+  16 色 ANSI 调色板。
+
+  **以前一个都没传给 xterm**，于是它一直用自带的那套默认值——那套是照深色背景配的。
+  浅色主题下亮白、亮黄、亮青落在白底上基本看不见，唯一顶着的是 `minimumContrastRatio`，
+  而界面上那个「增强文字对比度」开关正是用来关掉它的：一关，保护整个撤除。
+
+  两套都不是我配的：深色用 VS Code Dark+ 的终端 ANSI，浅色用 Light+ 的。亮色在浅色那套
+  里比常色**更深**，这不是笔误——白底上「更亮」只能靠更深来实现。
+*/

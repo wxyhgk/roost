@@ -1,0 +1,57 @@
+/*
+  字体的加载。和设计无关：换字体、加子集、调 `font-display` 都只动这个文件。
+
+  **`url()` 是相对这个文件解析的，所以是 `../fonts/`。** 从 index.css 搬过来时忘了改，
+  Vite 因此解析不到、把字面路径原样写进了产物——线上四个字体全部 404，而且不报错，
+  只是字重悄悄退回系统字体。是拆分前后逐字节比对构建产物时抓到的。
+*/
+/*
+  IBM Plex Mono 自托管。**不要改回 Google Fonts 的外链。**
+
+  原来 index.html 里是一条指向 fonts.googleapis.com 的**渲染阻塞**样式表。它有两个问题，
+  而且都不是理论上的：
+
+  1. 国内访问连不上那两个域名，而渲染阻塞的样式表指向一个不可达的主机时，浏览器会一直等到
+     超时才开始画——白屏好几秒。这台服务器在美国、使用者在国内，正是这个组合。
+  2. 桌面版的 CSP 是 `style-src 'self' 'unsafe-inline'` + `font-src 'self' data:`
+     （desktop/runtime/server.mjs），两个 fonts.* 域名都不在里面，所以桌面版**永远**
+     加载不到它——Windows 上终端字母之间空一大格那个 bug 就是从这儿来的。
+
+  文件放在 src/ 而不是 public/：public/ 下的东西 Caddy 按 `no-store` 发，字体会每次打开都
+  重下；走 Vite 的哈希资产管线才落到 /assets/ 那边的 `public, max-age=31536000, immutable`。
+
+  只取 latin 和 latin-ext 两个子集（各 ~9 KB，四个文件共 37 KB）。cyrillic 和 vietnamese
+  对终端是长尾，需要时再加；unicode-range 原样保留，所以缺的字形会正常回落到栈里下一位。
+*/
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../fonts/ibm-plex-mono-400-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../fonts/ibm-plex-mono-400-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../fonts/ibm-plex-mono-500-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../fonts/ibm-plex-mono-500-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}

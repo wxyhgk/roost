@@ -1,0 +1,93 @@
+/*
+  `@layer base` 的元素级默认值，以及触屏/粗指针下的行为调整。
+*/
+@layer base {
+  :where(button):not(:disabled) {
+    cursor: pointer;
+  }
+  :where(button, a, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 1px;
+  }
+  :where(.xterm, .cm-editor) :focus-visible {
+    outline: none;
+  }
+}
+/* Monochrome file-type icons under the light B/W theme. Presentation
+   attributes lose to real CSS rules, so fills/strokes follow the text
+   color; transparent parts (fill="none") are left alone. */
+html[data-theme="light"] .mono-icon svg [fill]:not([fill="none"]) {
+  fill: currentColor;
+}
+html[data-theme="light"] .mono-icon svg [stroke]:not([stroke="none"]) {
+  stroke: currentColor;
+}
+.bar-chrome :focus-visible {
+  outline-color: var(--color-bar-text);
+}
+
+
+/* Mouse focus is persistent; only keyboard-visible focus should reveal actions.
+   Keep transparent buttons in the tab order, but prevent invisible pointer hits. */
+.session-row .session-toolbar {
+  width: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.session-row:is(:hover, :focus-visible, :has(.session-toolbar :focus-visible), [data-toolbar-open="true"]) .session-toolbar {
+  width: 44px;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.session-row:is(:hover, :focus-visible, :has(.session-toolbar :focus-visible), [data-toolbar-open="true"]) .session-pin {
+  visibility: hidden;
+}
+
+/*
+ * 触屏适配。刻意按能力查询而不是按屏幕宽度：触屏笔记本、外接鼠标的平板都存在，
+ * 「屏幕小」和「用手指」是两件事。
+ */
+
+/* 没有悬停就没有「移上去才出现」这回事。会话行的操作入口（一个 ⋯ 菜单）
+   必须常驻，否则手机上重命名、结束会话这些动作根本够不着。 */
+@media (hover: none) {
+  .session-row .session-toolbar {
+    width: 44px;
+    opacity: 1;
+    pointer-events: auto;
+  }
+  /* 工具条常驻会占住右上角。置顶标记不能像悬停展开时那样直接藏掉——
+     那等于手机上永远看不到置顶状态，所以挪到工具条左边。 */
+  .session-row .session-pin {
+    right: 3.5rem;
+    visibility: visible;
+  }
+}
+
+/* 只在触屏上出现的入口。默认藏起来，避免在桌面上多一个没用的按钮。 */
+.touch-only {
+  display: none;
+}
+@media (pointer: coarse) {
+  .touch-only {
+    display: inline-flex;
+  }
+}
+
+/* 手指点不准 20px。只放大点击区域，图标本身不变：min-* 会盖过更小的 height/width，
+   不必和工具类打特异性官司。 */
+@media (pointer: coarse) {
+  .icon-button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* 卡片只用两个信号：背景填充 = 选中，logo 角上那一个点 = 会话状态（含未读）。
+   旧实现里未读画的是整卡描边 + 背景，和选中同属「面」且同为 accent 色；
+   呼吸动画又只在「未读且正在输出」时生效，输出一停就静止在 opacity .7，
+   边框比选中态还亮（#5e5e61 vs #3a3a3e），于是看起来像被选中了。 */
+
+/* Hand-written so the box-shadow reads the variable at use time and follows the theme. */
