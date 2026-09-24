@@ -1,5 +1,13 @@
 export const serverMonitor = {
   title: '服务器状态', overview: '概览', cpu: 'CPU', gpu: 'GPU', network: '网络', disks: '磁盘', processes: '进程', services: '服务',
+  portsLoading: "正在查看端口…",
+  portsFailed: "取不到端口信息",
+  portsUnsupported: "这台机器上看不到端口（没有 lsof，或被策略挡住）",
+  portsEmpty: "没有在监听的端口",
+  portsScope: "只列你自己起的进程",
+  portsRefresh: "重新查看",
+  portsGone: "（进程已退出）",
+  ports: "端口",
   expand: '展开服务器状态', collapse: '收起服务器状态', refresh: '刷新服务器状态', refreshHint: '可见时每 5 秒刷新', loading: '正在读取服务器状态…', failed: '暂时无法读取，正在重试', retry: '重试', stale: '上次采样', unavailable: '暂不支持或无法读取',
   hostname: '主机', system: '系统', uptime: '运行时间', accessAddress: '访问地址', cpuUsage: 'CPU 占用', memory: '内存', swap: '交换空间', used: '已用', available: '可用', total: '总计',
   busyCores: (used: string, total: number) => `约 ${used} / ${total} 核`, logical: '逻辑核心', physical: '物理核心', availableCores: '可用并行度', cores: '每核负载', load: '负载均值 · 1 / 5 / 15 分钟', warming: '等待第二次采样',

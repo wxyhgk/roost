@@ -187,14 +187,30 @@ export function foregroundCli(ptyPid: number, rows: ProcRow[], definitions?: rea
  *
  * 拿不到就返回空数组：没有端口信息时仍然可以列出进程，那比整个功能失败有用。
  */
-export async function listeningSockets(signal?: AbortSignal): Promise<ListenerRow[]> {
-  if (process.platform === "win32") return [];
+/**
+ * 此刻在监听 TCP 的进程。
+ *
+ * **「一个都没有」和「我们看不到」必须分开报。** lsof 找不到匹配时以 1 退出且不输出，
+ * 而没装 lsof、被策略挡住、超时，也都是非零退出——把它们一律当成空列表，界面就会把
+ * 「看不到」显示成「什么都没跑」，那是在撒谎。判据：退出码 1 且没有任何输出才算
+ * 「确实没有在监听的」。
+ *
+ * `lsof` 只列当前用户自己的进程，不需要 sudo——所以这里给出的是「我起的服务」，
+ * 不是整台机器的全部。这一点要在界面上说清楚。
+ *
+ * 本机实测约 28ms，所以按需调用绰绰有余；**不要拿它做常驻轮询**——进程多的机器上它会变味。
+ */
+export type ListenerProbe = { supported: boolean; rows: ListenerRow[] };
+
+export async function listeningSockets(signal?: AbortSignal): Promise<ListenerProbe> {
+  if (process.platform === "win32") return { supported: false, rows: [] };
   try {
     const { stdout } = await execFileAsync("lsof", ["-nP", "-iTCP", "-sTCP:LISTEN"],
       { timeout: 3000, signal, maxBuffer: 4 * 1024 * 1024 });
-    return parseListeners(stdout);
-  } catch {
-    // lsof 没装、被策略挡住、或者一个监听都没有时它以非零退出——都按「不知道端口」处理。
-    return [];
+    return { supported: true, rows: parseListeners(stdout) };
+  } catch (error) {
+    const failure = error as { code?: unknown; stdout?: unknown };
+    if (failure.code === 1 && !String(failure.stdout ?? "").trim()) return { supported: true, rows: [] };
+    return { supported: false, rows: [] };
   }
 }

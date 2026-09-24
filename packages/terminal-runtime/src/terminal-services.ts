@@ -73,3 +73,50 @@ export function terminalServices(options: {
   return services.sort((a, b) =>
     (b.listening.length > 0 ? 1 : 0) - (a.listening.length > 0 ? 1 : 0) || a.pid - b.pid);
 }
+
+/*
+  整机视角：**哪个端口上跑着什么**。
+
+  上面那个 `terminalServices` 是「这条终端起了什么」，按 tty 过滤，刻意不看别人的东西。
+  但人想知道「8080 是谁占着」的时候，往往正是因为那个东西**不是从当前这条终端起的**
+  ——可能是上周起的、可能是 launchd 拉起来的。所以这里不按 tty 过滤。
+
+  按端口排，不按进程排：人手里有的线索是端口号（「8080 被占了」），而不是 pid。
+  一个进程监听多个端口就出现多行，那是对的——它们是各自独立的答案。
+*/
+export type ListeningService = {
+  /** lsof 报的原样地址，如 `*:5173`、`127.0.0.1:8787`、`[::1]:3000`。 */
+  address: string;
+  /** 从地址里解析出的端口。**解析不出就是 null，不猜**——宁可少一列，不要给个错数字。 */
+  port: number | null;
+  pid: number;
+  /** 完整命令行，调用方自己截断。拿不到进程时为 null（lsof 看得见但 ps 里已经没了）。 */
+  command: string | null;
+};
+
+const portOf = (address: string): number | null => {
+  const match = /:(\d{1,5})$/.exec(address);
+  if (!match) return null;
+  const port = Number(match[1]);
+  return Number.isInteger(port) && port > 0 && port <= 65535 ? port : null;
+};
+
+export function listeningServices(options: {
+  rows: readonly ProcRow[];
+  listeners: readonly ListenerRow[];
+}): ListeningService[] {
+  const byPid = new Map(options.rows.map(row => [row.pid, row.args]));
+  const seen = new Set<string>();
+  const services: ListeningService[] = [];
+  for (const listener of options.listeners) {
+    // 同一个 pid 在同一个地址上可能被 lsof 报多行（IPv4/IPv6 各一条之类），去重。
+    const key = `${listener.pid}\u0000${listener.address}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    services.push({ address: listener.address, port: portOf(listener.address),
+      pid: listener.pid, command: byPid.get(listener.pid) ?? null });
+  }
+  // 端口升序；解析不出端口的排在最后——它们是例外，不该插在中间打断扫视。
+  return services.sort((a, b) =>
+    a.port === b.port ? a.pid - b.pid : a.port === null ? 1 : b.port === null ? -1 : a.port - b.port);
+}

@@ -39,7 +39,7 @@ import { createIsolatedFileWatcher } from './watcher-process';
 import { createAiSessionBridge, AiSessionBridgeError, type AiSessionBridge } from "@roost/ai-session-bridge";
 import { createSessionResume, resumePlanFor, type ResumePlan } from "./session-resume.ts";
 import { DEFAULT_CLI_DEFINITIONS } from "@roost/cli-adapters";
-import { listeningSockets, processTable, terminalServices } from "@roost/terminal-runtime";
+import { listeningSockets, listeningServices, processTable, terminalServices } from "@roost/terminal-runtime";
 /* 前端拿到 GET .../resume 之后按钮就不该出现了；走到这里说明中间变了，文案给的是那个变化。 */
 const RESUME_UNAVAILABLE = {
   no_conversation: "this terminal has no AI conversation to resume",
@@ -476,6 +476,30 @@ export function createBackendServer({ store, runtime, workspaceRoot, access, aut
       **按需，不轮询**：lsof 实测 41ms（连 ps 一起），点一下绰绰有余；常驻会在进程多的
       机器上变味。
     */
+    /*
+      整机在监听的端口 → 各是谁。
+
+      和 `/api/sessions/:id/processes` 不同，那条按 tty 过滤、只看这条终端起的东西。
+      而人想知道「8080 是谁占着」的时候，往往正因为那玩意**不是从当前终端起的**
+      ——上周起的、或者 launchd 拉起来的。
+
+      **按需调用，不做常驻轮询**：它要 fork 一次 lsof，本机约 28ms，点开面板时问一次
+      绰绰有余；挂成每秒一次，进程多的机器上会变味。
+
+      `supported:false` 和「一个都没有」严格分开——lsof 没装、被策略挡住、超时都属于前者，
+      而界面把「看不到」画成「什么都没跑」是在撒谎。
+    */
+    if (req.method === "GET" && pathname === "/api/server/ports") {
+      const [rows, probe] = await Promise.all([processTable(), listeningSockets()]);
+      if (!probe.supported) { json(res, 200, { supported: false, services: [] }); return; }
+      // 命令行可能很长、也可能夹带密钥（`FOO_KEY=... node server.js` 这种形状）。
+      // 截断是有界性，不是脱敏。
+      const services = listeningServices({ rows, listeners: probe.rows })
+        .map(service => ({ ...service, command: service.command?.slice(0, 512) ?? null }));
+      json(res, 200, { supported: true, services });
+      return;
+    }
+
     const processQuery = pathname.match(/^\/api\/sessions\/([^/]+)\/processes$/);
     if (processQuery && req.method === "GET") {
       const id = decodeURIComponent(processQuery[1]);
@@ -484,7 +508,8 @@ export function createBackendServer({ store, runtime, workspaceRoot, access, aut
       // 拿不到 tty（Windows、或这条 PTY 没有）时**明说不支持**，不要回一个空列表——
       // 空列表的意思是「什么都没跑」，那是另一回事。
       if (!live?.ptsName) { json(res, 200, { supported: false, reason: live ? "no_tty" : "terminal_exited" }); return; }
-      const [rows, listeners] = await Promise.all([processTable(), listeningSockets()]);
+      const [rows, probe] = await Promise.all([processTable(), listeningSockets()]);
+      const listeners = probe.rows;
       // 这条 PTY 自己的 shell 和 CLI 不算「服务」：它们是终端本身。
       const own = rows.filter(row => row.pid === live.pid || row.ppid === live.pid).map(row => row.pid);
       const services = terminalServices({ tty: live.ptsName, rows, listeners, excludePids: [live.pid, ...own] })

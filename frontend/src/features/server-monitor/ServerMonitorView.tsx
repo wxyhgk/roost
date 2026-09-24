@@ -10,7 +10,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { t } from '@roost/i18n';
 import type { Metric, ServerSnapshot, ServiceInfo, DiskInfo } from '@roost/server-monitor/types';
-import { saveMonitoredServices } from '../../shared/api/serverMonitor';
+import { fetchListeningPorts, saveMonitoredServices, type PortsReport } from '../../shared/api/serverMonitor';
 import { useLibraryPresentation } from '../../shared/ui/useLibraryPresentation';
 import { useServerMonitor, refreshServerMonitor } from './store';
 import type { MonitorTab as Tab, MonitorTarget } from './navigation';
@@ -23,7 +23,7 @@ const tabs: { id: Tab; icon: Icon }[] = [
   { id: 'overview', icon: Squares2X2Icon }, { id: 'cpu', icon: CpuChipIcon },
   { id: 'memory', icon: CircleStackIcon }, { id: 'gpu', icon: ComputerDesktopIcon }, { id: 'network', icon: SignalIcon },
   { id: 'disks', icon: ServerStackIcon }, { id: 'processes', icon: QueueListIcon },
-  { id: 'services', icon: Cog6ToothIcon },
+  { id: 'services', icon: Cog6ToothIcon }, { id: 'ports', icon: SignalIcon },
 ];
 /*
   这个面板原来有七档字号：10、11、12、14、18、30，外加几处没写字号的地方（继承 13）。
@@ -99,6 +99,62 @@ function TrendCard({ icon, label, value, detail, series, percent, metric, onClic
   </>;
   return onClick ? <button type="button" onClick={onClick} title={label} aria-label={label} className={`${box} min-w-0 text-left hover:bg-bg-hover`}>{body}</button> : <div title={label} className={`${box} min-w-0`}>{body}</div>;
 }
+/*
+  哪个端口上跑着什么。
+
+  **这是整机视角，不是「这条终端起了什么」**——那个在终端面板里另有一份，按 tty 过滤。
+  人想知道「8080 是谁占着」的时候，往往正因为那玩意不是从当前终端起的：上周起的、
+  或者被 launchd 拉起来的。
+
+  点开才取，不跟着监控那条轮询走：服务端要 fork 一次 lsof。
+*/
+function Ports() {
+  const m = t.serverMonitor;
+  const [report, setReport] = useState<PortsReport | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    setFailed(false);
+    fetchListeningPorts(controller.signal)
+      .then(value => { if (!controller.signal.aborted) setReport(value); })
+      .catch(() => { if (!controller.signal.aborted) setFailed(true); });
+    return () => controller.abort();
+  }, [revision]);
+
+  if (failed) return <div className="text-caption text-danger">{m.portsFailed}</div>;
+  if (!report) return <div className="text-caption text-text-dim">{m.portsLoading}</div>;
+  /*
+    **「看不到」和「一个都没有」必须分开说。** lsof 没装、被策略挡住、超时都属于前者，
+    而把它画成「什么都没跑」是在撒谎——用户会据此以为端口是空的。
+  */
+  if (!report.supported) return <div className="text-caption text-text-dim">{m.portsUnsupported}</div>;
+  if (!report.services.length) return <div className="text-caption text-text-dim">{m.portsEmpty}</div>;
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between text-caption text-text-dim">
+        <span>{m.portsScope}</span>
+        <button type="button" className="rounded px-1.5 py-0.5 hover:bg-bg-hover hover:text-text"
+          onClick={() => setRevision(value => value + 1)}>{m.portsRefresh}</button>
+      </div>
+      <ul className="space-y-1">
+        {report.services.map(service => (
+          <li key={`${service.pid}:${service.address}`} className="flex min-w-0 items-baseline gap-2 text-caption">
+            <span className="w-14 shrink-0 text-right font-mono tabular-nums text-text">
+              {service.port ?? '—'}
+            </span>
+            <span className="w-32 shrink-0 truncate font-mono text-text-dim/80" title={service.address}>{service.address}</span>
+            <span className="min-w-0 flex-1 truncate" title={service.command ?? undefined}>
+              {service.command ?? m.portsGone}
+            </span>
+            <span className="shrink-0 font-mono tabular-nums text-text-dim/60">{service.pid}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function Details({ snapshot: s, tab, history, onTab }: { snapshot: ServerSnapshot; tab: Tab; history: History; onTab: (tab: Tab) => void }) {
   const m = t.serverMonitor;
   const [filter, setFilter] = useState(''), [sort, setSort] = useState('cpu'), [selectedPid, setSelectedPid] = useState<number | null>(null);
@@ -181,6 +237,7 @@ function Details({ snapshot: s, tab, history, onTab }: { snapshot: ServerSnapsho
     {s.diskActivity && <MetricSection metric={s.diskActivity}>{io => <><div className="grid grid-cols-2 gap-2"><TrendCard icon={ArrowDownIcon} label={m.diskRead} value={`${bytes(io.readRate)}/s`} detail={<><Count value={io.readIops} /> IOPS · R</>} series={history.read.points} metric={s.diskActivity} /><TrendCard icon={ArrowUpIcon} label={m.diskWrite} value={`${bytes(io.writeRate)}/s`} detail={<><Count value={io.writeIops} /> IOPS · W</>} series={history.write.points} metric={s.diskActivity} /></div><div className={`${box} flex flex-wrap gap-4`}><Stat icon={ArrowDownIcon} label={m.totalRead}>{bytes(io.readBytes)}</Stat><Stat icon={ArrowUpIcon} label={m.totalWrite}>{bytes(io.writeBytes)}</Stat><Glyph icon={InformationCircleIcon} label={m.diskIoHint} className="text-text-dim" /></div></>}</MetricSection>}
     <MetricSection metric={s.disks}>{disks => <div className="grid gap-3 @xl:grid-cols-2">{!disks.length && <p>{m.noDisks}</p>}{disks.map(d => <DiskCard disk={d} detail key={d.mount} />)}</div>}</MetricSection>
   </div>;
+  if (tab === 'ports') return <Ports />;
   if (tab === 'processes') return <MetricSection metric={s.processes}>{p => {
     const rows = p.list.filter(row => `${row.name} ${row.pid} ${row.user}`.toLowerCase().includes(filter.toLowerCase())).sort((a, b) => sort === 'memory' ? b.memory - a.memory : (b.cpu ?? 0) - (a.cpu ?? 0));
     const selected = p.list.find(row => row.pid === selectedPid);

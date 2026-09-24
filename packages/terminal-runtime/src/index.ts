@@ -326,7 +326,7 @@ export function createTerminalRuntime(options: TerminalRuntimeOptions) {
  */
 export { foregroundCli, listeningSockets, processTable } from "./processes";
 /** 「这个终端里在跑什么、监听哪个端口」。判据是控制终端，不是父子关系——见该文件顶上。 */
-export { terminalServices, normalizeTty, type TerminalProcess } from "./terminal-services";
+export { terminalServices, listeningServices, normalizeTty, type TerminalProcess, type ListeningService } from "./terminal-services";
 
 export type TerminalRuntime = ReturnType<typeof createTerminalRuntime>;
 

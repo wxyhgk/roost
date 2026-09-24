@@ -1,5 +1,13 @@
 export const serverMonitor = {
   title: 'Server status', overview: 'Overview', cpu: 'CPU', gpu: 'GPU', network: 'Network', disks: 'Disks', processes: 'Processes', services: 'Services',
+  portsLoading: "Checking ports…",
+  portsFailed: "Could not read ports",
+  portsUnsupported: "Ports are not visible on this machine (no lsof, or blocked)",
+  portsEmpty: "Nothing is listening",
+  portsScope: "Only your own processes",
+  portsRefresh: "Refresh",
+  portsGone: "(process exited)",
+  ports: "Ports",
   expand: 'Expand server status', collapse: 'Collapse server status', refresh: 'Refresh server status', refreshHint: 'Refreshes every 5s while visible', loading: 'Reading server status…', failed: 'Unable to read metrics; retrying', retry: 'Retry', stale: 'Previous sample', unavailable: 'Unsupported or unavailable',
   hostname: 'Host', system: 'System', uptime: 'Uptime', accessAddress: 'Access address', cpuUsage: 'CPU usage', memory: 'Memory', swap: 'Swap', used: 'Used', available: 'Available', total: 'Total',
   busyCores: (used: string, total: number) => `About ${used} / ${total} cores`, logical: 'Logical cores', physical: 'Physical cores', availableCores: 'Available parallelism', cores: 'Per-core load', load: 'Load average · 1 / 5 / 15 minutes', warming: 'Waiting for the next sample',
