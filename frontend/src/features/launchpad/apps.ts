@@ -111,3 +111,59 @@ export function launchApps(services: readonly ListeningService[],
 
 /** 这个应用在 roost 上的地址。反代那一层认的就是这个前缀。 */
 export const appUrl = (port: number) => `/api/app/${port}/`;
+
+/**
+ * 固定项里那些**现在没在跑**的应用。
+ *
+ * 它们照样占着位置，而不是消失。固定的意思是「我常用这个」，如果 dev server 一停它就
+ * 从列表里没了、重启之后又跑到别处去，固定这件事就白做了——保住那个位置才是它的价值。
+ *
+ * 没在跑时没有命令行可以取名，就用端口：**端口本来就是用户固定下来的那个身份**。
+ */
+export type OfflineApp = { port: number; offline: true };
+
+export type Arranged = {
+  /** 固定区，严格按用户拖出来的顺序；没在跑的也在里面。 */
+  pinned: (LaunchApp | OfflineApp)[];
+  /** 其余的，按 `launchApps` 的规则自动排。 */
+  rest: LaunchApp[];
+};
+
+export const isOffline = (app: LaunchApp | OfflineApp): app is OfflineApp => 'offline' in app;
+
+/**
+ * 分成固定区和其余。
+ *
+ * **固定区的顺序来自 `pinnedPorts`，不是来自 apps。** 这是这个函数存在的全部理由：
+ * 自动排序（认得出会话的在前、然后按端口）对固定区是错的——用户拖过了，就该按他拖的来。
+ */
+export function arrangeApps(apps: readonly LaunchApp[], pinnedPorts: readonly number[]): Arranged {
+  const byPort = new Map(apps.map(app => [app.port, app]));
+  const pinnedSet = new Set(pinnedPorts);
+  return {
+    pinned: pinnedPorts.map(port => byPort.get(port) ?? { port, offline: true as const }),
+    rest: apps.filter(app => !pinnedSet.has(app.port)),
+  };
+}
+
+/**
+ * 拖动之后的新顺序。
+ *
+ * 独立成函数是因为**边界情况会静默丢项**：拖到自己身上（没移动）、拖到一个已经不在表里的
+ * 位置（拖动过程中那个应用退出了）。两种情况都要原样返回，而不是返回一个少一项的表。
+ */
+export function reorderPins(pinnedPorts: readonly number[], from: number, to: number): number[] {
+  const source = pinnedPorts.indexOf(from), target = pinnedPorts.indexOf(to);
+  if (source < 0 || target < 0 || source === target) return [...pinnedPorts];
+  const next = [...pinnedPorts];
+  next.splice(source, 1);
+  next.splice(target, 0, from);
+  return next;
+}
+
+/** 固定/取消固定。新固定的排在**最后**——插在最前会把用户自己排好的顺序推乱。 */
+export function togglePin(pinnedPorts: readonly number[], port: number): number[] {
+  return pinnedPorts.includes(port)
+    ? pinnedPorts.filter(other => other !== port)
+    : [...pinnedPorts, port];
+}

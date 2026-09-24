@@ -11,6 +11,7 @@ export type Action =
   | { type: "toggleProject"; id: string }
   | { type: "reorderSession"; sessionId: string; projectId: string | null; beforeId: string | null }
   | { type: "togglePin"; id: string }
+  | { type: "setPinnedAppPorts"; ports: number[] }
   | { type: "selectConversation"; id: string | null }
   | { type: "setFollowTerminalConversation"; follow: boolean }
   | { type: "closeSession"; id: string }
@@ -29,6 +30,7 @@ export const empty: Data = {
   selectedId: null,
   expandedProjectIds: [],
   pinnedSessionIds: [],
+  pinnedAppPorts: [],
   selectedConversationId: null,
   followTerminalConversation: false,
   sessionSeq: 0,
@@ -58,6 +60,7 @@ function reduce(state: Data, action: Action): Data {
       return {
         ...state, ...action.data,
         pinnedSessionIds: action.data.pinnedSessionIds ?? [],
+        pinnedAppPorts: action.data.pinnedAppPorts ?? [],
         selectedConversationId: action.data.selectedConversationId ?? null,
         followTerminalConversation: action.data.followTerminalConversation ?? false,
         error: null,
@@ -139,6 +142,8 @@ function reduce(state: Data, action: Action): Data {
       const pinnedSessionIds = state.pinnedSessionIds.filter((id) => id !== action.id);
       return { ...state, sessions, selectedId, pinnedSessionIds };
     }
+    case "setPinnedAppPorts":
+      return { ...state, pinnedAppPorts: action.ports };
     case "togglePin": {
       const pinned = state.pinnedSessionIds.includes(action.id);
       return {

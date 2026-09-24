@@ -21,6 +21,8 @@ export type WorkspaceSnapshot = {
   followTerminalConversation: boolean;
   expandedProjectIds: string[];
   pinnedSessionIds: string[];
+  /** 启动台上固定住的应用，按端口，顺序就是用户拖出来的顺序。 */
+  pinnedAppPorts: number[];
   sessionSeq: number;
   projectSeq: number;
 };

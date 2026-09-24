@@ -61,6 +61,7 @@ function initializeWorkspaceStore(db: ReturnType<typeof openDatabase>) {
       ...preferences.getConversationSelection(),
       expandedProjectIds: preferences.getExpandedProjectIds(),
       pinnedSessionIds: preferences.getPinnedSessionIds(),
+      pinnedAppPorts: preferences.getPinnedAppPorts(),
       sessionSeq: preferences.numberMeta("sessionSeq"),
       projectSeq: preferences.numberMeta("projectSeq"),
     };
@@ -211,6 +212,7 @@ function initializeWorkspaceStore(db: ReturnType<typeof openDatabase>) {
     patchConversationSelection: preferences.patchConversationSelection,
     setExpandedProjectIds: preferences.setExpandedProjectIds,
     setPinnedSessionIds: preferences.setPinnedSessionIds,
+    setPinnedAppPorts: preferences.setPinnedAppPorts,
     deleteSessionRecord,
     getTerminalReplay: replay.getTerminalReplay,
     setTerminalReplay: replay.setTerminalReplay,

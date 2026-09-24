@@ -53,6 +53,7 @@ async function fetchCoreWorkspace(signal?: AbortSignal): Promise<WorkspaceSnapsh
   });
   return { sessions, projects: metadata?.projects ?? [], selectedId: sessions.find(s => s.id === metadata?.selectedId)?.id ?? sessions[0]?.id ?? null,
     expandedProjectIds: metadata?.expandedProjectIds ?? [], pinnedSessionIds: metadata?.pinnedSessionIds ?? [],
+    pinnedAppPorts: metadata?.pinnedAppPorts ?? [],
     selectedConversationId: metadata?.selectedConversationId ?? null,
     followTerminalConversation: metadata?.followTerminalConversation ?? false,
     sessionSeq: sessions.length, projectSeq: metadata?.projectSeq ?? 0 };
@@ -62,6 +63,7 @@ export function patchWorkspace(body: {
   selectedId?: string | null;
   expandedProjectIds?: string[];
   pinnedSessionIds?: string[];
+  pinnedAppPorts?: number[];
   selectedConversationId?: string | null;
   followTerminalConversation?: boolean;
 }) {

@@ -134,3 +134,63 @@ test('认得出会话的排前面,其余按端口号', () => {
 test('地址就是反代认的那个前缀', () => {
   assert.equal(appUrl(5173), '/api/app/5173/');
 });
+
+/* 固定与排序。 */
+import { arrangeApps, reorderPins, togglePin, isOffline } from '../src/features/launchpad/apps.ts';
+
+test('固定区按用户拖出来的顺序,不按自动排序', () => {
+  /*
+    这是 arrangeApps 存在的全部理由。自动排序(认得出会话的在前、然后按端口)对固定区
+    是错的——用户已经拖过了。
+  */
+  const apps = [
+    service({ port: 3000, pid: 1, label: 'a', http: true }),
+    service({ port: 5173, pid: 2, label: 'b', terminalId: 's_x', http: true }),
+  ];
+  const { pinned } = arrangeApps(launchApps(apps, () => 'X'), [3000, 5173]);
+  assert.deepEqual(pinned.map(app => app.port), [3000, 5173], '3000 在前,尽管 5173 认得出会话');
+});
+
+test('固定了但没在跑的照样占位置,不消失', () => {
+  /*
+    固定的意思是「我常用这个」。dev server 一停它就从列表里没了、重启之后又跑到别处,
+    固定这件事就白做了——保住那个位置才是它的价值。
+  */
+  const { pinned, rest } = arrangeApps(
+    launchApps([service({ port: 3000, pid: 1, label: 'a', http: true })], () => undefined),
+    [5173, 3000]);
+  assert.equal(pinned.length, 2);
+  assert.ok(isOffline(pinned[0]!) && pinned[0]!.port === 5173);
+  assert.ok(!isOffline(pinned[1]!));
+  assert.deepEqual(rest, [], '已固定的不再出现在其余里');
+});
+
+test('没固定的走自动排序', () => {
+  const apps = launchApps([
+    service({ port: 9222, pid: 1, label: 'chrome', http: true }),
+    service({ port: 5173, pid: 2, label: 'vite', terminalId: 's_x', http: true }),
+  ], () => 'X');
+  const { rest } = arrangeApps(apps, []);
+  assert.deepEqual(rest.map(app => app.port), [5173, 9222]);
+});
+
+test('拖到自己身上不改顺序', () => {
+  assert.deepEqual(reorderPins([1, 2, 3], 2, 2), [1, 2, 3]);
+});
+
+test('拖到一个已经不在表里的位置时原样返回,不丢项', () => {
+  // 拖动过程中那个应用退出、固定项被别处改掉,都会走到这里。返回少一项的表是静默的数据丢失。
+  assert.deepEqual(reorderPins([1, 2, 3], 2, 99), [1, 2, 3]);
+  assert.deepEqual(reorderPins([1, 2, 3], 99, 2), [1, 2, 3]);
+});
+
+test('往前拖和往后拖都落在目标位置上', () => {
+  assert.deepEqual(reorderPins([1, 2, 3], 3, 1), [3, 1, 2]);
+  assert.deepEqual(reorderPins([1, 2, 3], 1, 3), [2, 3, 1]);
+});
+
+test('新固定的排在最后,不插在最前', () => {
+  // 插在最前会把用户自己排好的顺序推乱。
+  assert.deepEqual(togglePin([1, 2], 3), [1, 2, 3]);
+  assert.deepEqual(togglePin([1, 2, 3], 2), [1, 3]);
+});
