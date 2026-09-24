@@ -9,7 +9,6 @@ import type { MonitorTab } from '../features/server-monitor/navigation';
 import { SubscriptionSwitcher } from '../features/subscriptions/SubscriptionSwitcher';
 import { stableRuntime } from '../shared/runtime';
 import { t } from '@roost/i18n';
-import '../features/server-monitor/monitor.css';
 import './statusBar.css';
 
 
@@ -36,7 +35,7 @@ export function StatusBar({ onOpenMonitor, monitorVisible = false }: { onOpenMon
   const sampled = (metric?: Metric<unknown>) => !metric?.sampledAt ? m.unavailable : `${stale(metric) ? m.stale : t.statusBar.updated} · ${new Date(metric.sampledAt).toLocaleTimeString()}`;
   const warning = (metric?: Metric<unknown>) => stale(metric) ? <ExclamationTriangleIcon className="size-3 shrink-0" aria-label={sampled(metric)} /> : null;
   const host = summary?.host.hostname ?? location.hostname;
-  return <footer aria-label={t.statusBar.title} className="status-bar server-monitor">
+  return <footer aria-label={t.statusBar.title} className="status-bar chrome-surface">
     <div className="status-connection">
       {stableRuntime && <span className="hidden xl:inline" title={window.workbenchConfig?.version}>{t.misc.statusBar.stableBuild}</span>}
       <button type="button" className="status-button status-host" title={`${host} · ${label}`} aria-label={`${host} · ${label}`} onClick={() => onOpenMonitor('overview')}>

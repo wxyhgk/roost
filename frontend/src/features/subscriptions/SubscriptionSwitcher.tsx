@@ -5,7 +5,6 @@ import { t } from '@roost/i18n';
 import { connectClaudeSubscription, saveGoKey } from '../../shared/api/subscriptions';
 import { providers, readProvider, saveProvider } from './providers';
 import { acceptSubscription, refreshSubscription, useSubscription } from './store';
-import '../server-monitor/monitor.css';
 import './subscriptions.css';
 
 function windowLabel(window: QuotaWindow) {
@@ -45,7 +44,7 @@ export function SubscriptionSwitcher() {
     </button>
     <div id={id} ref={popover} popover="auto" role="dialog" aria-label={m.subscriptions}
       onToggle={event => { setOpen(event.newState === 'open'); if (event.newState !== 'open') { setKey(''); setKeyOpen(false); } }}
-      className="subscription-popover server-monitor" onKeyDown={event => event.stopPropagation()}>
+      className="subscription-popover chrome-surface" onKeyDown={event => event.stopPropagation()}>
       {/* 这是状态栏自己的弹层（.subscription-action 已经是 11px，状态栏也是 11px），
           里面全是配额读数和元数据。原来文字一律 text-xs(12)，紧挨着 11px 的按钮差 1px。
           整个弹层并到 text-caption。 */}

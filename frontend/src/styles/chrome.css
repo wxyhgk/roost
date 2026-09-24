@@ -1,0 +1,21 @@
+/*
+  `.chrome-surface`：给几块**不在正常排版流里**的外壳一个统一的交代。
+
+  挂它的有四处——底部状态栏、右栏的 server 视图、右下角的额度弹窗、服务器面板放大后的
+  dialog。共同点是它们要么是 chrome，要么是 portal / top-layer，不跟着页面正文走，于是
+  「文字色、表单强调色、滚动条、焦点圈」这几件事没有一个自然的地方交代，只能各写各的。
+
+  这个类原来叫 `.server-monitor`，住在 `features/server-monitor/monitor.css` 里，由三个
+  组件各自 import——其中 `features/subscriptions` 是跨特性 import 另一个特性的样式。名字
+  和位置都在说谎：它从来不是服务器面板的皮肤。搬到这里、改成按用途起的名字之后，跨特性
+  的那条 import 也跟着没了。
+
+  它曾经还重定义过七个 `--color-*`，那部分已经删掉（见上一次提交）：主题 token 本来就能
+  按 DOM 继承到 portal 和顶层 dialog 里，不需要在这里重送一遍。
+*/
+.chrome-surface {
+  color: var(--color-text);
+  accent-color: var(--color-text);
+  scrollbar-color: var(--color-text-dim) transparent;
+}
+.chrome-surface :is(button,input,textarea):focus-visible { outline: 2px solid var(--color-text); outline-offset: 2px; }

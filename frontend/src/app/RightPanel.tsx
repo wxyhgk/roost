@@ -62,7 +62,7 @@ export function RightPanel({ view, onChangeView, visible = true, monitorTarget, 
   const isLibrary = view === "notes" || view === "snippets";
   const { expanded, setExpanded, dialog, sideSlot, modalSlot, expandButton, contentHost, searchInput } = useLibraryPresentation(isLibrary);
 
-  return <section className={`flex h-full flex-col bg-bg-panel ${view === "server" ? "server-monitor" : ""}`}>
+  return <section className={`flex h-full flex-col bg-bg-panel ${view === "server" ? "chrome-surface" : ""}`}>
     <PanelHeader title={titles[view]} sub={view === "files" ? session?.cwd : undefined}
       actions={<>
         {/*

@@ -19,7 +19,6 @@ import { segments, type History, type Point } from './history';
 import { Ports } from './Ports';
 import { rankProcesses } from './processes';
 import { parseServiceUnits } from './units';
-import './monitor.css';
 
 type Icon = typeof CpuChipIcon;
 const tabs: { id: Tab; icon: Icon }[] = [
@@ -231,7 +230,7 @@ export default function ServerMonitorView({ active, target }: { active: boolean;
     catch { if (!controller.signal.aborted || controller.signal.reason?.name === 'TimeoutError') setSaveMessage(m.serviceFailed); }
     finally { clearTimeout(timeout); if (!controller.signal.aborted || controller.signal.reason?.name === 'TimeoutError') setSaving(false); }
   };
-  const content = <div className="server-monitor flex min-h-0 flex-1 flex-col text-text">
+  const content = <div className="chrome-surface flex min-h-0 flex-1 flex-col text-text">
     <div className="flex shrink-0 items-center gap-1 border-b border-border/60 p-2"><span title={m.refreshHint} aria-label={m.refreshHint} className="mr-auto flex items-center gap-1.5 px-1 text-caption tabular-nums text-text-dim"><span className={`size-1.5 rounded-full ${error ? 'rounded-none border border-text' : snapshot ? 'bg-text' : 'border border-text-dim'}`} />5s</span><button className={button} title={m.refresh} aria-label={m.refresh} onClick={() => refreshServerMonitor()}><ArrowPathIcon className="size-3.5" /></button>{!expanded && <button ref={expandButton} className={button} title={m.expand} aria-label={m.expand} onClick={() => setExpanded(true)}><ArrowsPointingOutIcon className="size-3.5" /></button>}</div>
     <nav aria-label={m.title} className="flex shrink-0 gap-1 border-b border-border/60 p-2">{tabs.map(({ id, icon: Icon }) => <button key={id} type="button" title={m[id]} aria-label={m[id]} aria-pressed={tab === id} onClick={() => setTab(id)} className={`flex min-w-0 flex-1 justify-center rounded-md py-2 transition-colors ${tab === id ? 'bg-text text-bg-panel' : 'text-text-dim hover:bg-bg-hover hover:text-text'}`}><Icon className="size-4" aria-hidden="true" /></button>)}</nav>
     <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 @container">
@@ -242,5 +241,5 @@ export default function ServerMonitorView({ active, target }: { active: boolean;
       {snapshot && <p className="mt-4 text-caption text-text-dim">{new Date(snapshot.timestamp).toLocaleTimeString()}</p>}
     </div>
   </div>;
-  return <><div ref={sideSlot} className="flex min-h-0 flex-1 flex-col" /><dialog ref={dialog} aria-label={m.title} onCancel={e => { e.preventDefault(); setExpanded(false); }} onClose={() => setExpanded(false)} className="server-monitor m-auto h-[86dvh] max-h-[960px] w-[94vw] max-w-[1080px] overflow-hidden rounded-xl border border-border bg-bg-panel p-0 text-text shadow-modal backdrop:bg-black/55"><div className="flex h-full min-h-0 flex-col"><header className="flex h-12 shrink-0 items-center justify-between border-b border-border px-4"><h2 className="text-title font-semibold">{m.title}{snapshot ? ` · ${snapshot.host.hostname}` : ''}</h2><button className={button} aria-label={m.collapse} onClick={() => setExpanded(false)}><XMarkIcon className="size-4" /></button></header><div ref={modalSlot} className="flex min-h-0 flex-1 flex-col" /></div></dialog>{createPortal(content, contentHost)}</>;
+  return <><div ref={sideSlot} className="flex min-h-0 flex-1 flex-col" /><dialog ref={dialog} aria-label={m.title} onCancel={e => { e.preventDefault(); setExpanded(false); }} onClose={() => setExpanded(false)} className="chrome-surface m-auto h-[86dvh] max-h-[960px] w-[94vw] max-w-[1080px] overflow-hidden rounded-xl border border-border bg-bg-panel p-0 text-text shadow-modal backdrop:bg-black/55"><div className="flex h-full min-h-0 flex-col"><header className="flex h-12 shrink-0 items-center justify-between border-b border-border px-4"><h2 className="text-title font-semibold">{m.title}{snapshot ? ` · ${snapshot.host.hostname}` : ''}</h2><button className={button} aria-label={m.collapse} onClick={() => setExpanded(false)}><XMarkIcon className="size-4" /></button></header><div ref={modalSlot} className="flex min-h-0 flex-1 flex-col" /></div></dialog>{createPortal(content, contentHost)}</>;
 }
