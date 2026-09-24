@@ -1,5 +1,7 @@
 export const serverMonitor = {
   title: '服务器状态', overview: '概览', cpu: 'CPU', gpu: 'GPU', network: '网络', disks: '磁盘', processes: '进程', services: '服务',
+  portsCommand: "命令", portsPid: "进程号", portsParent: "父进程", portsAll: "全部端口",
+  portsTerminal: "所属终端", portsGoTerminal: "去这个终端", portsNoTerminal: "不属于任何终端",
   portsLoading: "正在查看端口…",
   portsFailed: "取不到端口信息",
   portsUnsupported: "这台机器上看不到端口（没有 lsof，或被策略挡住）",

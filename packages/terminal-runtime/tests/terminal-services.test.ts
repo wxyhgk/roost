@@ -103,6 +103,8 @@ test('同一个 pid 同一个地址被报多行时去重', () => {
     { pid: 10, address: '*:3000' }, { pid: 10, address: '*:3000' },
   ] });
   assert.equal(services.length, 1);
+  // 详情里那份「全部地址」也要去重——它是另一段代码，行级去重管不到它（变异测试发现）。
+  assert.deepEqual(services[0]!.addresses, ['*:3000']);
 });
 
 test('解析不出端口就给 null，不猜；这种排在最后', () => {
@@ -130,4 +132,35 @@ test('ps 里已经没有这个进程时，命令行是 null 而不是空字符�
   // lsof 看得见、ps 里已经退出——这是「不知道它是什么」，不是「它没有名字」。
   const services = listeningServices({ rows: [], listeners: [{ pid: 99, address: '*:1234' }] });
   assert.equal(services[0]!.command, null);
+});
+
+/*
+  详情要回答的三个问题：这东西是谁拉起来的、从哪条终端起的、它一共占了哪些端口。
+*/
+test('带出父进程、tty 和该进程的全部监听地址', () => {
+  const rows = [
+    { pid: 1, ppid: 0, args: '/sbin/launchd', tty: '??' },
+    { pid: 10, ppid: 1, args: 'node server.js', tty: 'ttys002' },
+  ] as never;
+  const [first, second] = listeningServices({ rows, listeners: [
+    { pid: 10, address: '*:3000' }, { pid: 10, address: '127.0.0.1:3001' },
+  ] });
+  assert.equal(first!.ppid, 1);
+  assert.equal(first!.parent, '/sbin/launchd', '回答「是谁拉起来的」');
+  assert.equal(first!.tty, 'ttys002', '进程被过继给 launchd 之后 tty 仍然保留，这是归属回终端的唯一判据');
+  assert.deepEqual(first!.addresses, ['*:3000', '127.0.0.1:3001'], '详情要一次看全它占的所有端口');
+  assert.deepEqual(second!.addresses, first!.addresses, '同一个进程的两行看到的是同一份');
+});
+
+test('没有控制终端时 tty 是 null，不是 "??"', () => {
+  // ps 对没有控制终端的进程报 `??`。把那个字符串原样透出去，界面上会显示成一个假终端名。
+  const rows = [{ pid: 10, ppid: 1, args: 'daemon', tty: '??' }] as never;
+  assert.equal(listeningServices({ rows, listeners: [{ pid: 10, address: '*:80' }] })[0]!.tty, null);
+});
+
+test('父进程在 ps 里已经没了时给 null，不给空串', () => {
+  const rows = [{ pid: 10, ppid: 999, args: 'orphan', tty: 'ttys003' }] as never;
+  const [only] = listeningServices({ rows, listeners: [{ pid: 10, address: '*:80' }] });
+  assert.equal(only!.ppid, 999, 'ppid 本身是知道的');
+  assert.equal(only!.parent, null, '但那个进程是什么，我们不知道——不知道就说不知道');
 });

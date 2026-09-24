@@ -39,7 +39,7 @@ import { createIsolatedFileWatcher } from './watcher-process';
 import { createAiSessionBridge, AiSessionBridgeError, type AiSessionBridge } from "@roost/ai-session-bridge";
 import { createSessionResume, resumePlanFor, type ResumePlan } from "./session-resume.ts";
 import { DEFAULT_CLI_DEFINITIONS } from "@roost/cli-adapters";
-import { listeningSockets, listeningServices, processTable, terminalServices } from "@roost/terminal-runtime";
+import { listeningSockets, listeningServices, normalizeTty, processTable, terminalServices } from "@roost/terminal-runtime";
 /* 前端拿到 GET .../resume 之后按钮就不该出现了；走到这里说明中间变了，文案给的是那个变化。 */
 const RESUME_UNAVAILABLE = {
   no_conversation: "this terminal has no AI conversation to resume",
@@ -494,8 +494,26 @@ export function createBackendServer({ store, runtime, workspaceRoot, access, aut
       if (!probe.supported) { json(res, 200, { supported: false, services: [] }); return; }
       // 命令行可能很长、也可能夹带密钥（`FOO_KEY=... node server.js` 这种形状）。
       // 截断是有界性，不是脱敏。
-      const services = listeningServices({ rows, listeners: probe.rows })
-        .map(service => ({ ...service, command: service.command?.slice(0, 512) ?? null }));
+      /*
+        **把 tty 翻译回 roost 的终端。** 这是这个面板比一般的端口列表多出来的那一样：
+        「8080 是谁占着」之后紧接着的问题是「那玩意是我在哪儿起的」，而 tty 在进程被
+        过继给 launchd 之后仍然保留，是唯一还能回答这个问题的线索。
+
+        对不上就是 null——**别猜**。没有控制终端的服务（开机自启的那些）本来就不属于
+        任何终端，硬塞一个会把人引到错的地方。
+      */
+      const byTty = new Map<string, string>();
+      for (const session of store.loadWorkspace().sessions) {
+        const tty = normalizeTty(runtime.getSession(session.id)?.ptsName);
+        if (tty) byTty.set(tty, session.id);
+      }
+      const services = listeningServices({ rows, listeners: probe.rows }).map(service => ({
+        ...service,
+        // 命令行可能夹带密钥，截断是有界性不是脱敏；父进程同理。
+        command: service.command?.slice(0, 512) ?? null,
+        parent: service.parent?.slice(0, 256) ?? null,
+        terminalId: service.tty ? byTty.get(service.tty) ?? null : null,
+      }));
       json(res, 200, { supported: true, services });
       return;
     }

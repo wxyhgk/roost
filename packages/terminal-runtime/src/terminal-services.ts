@@ -92,6 +92,19 @@ export type ListeningService = {
   pid: number;
   /** 完整命令行，调用方自己截断。拿不到进程时为 null（lsof 看得见但 ps 里已经没了）。 */
   command: string | null;
+  /** 父进程号与它的命令行。回答「这东西是谁拉起来的」——launchd？某个终端？还是某个壳。 */
+  ppid: number | null;
+  parent: string | null;
+  /**
+   * 控制终端，如 `ttys002`；没有则为 null。
+   *
+   * **这是把一个后台服务归属回某条终端的唯一可靠判据。** 父子关系一退出就断（`npm run dev &`
+   * 那次工具调用返回后就被过继给 PID 1），而 tty 在过继之后仍然保留。调用方拿它去比对
+   * 各条 PTY 的 ptsName，就能回答「这个端口是从哪个终端起的」。
+   */
+  tty: string | null;
+  /** 这个进程监听的**全部**地址。列表按端口逐行展开，而详情要一次看全。 */
+  addresses: string[];
 };
 
 const portOf = (address: string): number | null => {
@@ -105,7 +118,14 @@ export function listeningServices(options: {
   rows: readonly ProcRow[];
   listeners: readonly ListenerRow[];
 }): ListeningService[] {
-  const byPid = new Map(options.rows.map(row => [row.pid, row.args]));
+  const byPid = new Map(options.rows.map(row => [row.pid, row]));
+  // 一个进程的全部监听地址：列表按端口逐行展开，而详情要一次看全。
+  const allAddresses = new Map<number, string[]>();
+  for (const listener of options.listeners) {
+    const list = allAddresses.get(listener.pid) ?? [];
+    if (!list.includes(listener.address)) list.push(listener.address);
+    allAddresses.set(listener.pid, list);
+  }
   const seen = new Set<string>();
   const services: ListeningService[] = [];
   for (const listener of options.listeners) {
@@ -113,8 +133,15 @@ export function listeningServices(options: {
     const key = `${listener.pid}\u0000${listener.address}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    services.push({ address: listener.address, port: portOf(listener.address),
-      pid: listener.pid, command: byPid.get(listener.pid) ?? null });
+    const row = byPid.get(listener.pid);
+    services.push({
+      address: listener.address, port: portOf(listener.address), pid: listener.pid,
+      command: row?.args ?? null,
+      ppid: row?.ppid ?? null,
+      parent: row && byPid.get(row.ppid)?.args ? byPid.get(row.ppid)!.args : null,
+      tty: normalizeTty(row?.tty),
+      addresses: allAddresses.get(listener.pid) ?? [listener.address],
+    });
   }
   // 端口升序；解析不出端口的排在最后——它们是例外，不该插在中间打断扫视。
   return services.sort((a, b) =>

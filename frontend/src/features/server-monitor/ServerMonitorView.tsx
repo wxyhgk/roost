@@ -10,7 +10,8 @@ import {
 } from '@heroicons/react/24/outline';
 import { t } from '@roost/i18n';
 import type { Metric, ServerSnapshot, ServiceInfo, DiskInfo } from '@roost/server-monitor/types';
-import { fetchListeningPorts, saveMonitoredServices, type PortsReport } from '../../shared/api/serverMonitor';
+import { fetchListeningPorts, saveMonitoredServices, type ListeningService, type PortsReport } from '../../shared/api/serverMonitor';
+import { useWorkspace } from '../../shared/store';
 import { useLibraryPresentation } from '../../shared/ui/useLibraryPresentation';
 import { useServerMonitor, refreshServerMonitor } from './store';
 import type { MonitorTab as Tab, MonitorTarget } from './navigation';
@@ -108,6 +109,52 @@ function TrendCard({ icon, label, value, detail, series, percent, metric, onClic
 
   点开才取，不跟着监控那条轮询走：服务端要 fork 一次 lsof。
 */
+/*
+  一行端口，点开看详情。
+
+  列表那一行只回答「几号端口、是什么」——那是扫视用的，塞多了反而看不快。而人真正要
+  往下问的是：**这东西是谁拉起来的、我在哪儿起的、它还占了别的端口吗、完整命令是什么**。
+  那些放进展开区。
+
+  命令行在列表行里是截断的（一行放不下），展开之后完整显示并可换行——排查时要看的
+  往往正是被截掉的那一段参数。
+*/
+function PortRow({ service }: { service: ListeningService }) {
+  const m = t.serverMonitor;
+  const { selectSession } = useWorkspace('selectSession');
+  const [open, setOpen] = useState(false);
+  const field = (label: string, value: ReactNode) => (
+    <div className="flex gap-2"><span className="w-20 shrink-0 text-text-dim/70">{label}</span>
+      <span className="min-w-0 flex-1 break-all">{value}</span></div>
+  );
+  return (
+    <li className="rounded-md border border-transparent hover:border-border">
+      <button type="button" aria-expanded={open} onClick={() => setOpen(value => !value)}
+        className="flex w-full min-w-0 items-baseline gap-2 px-1 py-0.5 text-left text-caption">
+        <span className="w-14 shrink-0 text-right font-mono tabular-nums text-text">{service.port ?? '—'}</span>
+        <span className="w-32 shrink-0 truncate font-mono text-text-dim/80" title={service.address}>{service.address}</span>
+        <span className="min-w-0 flex-1 truncate">{service.command ?? m.portsGone}</span>
+        <span className="shrink-0 font-mono tabular-nums text-text-dim/60">{service.pid}</span>
+      </button>
+      {open && (
+        <div className="space-y-1 border-t border-border/50 px-2 py-1.5 text-caption text-text-dim">
+          {field(m.portsCommand, <span className="font-mono">{service.command ?? m.portsGone}</span>)}
+          {field(m.portsPid, <span className="font-mono tabular-nums">{service.pid}</span>)}
+          {service.parent && field(m.portsParent,
+            <span className="font-mono">{service.parent}{service.ppid === null ? '' : ` · ${service.ppid}`}</span>)}
+          {service.addresses.length > 1 && field(m.portsAll,
+            <span className="font-mono">{service.addresses.join('  ')}</span>)}
+          {field(m.portsTerminal, service.terminalId
+            ? <button type="button" className="rounded px-1 text-text hover:bg-bg-hover"
+                onClick={() => selectSession(service.terminalId!)}>{m.portsGoTerminal}</button>
+            /* 没有控制终端的服务（开机自启那些）本来就不属于任何终端——说清楚，别留空。 */
+            : <span>{service.tty ?? m.portsNoTerminal}</span>)}
+        </div>
+      )}
+    </li>
+  );
+}
+
 function Ports() {
   const m = t.serverMonitor;
   const [report, setReport] = useState<PortsReport | null>(null);
@@ -138,18 +185,7 @@ function Ports() {
           onClick={() => setRevision(value => value + 1)}>{m.portsRefresh}</button>
       </div>
       <ul className="space-y-1">
-        {report.services.map(service => (
-          <li key={`${service.pid}:${service.address}`} className="flex min-w-0 items-baseline gap-2 text-caption">
-            <span className="w-14 shrink-0 text-right font-mono tabular-nums text-text">
-              {service.port ?? '—'}
-            </span>
-            <span className="w-32 shrink-0 truncate font-mono text-text-dim/80" title={service.address}>{service.address}</span>
-            <span className="min-w-0 flex-1 truncate" title={service.command ?? undefined}>
-              {service.command ?? m.portsGone}
-            </span>
-            <span className="shrink-0 font-mono tabular-nums text-text-dim/60">{service.pid}</span>
-          </li>
-        ))}
+        {report.services.map(service => <PortRow key={`${service.pid}:${service.address}`} service={service} />)}
       </ul>
     </div>
   );

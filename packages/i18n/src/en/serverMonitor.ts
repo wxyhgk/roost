@@ -1,5 +1,7 @@
 export const serverMonitor = {
   title: 'Server status', overview: 'Overview', cpu: 'CPU', gpu: 'GPU', network: 'Network', disks: 'Disks', processes: 'Processes', services: 'Services',
+  portsCommand: "Command", portsPid: "PID", portsParent: "Parent", portsAll: "All ports",
+  portsTerminal: "Terminal", portsGoTerminal: "Go to terminal", portsNoTerminal: "No controlling terminal",
   portsLoading: "Checking ports…",
   portsFailed: "Could not read ports",
   portsUnsupported: "Ports are not visible on this machine (no lsof, or blocked)",

@@ -13,7 +13,16 @@ export const saveMonitoredServices = (services: string[], signal: AbortSignal) =
  * **按需取，不要挂成轮询**：服务端要 fork 一次 lsof（本机约 28ms + 一次进程表扫描），
  * 点开面板时问一次绰绰有余；挂成每秒一次，进程多的机器上会变味。
  */
-export type ListeningService = { address: string; port: number | null; pid: number; command: string | null };
+export type ListeningService = {
+  address: string; port: number | null; pid: number; command: string | null;
+  ppid: number | null; parent: string | null;
+  /** 控制终端（如 `ttys002`）；没有控制终端的服务为 null。 */
+  tty: string | null;
+  /** 这个进程监听的全部地址。 */
+  addresses: string[];
+  /** 对得上的 roost 终端；对不上就是 null——**不猜**。 */
+  terminalId: string | null;
+};
 export type PortsReport = { supported: boolean; services: ListeningService[] };
 export const fetchListeningPorts = (signal: AbortSignal) =>
   request<PortsReport>('/api/server/ports', { signal, cache: 'no-store' });
