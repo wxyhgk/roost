@@ -36,7 +36,7 @@ export const empty: Data = {
   error: null,
 };
 
-export function validSelection(sessions: Session[], preferred: string | null, fallback: string | null = null): string | null {
+function validSelection(sessions: Session[], preferred: string | null, fallback: string | null = null): string | null {
   const valid = (id: string | null) => id != null && sessions.some(s => s.id === id && !s.closed);
   return valid(preferred) ? preferred : valid(fallback) ? fallback : sessions.find(s => !s.closed)?.id ?? null;
 }

@@ -31,7 +31,7 @@ import { cellFromPointer, encodeTuiWheel, wheelTicks } from "./wheel";
  * 否则 8~10 之间会出现一条死带——我们已经吃掉了事件，那边又认为位移太大不算轻点，
  * 两边都不响应。
  */
-export const TAP_SLOP_PX = 8;
+const TAP_SLOP_PX = 8;
 
 /**
  * 定轴之后要在另一个方向再走多少**格**才允许改主意。取自 a-Shell 的
@@ -40,8 +40,8 @@ export const TAP_SLOP_PX = 8;
  * 没有这道吸附，斜着滑的那一下会**一边发方向键一边被当成横划**，手感是「滚一下跳一下」。
  * 横向的阈值更大，是因为竖划才是终端的常态动作，从竖切到横应当更难。
  */
-export const SNAP_BREAKAWAY_VERT_CELLS = 4;
-export const SNAP_BREAKAWAY_HORIZ_CELLS = 6;
+const SNAP_BREAKAWAY_VERT_CELLS = 4;
+const SNAP_BREAKAWAY_HORIZ_CELLS = 6;
 
 export type Axis = "undecided" | "vertical" | "horizontal";
 

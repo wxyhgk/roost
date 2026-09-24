@@ -62,7 +62,7 @@ export type ConversationPage = { items: Conversation[]; nextCursor: string | nul
 
 /** 后端上限；超过会 400，本地先夹住免得白跑一趟。 */
 export const MAX_QUERY_LENGTH = 200;
-export const MAX_PAGE_SIZE = 200;
+const MAX_PAGE_SIZE = 200;
 
 /** 按 ID 取单条。偏好里只存 ID，刷新之后要靠它把详情恢复出来。 */
 export function fetchConversation(conversationId: string) {
@@ -379,6 +379,3 @@ export type AiControl = {
   composer: string | null;
 };
 
-export function fetchAiControl(terminalId: string) {
-  return request<AiControl>(`/api/ai-sessions/${encodeURIComponent(terminalId)}/control`);
-}

@@ -7,7 +7,7 @@ export const HEARTBEAT_TIMEOUT_MS = 30_000;
  * 发出去的字节掉进黑洞。常规节奏下要 45–75 秒才发现，而这段时间里界面显示「已连接」、
  * 打的字两秒后自己消失。回到前台是我们唯一知道「刚才可能断过」的时刻，值得当场问一句。
  */
-export const WAKE_TIMEOUT_MS = 5_000;
+const WAKE_TIMEOUT_MS = 5_000;
 export function createHeartbeat(options: {
   send(nonce: number): void;
   timeout(): void;

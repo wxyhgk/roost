@@ -8,7 +8,7 @@ function rgb(color: string): number[] {
   if (!/^[a-f\d]{6}$/i.test(hex)) throw new Error("terminal theme requires #RRGGBB colors");
   return [0, 2, 4].map(offset => parseInt(hex.slice(offset, offset + 2), 16));
 }
-export function appearanceReport(theme: TermTheme) {
+function appearanceReport(theme: TermTheme) {
   const [r, g, b] = rgb(theme.background);
   return `${CSI}?997;${0.299 * r + 0.587 * g + 0.114 * b < 127.5 ? 1 : 2}n`;
 }

@@ -16,7 +16,7 @@ function asText(data: string | Uint8Array) {
   return typeof data === "string" ? data : new TextDecoder().decode(data);
 }
 
-export function absorbDec(
+function absorbDec(
   text: string,
   modes: Set<number>,
   tail: { value: string },

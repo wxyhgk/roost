@@ -404,6 +404,86 @@ for (const anchor of [
   if (!existsSync(resolve(root, anchor))) errors.push(`${anchor}: 规则锚点不存在——改名或删除时请同步更新 scripts/check-boundaries.mjs`);
 }
 
+/*
+  导出了，但**全仓库没有一个地方 import 它**。
+
+  今天这一天里这条形状的缺陷出现了三次，而且全是靠用户抱怨才发现的：
+
+    · `ConversationCatalog` —— 完整的历史对话浮层（搜索、分页、点进详情），零个 import。
+      用户点遍界面找不到自己的历史记录。
+    · `closeSession` —— 软关闭从 API 到 store 到 reducer 全套齐备，界面零入口。
+      于是「关闭」这个概念在产品里根本不存在，只有「彻底删除」。
+    · `fetchAiControl` —— 三天前加的，零调用方。
+
+  这类东西类型检查抓不到（它们语法上完全正确）、测试也抓不到（没人测没接线的东西）、
+  构建更不会响——它只是**静静地不存在**。而写代码的人以为做完了。
+
+  **判据取最保守的一档：零个 import 才报。** 只被测试 import 的不报——那多半是为了可测
+  而导出的内部件，一刀切会逼出一堆无意义的豁免，而豁免多了这条检查就废了。
+  宁可漏掉一些，也不要让人习惯于往名单里加东西。
+*/
+const ENTRY_FILES = ['frontend/src/main.tsx', 'frontend/src/stable.tsx'];
+const UNWIRED_EXEMPT = new Set([
+  // 只放**有意保留、且说得出理由**的。加之前先问一句：它真的该留着吗？
+]);
+
+function checkUnwiredExports() {
+  /*
+    只扫前端的**值导出**（组件、函数、常量），不扫类型，也不扫各 package 的内部件。
+
+    这不是偷懒，是让这条检查保持可用：类型和库内部件里「导出了但只在本文件用」的情况
+    太多，一口气报二十几条，人只会去加豁免名单，而豁免多了这条检查就废了。
+    而「做完了没接线」这个毛病的实际发生地就是前端界面——今天那三次全在这儿。
+  */
+  const files = [...allFiles(resolve(root, 'frontend/src'), /\.tsx?$/)];
+  const used = new Set();
+  const everyFile = [];
+  for (const owner of [...owners, 'scripts', 'deploy']) {
+    for (const file of allFiles(resolve(root, owner), /\.(tsx?|mjs|mts|jsx?)$/)) everyFile.push(file);
+  }
+  for (const file of everyFile) {
+    const text = readFileSync(file, 'utf8');
+    // 静态 import / 再导出。
+    for (const match of text.matchAll(/(?:^|\n)\s*(?:import|export)\s*(?:type\s*)?\{([^}]*)\}\s*from/g)) {
+      for (const piece of match[1].split(',')) {
+        const name = piece.trim().replace(/^type\s+/, '').split(/\s+as\s+/)[0]?.trim();
+        if (name) used.add(name);
+      }
+    }
+    for (const match of text.matchAll(/(?:^|\n)\s*import\s+(?:\*\s+as\s+)?([A-Za-z_$][\w$]*)\s*(?:,|from)/g)) used.add(match[1]);
+    /*
+      **动态导入取属性**：`lazy(() => import("./X").then(m => ({ default: m.Foo })))`。
+      名字不在任何 import 列表里，只出现在一次属性访问上。漏了这条，所有懒加载的组件
+      都会被误报——我第一版就这么误报了刚接上的对话目录。
+    */
+    /*
+      **一切属性访问都算用到。** 判据必须松：这条检查唯一的敌人是假阳性——报错一次冤枉人，
+      人就会去加豁免，豁免一多它就废了。
+
+      要盖住的至少有这几种，它们都不出现在 import 列表里：
+        · `lazy(() => import("./X").then(m => ({ default: m.Foo })))`   懒加载组件
+        · `import * as client from "./api"; client.fetchBookmarks()`     命名空间
+        · 注入的对象上调同名方法
+
+      代价是「名字凑巧和某处属性重名」会被放过。可以接受：这条检查只负责抓
+      **一次都没被提到过**的那种，那才是「做完了忘了接线」的形状。
+    */
+    for (const match of text.matchAll(/\.\s*([A-Za-z_$][\w$]*)/g)) used.add(match[1]);
+  }
+  for (const file of files) {
+    const rel = file.slice(root.length + 1);
+    if (ENTRY_FILES.includes(rel)) continue;
+    const text = readFileSync(file, 'utf8');
+    // 只认值：`type` / `interface` 不在内。
+    for (const match of text.matchAll(/^export\s+(?:async\s+)?(?:function|const|let|class)\s+([A-Za-z_$][\w$]*)/gm)) {
+      const name = match[1];
+      if (used.has(name) || UNWIRED_EXEMPT.has(name)) continue;
+      errors.push(`${rel}: 导出了 ${name}，但全仓库没有一处用到它——接上它，或者删掉`);
+    }
+  }
+}
+checkUnwiredExports();
+
 if (errors.length) {
   console.error(errors.join('\n'));
   process.exitCode = 1;

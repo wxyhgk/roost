@@ -85,49 +85,6 @@ export function IconClose() {
   );
 }
 
-export function IconSun() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
-      <circle cx="8" cy="8" r="2.4" stroke="currentColor" />
-      <path
-        d="M8 1.6v1.5M8 12.9v1.5M1.6 8h1.5M12.9 8h1.5M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1"
-        stroke="currentColor"
-        strokeWidth="1.3"
-      />
-    </svg>
-  );
-}
-
-export function IconMoon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
-      <path
-        d="M10.2 2.4A5.4 5.4 0 1 0 13.6 10 4.4 4.4 0 0 1 10.2 2.4z"
-        stroke="currentColor"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-export function IconPower() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
-      <path d="M6 1.5v3.4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-      <path d="M4 3.3a3.6 3.6 0 1 0 4 0" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-export function IconKill() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
-      <rect x="2.2" y="2.2" width="7.6" height="7.6" rx="1.2" stroke="currentColor" />
-      <path d="M4 4l4 4M8 4l-4 4" stroke="currentColor" strokeWidth="1.3" />
-    </svg>
-  );
-}
-
 export function IconDots() {
   return (
     <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
@@ -152,13 +109,6 @@ export function IconTrash() {
   );
 }
 
-export function IconMinus() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
-      <path d="M3 8h10" stroke="currentColor" strokeWidth="1.6" />
-    </svg>
-  );
-}
 export function IconRefresh() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -213,22 +163,6 @@ export function IconCode() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path d="M8 6l-6 6 6 6M16 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-export function IconPanelLeft() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" strokeWidth="2" />
-      <path d="M9.5 4v16" stroke="currentColor" strokeWidth="2" />
-    </svg>
-  );
-}
-export function IconPanelRight() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" strokeWidth="2" />
-      <path d="M14.5 4v16" stroke="currentColor" strokeWidth="2" />
     </svg>
   );
 }

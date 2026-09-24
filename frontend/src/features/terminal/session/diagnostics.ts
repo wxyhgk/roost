@@ -8,7 +8,7 @@ export function createDiagnosticTrace(now = Date.now) {
   };
 }
 /** 落后多久算「卡住了」。 */
-export const STALL_AFTER_MS = 10000;
+const STALL_AFTER_MS = 10000;
 
 /**
  * 终端是不是跟不上了。

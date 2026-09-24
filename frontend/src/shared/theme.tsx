@@ -33,7 +33,7 @@ type ThemeContextValue = {
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-export function readStoredTheme(): Theme {
+function readStoredTheme(): Theme {
   try {
     return localStorage.getItem(STORAGE_KEY) === "light" ? "light" : "dark";
   } catch {
@@ -41,7 +41,7 @@ export function readStoredTheme(): Theme {
   }
 }
 
-export function applyTheme(theme: Theme) {
+function applyTheme(theme: Theme) {
   document.documentElement.dataset.theme = theme;
 }
 

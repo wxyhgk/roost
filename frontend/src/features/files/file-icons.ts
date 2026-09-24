@@ -3,7 +3,7 @@
  * 未匹配时回退到 default-file。
  */
 
-export const FALLBACK_ICON = "default-file";
+const FALLBACK_ICON = "default-file";
 
 const EXT_MAP: Record<string, string> = {
   // TypeScript / JavaScript

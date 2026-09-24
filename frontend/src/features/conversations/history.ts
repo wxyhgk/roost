@@ -66,8 +66,8 @@ export function messageIdsFromChanges(changes: { kind: string; entityId: string 
  * 那条问题线索。放在这里而不是组件里，是因为「短回复不该出现一个没用的展开按钮」
  * 这一半最容易写漏，留在组件里就测不到。
  */
-export const COLLAPSE_LINES = 4;
-export const COLLAPSE_CHARS = 240;
+const COLLAPSE_LINES = 4;
+const COLLAPSE_CHARS = 240;
 export const isLongReply = (text: string) =>
   text.split("\n").length > COLLAPSE_LINES || text.length > COLLAPSE_CHARS;
 

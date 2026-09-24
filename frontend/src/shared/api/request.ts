@@ -28,7 +28,7 @@ export function onSessionExpired(fn: () => void) {
  *
  * 放在这一层而不是各个调用点：调用点总有漏的，而漏掉的代价是永久卡死。
  */
-export const REQUEST_TIMEOUT_MS = 45_000;
+const REQUEST_TIMEOUT_MS = 45_000;
 
 export async function request<T>(input: string, init?: RequestInit): Promise<T> {
   const generation = authGeneration;
