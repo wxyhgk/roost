@@ -174,6 +174,9 @@ export const workspace = {
     count: (n: number) => `${n} ${plural(n, "terminal", "terminals")}`,
     allTerminals: "All terminals",
     ungrouped: "Ungrouped",
+    newGroup: "New group",
+    newTerminal: "New terminal",
+    newGroupHint: "A group only files terminals; it does not start one",
     newWorkspace: "New workspace",
     /** 空工作区的第一句话，同时解释了「分组不开终端」这个容易误解的地方。 */
     empty: "Click ＋ to open a new terminal; creating a workspace only organizes.",
@@ -200,6 +203,7 @@ export const workspace = {
     trigger: "New",
     terminal: "Terminal",
     project: "New group",
+    reopenTrigger: "Reopen a closed terminal",
     reopenHeading: "Reopen session",
   },
 

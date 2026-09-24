@@ -1,9 +1,10 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { useState, type ReactNode } from "react";
-import { IconChevron, IconEdit, IconPlus, IconTrash } from "../../shared/icons";
+import { IconChevron, IconEdit, IconFolder, IconTerminal, IconTrash } from "../../shared/icons";
 import { useGroupActivity } from "../session-status/public";
 import { useWorkspace } from "../../shared/store";
+import type { Scope } from "../../shared/view";
 import type { Session } from "../../shared/types";
 import { Collapse } from "../../shared/ui/Collapse";
 import { InlineRename } from "../../shared/ui/InlineRename";
@@ -212,18 +213,35 @@ export function WorkspaceRow({
   );
 }
 
-/** 侧栏底部的新建入口。工作区只是归类，**不会启动终端**——文案要把这点说清。 */
-export function NewWorkspaceButton() {
-  const { addProject } = useWorkspace("addProject");
+/*
+  侧栏底部的两个新建入口。
+
+  原来这里只有一个「新建工作区」，而「新建终端」躲在顶栏那个加号的下拉里——于是最常用的
+  那个动作最难够着，最不常用的那个反而占着底部一整条。现在两件事各是一个按钮，**名字就是
+  它做的事**，不用点开才知道里面有什么。
+
+  「分组」而不是「工作区」：它不会启动任何东西，只是把终端归个类。这层意思放在 title 里，
+  按钮上那三个字保持短——底栏一行要放得下两个。
+*/
+export function NewSessionButtons({ scope }: { scope: Scope }) {
+  const { addProject, addSession } = useWorkspace("addProject", "addSession");
+  const shell = "flex min-h-11 flex-1 shrink items-center justify-center gap-1.5 rounded-xl border border-dashed border-border px-2 text-caption text-text-dim transition-colors hover:border-accent/50 hover:bg-bg-hover/50 hover:text-text";
   return (
-    <button
-      type="button"
-      onClick={() => addProject()}
-      className="flex min-h-11 w-full shrink-0 items-center gap-1.5 rounded-xl border border-dashed border-border px-1.5 text-text-dim transition-colors hover:border-accent/50 hover:bg-bg-hover/50 hover:text-text"
-    >
-      <span className="w-4 shrink-0" aria-hidden />
-      <span className="grid h-9 w-9 shrink-0 place-items-center" aria-hidden><IconPlus /></span>
-      <span className="min-w-0 flex-1 truncate text-left">{t.sidebar.newWorkspace}</span>
-    </button>
+    <div className="flex w-full gap-2">
+      <button
+        type="button"
+        // 和画布上那个「新建终端」落在同一处：你正在看的那个分组。两个入口同一个动作，
+        // 结果不能不一样（这条判断原来在顶栏那个下拉里，跟着搬过来）。
+        onClick={() => addSession(scope === "all" ? null : scope)}
+        className={shell}
+      >
+        <span className="grid size-4 shrink-0 place-items-center" aria-hidden><IconTerminal /></span>
+        <span className="truncate">{t.sidebar.newTerminal}</span>
+      </button>
+      <button type="button" onClick={() => addProject()} title={t.sidebar.newGroupHint} className={shell}>
+        <span className="grid size-4 shrink-0 place-items-center" aria-hidden><IconFolder /></span>
+        <span className="truncate">{t.sidebar.newGroup}</span>
+      </button>
+    </div>
   );
 }

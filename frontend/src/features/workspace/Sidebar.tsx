@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { IconFolder, IconTerminal } from "../../shared/icons";
 import { isOpen, useWorkspace } from "../../shared/store";
-import { NewWorkspaceButton, WorkspaceRow } from "./WorkspaceRow";
+import { NewSessionButtons, WorkspaceRow } from "./WorkspaceRow";
 import { NoticeBar } from "../../shared/ui/NoticeBar";
 import { PanelHeader } from "../../shared/ui/PanelHeader";
 import type { Scope } from "../../shared/view";
@@ -151,7 +151,7 @@ export function Sidebar({ scope, onScope, onEnterTerminal }: {
       </div>
 
       <div className="shrink-0 border-t border-border p-2">
-        <NewWorkspaceButton />
+        <NewSessionButtons scope={scope} />
       </div>
     </aside>
   );

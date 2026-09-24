@@ -2,15 +2,13 @@ import { sessionTitle } from "../shared/sessionTitle";
 import { useWorkspace } from "../shared/store";
 import { useTheme } from "../shared/theme";
 import { MoonIcon, SunIcon, ChevronLeftIcon, ChevronRightIcon, MagnifyingGlassIcon } from "@heroicons/react/24/outline";
-import { NewMenu } from "../features/workspace/NewMenu";
-import type { Scope } from "../shared/view";
+import { ReopenMenu } from "../features/workspace/ReopenMenu";
 import { IconButton } from "../shared/ui/IconButton";
 import { InlineRename } from "../shared/ui/InlineRename";
 import { useState } from "react";
 import { t } from "@roost/i18n";
 
 export function TopBar({
-  scope,
   leftCollapsed,
   rightCollapsed,
   onToggleLeft,
@@ -18,7 +16,6 @@ export function TopBar({
   onOpenPalette,
 }: {
   /** 新终端落在哪个工作区——和画布上那个「新建终端」保持一致。 */
-  scope: Scope;
   leftCollapsed: boolean;
   rightCollapsed: boolean;
   onToggleLeft: () => void;
@@ -81,7 +78,7 @@ export function TopBar({
         >
           <MagnifyingGlassIcon className="size-5" />
         </IconButton>
-        <NewMenu scope={scope} />
+        <ReopenMenu />
         <IconButton
           inverse
           className="h-9 w-9"

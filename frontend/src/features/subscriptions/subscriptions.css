@@ -16,9 +16,20 @@
 .subscription-action:disabled { opacity: .4; }
 .subscription-logo { width: 16px; height: 16px; flex-shrink: 0; object-fit: contain; filter: brightness(0) invert(1); }
 html[data-theme="light"] .subscription-logo { filter: brightness(0); }
+/*
+  套用和终端上方那几条状态条同一套玻璃（`index.css` 的 `.glass`）：半透明抬升底 + 背景
+  模糊 + 一道更淡的描边。尺寸量级也和它们一样（320px 宽的小弹层），所以适用同一条判断。
+
+  阴影原来是写死的 `0 8px 32px #0003`，**绕过了 `--shadow-pop`**——于是给浮层加的那圈
+  0.5px 描边到不了这儿。和 SettingsDialog 那三个用 `shadow-2xl` 的是同一类问题，只是它
+  藏在 CSS 文件里，按 className 搜的那一轮没扫到。
+*/
 .subscription-popover {
   position: fixed; inset: auto 12px 44px auto; margin: 0;
   width: min(320px, calc(100vw - 24px)); max-height: calc(100dvh - 70px); overflow-y: auto;
-  border: 1px solid var(--color-border); border-radius: 10px;
-  background: var(--color-bg-panel); color: var(--color-text); box-shadow: 0 8px 32px #0003;
+  border-radius: 12px; color: var(--color-text);
+  background: color-mix(in srgb, var(--color-bg-raised) 80%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-pop);
 }

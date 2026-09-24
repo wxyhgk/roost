@@ -179,6 +179,9 @@ export const workspace = {
     count: (n: number) => `${n} 个终端`,
     allTerminals: "全部终端",
     ungrouped: "未分组",
+    newGroup: "新建分组",
+    newTerminal: "新建终端",
+    newGroupHint: "分组只是归类，不会启动终端",
     newWorkspace: "新建工作区",
     /** 空工作区的第一句话，同时解释了「分组不开终端」这个容易误解的地方。 */
     empty: "点 ＋ 开新终端，新建工作区只是归类。",
@@ -205,6 +208,7 @@ export const workspace = {
     trigger: "新建",
     terminal: "终端",
     project: "新建分组",
+    reopenTrigger: "重新打开已关闭的终端",
     reopenHeading: "重新打开会话",
   },
 

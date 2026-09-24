@@ -203,7 +203,6 @@ export function Shell() {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <TopBar
-        scope={scope}
         leftCollapsed={leftCollapsed}
         rightCollapsed={rightCollapsed}
         onToggleLeft={toggleLeft}
