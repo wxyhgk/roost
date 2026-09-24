@@ -1,4 +1,5 @@
 import { downloadFileUrl, readFilePreview, type FileNode } from "../../shared/api";
+import { downloadFile } from "../../shared/download";
 import { quoteShellPath, sendToSession } from "../terminal/public";
 import { t } from "@roost/i18n";
 import { writeClipboard } from "../../shared/clipboard";
@@ -115,13 +116,8 @@ export function NodeMenu({
   */
   function download() {
     onClose();
-    const a = document.createElement("a");
-    a.href = downloadFileUrl(cwd, node.path);
-    a.download = node.name;
-    a.rel = "noopener";
-    document.body.append(a);
-    a.click();
-    a.remove();
+    // 这一路下的是服务端地址（`/api/file/raw`），不是 Blob——没有 object URL 要回收。
+    downloadFile(downloadFileUrl(cwd, node.path), node.name);
   }
 
   return (

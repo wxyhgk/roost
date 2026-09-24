@@ -178,3 +178,4 @@ test('全量合并的三个触发条件，缺一个都是静默失效', () => {
   assert.equal(wantsFullRead({ first: false, stable: false }), false);
   assert.equal(wantsFullRead({ first: false, stable: false, needsFullRead: false }), false);
 });
+

@@ -19,6 +19,23 @@ export function createWorkspacePoller<T>(options: {
     timer = undefined;
   }
 
+  /*
+    **在途时的手动 `refresh()` 直接丢掉，不排队——这和隔壁那个轮询器不一样，是有意的。**
+
+    `features/server-monitor/poll.ts` 形状几乎相同但会排一笔（`queued`）。一度想把两者并成
+    一份，试过之后判断不该并：
+
+    - 真正要紧的那条路**这里已经排队了**：`setVisible(true)` 撞上在途请求会置
+      `refreshAfterFlight`，切回标签页一定拿得到新数据。手动 `refresh()` 只有一个调用点
+      （`store/index.ts` 的 `pageshow`），而它绝大多数时候和可见性那条重合。
+    - 丢掉的代价是至多多等一个轮询间隔（4 秒），而这是工作区数据，不是人盯着的读数；
+      监控面板那边有个用户会去点的「刷新」按钮，点了没反应才是真问题，所以它排队。
+    - 「间隔从完成那一刻起算」这条被 `workspace-poll.test.ts` 第一条用例明确钉着。改成
+      排队会让那条红——我改过一次，就是它拦下来的。
+
+    两个轮询器的差异不是重复，是两种不同的取舍；并成一份就得给其中一方加开关，
+    那比留两份小文件更糟。
+  */
   function refresh() {
     if (disposed || !visible || active) return;
     clearTimer();

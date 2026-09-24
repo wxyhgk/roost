@@ -30,4 +30,3 @@ export { message, type Kind } from "./api";
 export type { Draft } from "./client";
 
 /** 导出成 .json 文件。 */
-export { exportJson } from "./export";

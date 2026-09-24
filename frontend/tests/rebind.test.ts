@@ -12,7 +12,7 @@
 */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { rebindWithRetry, MAX_ATTEMPTS } from '../src/features/conversations/rebind';
+import { rebindWithRetry, MAX_REBIND_ATTEMPTS } from '../src/features/conversations/rebind';
 import { ApiError } from '../src/shared/api/errors';
 
 const identity = { terminalInstanceId: 'i-live', cliId: 'claude', nativeSessionId: 'n-1' };
@@ -86,5 +86,5 @@ test('一直被抢先：试满次数之后抛出最后那个竞态错误，不�
 });
 
 test('默认次数是有限的——不能变成一个永不放弃的循环', () => {
-  assert.ok(Number.isInteger(MAX_ATTEMPTS) && MAX_ATTEMPTS > 1 && MAX_ATTEMPTS <= 20);
+  assert.ok(Number.isInteger(MAX_REBIND_ATTEMPTS) && MAX_REBIND_ATTEMPTS > 1 && MAX_REBIND_ATTEMPTS <= 20);
 });

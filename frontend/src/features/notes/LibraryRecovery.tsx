@@ -1,5 +1,6 @@
 import { memo, useRef, useState } from "react";
-import { exportJson, message, useLibraryRecovery, type Kind } from "../library/public";
+import { message, useLibraryRecovery, type Kind } from "../library/public";
+import { exportJson } from "../../shared/download";
 import { t } from "@roost/i18n";
 import { useLocale } from "../../shared/locale";
 

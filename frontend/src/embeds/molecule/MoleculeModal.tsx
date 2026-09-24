@@ -7,6 +7,7 @@ import { formatFor } from '../../shared/chemistry/editor';
 import { handoffMolecule } from './handoff';
 import { replaceFirstSdfRecord, splitSdfRecords } from './sdf';
 import { t } from '@roost/i18n';
+import { downloadFile } from '../../shared/download';
 
 /**
  * 编辑器资源没拉全时，浏览器给的是「Failed to fetch dynamically imported module: <地址>」
@@ -181,14 +182,11 @@ export function MoleculeModal({ open, root, path, sessionId, onClose, onDirtyCha
   async function download() {
     try {
       const content = await api()!.save();
-      const url = URL.createObjectURL(new Blob([content], { type: format.mediaType }));
       const ext = format.extensions[0];
       const name = path.replaceAll('\\', '/').split('/').at(-1)!;
-      const link = document.createElement('a'); link.href = url;
       // 换掉原扩展名再加后缀；扩展名从声明里来，不再为每种格式各写一条正则。
-      link.download = `${name.replace(/\.[^.]*$/, '')}${t.files.molecule.draftSuffix}.${ext}`;
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      downloadFile(new Blob([content], { type: format.mediaType }),
+        `${name.replace(/\.[^.]*$/, '')}${t.files.molecule.draftSuffix}.${ext}`);
     } catch (err) { setError(String(err)); }
   }
   actions.current = { save: () => { void save(); }, close };

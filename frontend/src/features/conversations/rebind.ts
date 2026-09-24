@@ -18,7 +18,13 @@ import type { AiBinding } from "../../shared/api/conversations";
 /** 服务端在乐观并发失败时给的原话。只认这一句，别的 409 一律不重试。 */
 const VERSION_RACE = "binding version changed";
 
-export const MAX_ATTEMPTS = 8;
+/*
+  **名字里要带 rebind。** 仓库里另外两处 `MAX_ATTEMPTS` 指的是 WebSocket 重连次数
+  （`shared/api/fileWatch.ts`、`features/terminal/session/connection.ts`），和这里的
+  「409 乐观并发重试」完全不是一回事——同一个名字指两件事，读代码的人要跳进去才知道
+  自己在看哪个。
+*/
+export const MAX_REBIND_ATTEMPTS = 8;
 
 function isVersionRace(error: unknown): boolean {
   return error instanceof ApiError && error.status === 409
@@ -38,7 +44,7 @@ export async function rebindWithRetry(options: {
   identity: RebindIdentity;
   attempts?: number;
 }): Promise<AiBinding> {
-  const attempts = options.attempts ?? MAX_ATTEMPTS;
+  const attempts = options.attempts ?? MAX_REBIND_ATTEMPTS;
   let last: unknown;
   for (let attempt = 0; attempt < attempts; attempt++) {
     const { binding } = await options.read();
