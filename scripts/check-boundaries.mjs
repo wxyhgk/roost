@@ -78,8 +78,13 @@ const errors = [];
 
   `uid` 进这张单子的理由：它是 RFC 4122 v4 生成器，和「资料库」没有任何关系，却因为住在
   library 里而逼得 bookmarks、conversations 整个特性去认识资料库。
+
+  `api/session-fetch` 的理由：401 广播和兜底截止时间是**必须对每一个请求都成立**的两件事，
+  而 library 有自己的错误类型、用不了 `request<T>`。它原来用裸 `fetch`，于是会话过期时
+  笔记和命令面板的 401 不触发登录关卡、请求挂住也没有截止时间。第一版让它引 `request.ts`，
+  被这条规则当场拦下——拦得对，那个文件引着 i18n 和 errors。
 */
-const LIBRARY_LEAF_IMPORTS = ['shared/uid.ts'];
+const LIBRARY_LEAF_IMPORTS = ['shared/uid.ts', 'shared/api/session-fetch.ts'];
 
 /** 状态内核：必须能脱离 React 跑。 */
 const STATE_CORE_FILES = [

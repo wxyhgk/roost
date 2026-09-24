@@ -1,4 +1,5 @@
 import { errorText, t } from "@roost/i18n";
+import { fetchWithSession } from "../../shared/api/session-fetch";
 export type Kind = "notes" | "snippets";
 export type Content = { text: string } | { title: string; lang: string; code: string };
 export type RecordData = { id: string; revision: number; createdAt: number; updatedAt: number; deletedAt: number | null; text?: string; title?: string; lang?: string; code?: string };
@@ -11,7 +12,12 @@ export type Transport = <T>(path: string, method?: string, body?: unknown) => Pr
 export const request: Transport = async <T>(path: string, method = "GET", body?: unknown): Promise<T> => {
   let response: Response;
   try {
-    response = await fetch(`/api/${path}`, { method, headers: body === undefined ? undefined : { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+    /*
+      走 `fetchWithSession` 而不是裸 `fetch`：笔记/片段/命令面板的列表原来绕过了那一层，
+      于是会话过期时这里的 401 不会触发登录关卡，请求挂住也没有兜底截止时间。
+      错误类型仍归这里（`LibraryError` 要带 status 和冲突时的 `current`）。
+    */
+    response = await fetchWithSession(`/api/${path}`, { method, headers: body === undefined ? undefined : { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
   } catch { throw new LibraryError(0, t.library.error.connection); }
   const text = await response.text();
   let data;

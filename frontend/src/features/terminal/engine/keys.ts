@@ -42,6 +42,17 @@ export function isMac() {
   return /mac|iphone|ipad/i.test(navigator.platform);
 }
 
+/**
+ * 「按住它再点 = 打开链接」的那个键。
+ *
+ * 和 `isMac` 放在一起，因为问的是同一件事：这个平台上「打开」是 ⌘ 还是 Ctrl。终端里有两种
+ * 链接（网址、文件路径），各自的打开逻辑在不同文件里——这个判断抄成两份，改了一处忘了另一处
+ * 就会变成「网址要 ⌘、路径要 Ctrl」，而用户看到的提示只有一条。
+ */
+export function linkModifier(ev: MouseEvent) {
+  return isMac() ? ev.metaKey : ev.ctrlKey;
+}
+
 export function isBrowserShortcut(ev: KeyboardEvent) {
   if (ev.isComposing || ev.keyCode === 229) return false;
   if (isMac()) {

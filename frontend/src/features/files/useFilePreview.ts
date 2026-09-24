@@ -5,19 +5,20 @@ import { t } from "@roost/i18n";
 /**
  * 选中文件的文本内容。
  *
- * `skip` 用来让出那些**别人负责读**的文件：分子文件交给编辑器，而编辑器自己必然要
- * 按格式解析、要记 mtime 做冲突检测，所以它会自己读一遍。这里再读一遍拿到的内容
- * 根本不会被渲染（预览弹窗在那种情况下不挂），纯粹是每次选中都白跑一个往返。
- *
  * 从 `Tree` 拆出来的理由和 `useOpenFile` 一样：这是「打开的那个文件的内容」，
  * 和「目录里有哪些条目」是两件事，只是因为 `selected` 原来住在 Tree 里才挤在一起。
+ *
+ * **「别人负责读的文件不要在这里白读一遍」那件事已经不在这一层了。** 归外部编辑器管的
+ * 文件（分子文件之类）压根不会有预览窗——`usePreviewPanes` 那边 `syncPanes(prev, skip ?
+ * null : selected, root)` 就把它挡在外面了，这个 hook 连挂载都不会。所以原来的 `skip`
+ * 参数一个调用点都没传过值，删掉。
  */
-export function useFilePreview(root: string, path: string | null, skip = false) {
+export function useFilePreview(root: string, path: string | null) {
   const [preview, setPreview] = useState<FilePreview | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!path || skip) {
+    if (!path) {
       setPreview(null);
       setError(null);
       return;
@@ -40,7 +41,7 @@ export function useFilePreview(root: string, path: string | null, skip = false) 
       cancelled = true;
       abort.abort();
     };
-  }, [root, path, skip]);
+  }, [root, path]);
 
   /**
    * 关闭预览时手动清掉——`path` 变 null 那一帧之前，旧内容不该还留在屏幕上。

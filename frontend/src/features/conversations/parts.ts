@@ -260,6 +260,31 @@ export function buildItems(rows: readonly Row[]): Item[] {
   return items;
 }
 
+/**
+ * 每条条目上面要不要标「你 / AI」，一次算出整串。
+ *
+ * 同一个角色连着说好几条时只标第一条——一次回合里 AI 往往是「调用 → 改动 → 再调用」，
+ * 每条都顶一个「AI」纯属噪音，还把真正的分界（换人说话）淹掉。
+ *
+ * **diff、压缩摘要、注入这三种都不算换人**：它们没有角色、夹在同一个回合中间，所以既
+ * 自己不标，也要跨过去记住上一个真实角色——否则它们后面那条会莫名其妙又标一次。
+ *
+ * `turnStart` 压过「和上一条同一个人」：一个回合的第一句必须标上，即使上一个回合也是
+ * 用户说的最后一句（比如中间只有一条注入）。
+ *
+ * 写成纯函数、不留在组件的 useMemo 里，理由和 `outlineOf` 一样：三条规则都测得到，
+ * 而搬出来之前它一行测试都没有——`tests/ui/conversation-render.test.tsx` 把 showRole 写死成 true。
+ */
+export function roleFlags(items: readonly Item[]): boolean[] {
+  let last: string | undefined;
+  return items.map(item => {
+    if (item.kind === "diff" || item.kind === "compaction" || item.kind === "context") return false;
+    const show = item.turnStart || item.role !== last;
+    last = item.role;
+    return show;
+  });
+}
+
 /** 一个回合里所有改动的汇总：改了哪些文件、各自加删多少。 */
 export type TurnDiff = {
   files: { path: string; added: number; removed: number; truncated: boolean }[];

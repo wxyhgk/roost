@@ -27,6 +27,14 @@ export type ListAction =
   | { type: "filter"; filters: ConversationFilters }
   | { type: "loading" }
   | { type: "page"; items: Conversation[]; nextCursor: string | null; append: boolean }
+  /**
+   * 详情里改完了（改名、置顶、换分组），把列表里那一行换成服务端刚返回的记录。
+   *
+   * **列表那一份不换掉不只是「标题显示成旧的」**：`ConversationList` 再点同一行时，
+   * 传给详情的是列表里这个对象，它带着**旧的 revision**——下一次改任何一项都会先撞一次
+   * 409「别处刚改过」，而其实是自己刚改的。
+   */
+  | { type: "replace"; conversation: Conversation }
   | { type: "failed"; message: string };
 
 const sameFilters = (a: ConversationFilters, b: ConversationFilters) =>
@@ -53,6 +61,19 @@ export function reduceList(state: ListState, action: ListAction): ListState {
         loading: false,
         error: null,
       };
+    case "replace": {
+      const at = state.items.findIndex(item => item.id === action.conversation.id);
+      /*
+        列表里没有这一行就什么都不做，**不要顺手插进去**：它可能压根不属于当前的筛选结果
+        （比如搜索「报错」时从别处打开了一条），插进去等于往一个筛过的列表里塞一条不匹配的。
+      */
+      if (at === -1) return state;
+      const items = state.items.slice();
+      items[at] = action.conversation;
+      // 位置不动。这里唯一会影响排序的只有置顶，而排序是按 activity 的，置顶本来就不参与；
+      // 就算参与，让一行在用户刚点过它的位置上跳走也是更糟的那个选择。
+      return { ...state, items };
+    }
     case "failed":
       return { ...state, loading: false, error: action.message };
   }

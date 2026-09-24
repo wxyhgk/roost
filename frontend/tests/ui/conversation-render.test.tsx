@@ -10,13 +10,20 @@
 
   走的是真管道：HistoryMessage → groupMessages → buildItems → TranscriptItem，
   和界面上那条一模一样。手捏 Item 会绕过分组那一段，而分组正是最容易把消息吃掉的地方。
+
+  **条目渲染住在 `TranscriptItem.tsx`，不在 `ConversationDetail` 里。** 从容器里 import 会把
+  react-virtuoso、`shared/api/conversations`、`shared/store`、`useSessionActivity` 一整串
+  拖进这个只想画一条消息的测试；而那个文件头上写着「纯展示：只吃 item」，import 一条都不该越界。
+
+  `showRole` 在这里写死成 true——那条判据（同一个人连说几条只标第一条）是 `parts.ts` 的
+  `roleFlags`，在 `conversation-parts.test.ts` 里逐条测，不在这一层。
 */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { buildItems, groupMessages } from '../../src/features/conversations/parts';
-import { TranscriptItem } from '../../src/features/conversations/ConversationDetail';
+import { TranscriptItem } from '../../src/features/conversations/TranscriptItem';
 import { ThemeProvider } from '../../src/shared/theme';
 import type { HistoryMessage } from '../../src/shared/api/conversationPayloads';
 import { t } from '@roost/i18n';

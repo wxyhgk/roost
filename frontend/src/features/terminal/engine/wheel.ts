@@ -10,11 +10,13 @@ const DOM_DELTA_PAGE = 2;
  * 像素事件，每个单独看都不足一行，但只要各自向上取整就变成滚了十几行。
  * 所以这里返回 0 是正常且必要的——「还不够一行」。
  *
- * 算法取自 xterm 自己的 Viewport._getLinesScrolled：按每格高度换算成行、
- * |deltaY| < 50 判定为触控板后乘 0.3 阻尼、余数保留到下一次。
+ * 算法取自 xterm 自己的 Viewport._getLinesScrolled：按每格高度换算成行、余数保留到下一次。
  *
- * `damp` 控制那 0.3 要不要打。**默认 true 只为和 xterm 的本地滚动保持一致**；
- * 转发给 TUI 时必须传 false，见 attachHostWheel 里的说明。
+ * **不打 xterm 那道 0.3 触控板阻尼。** 原来这里有个 `damp` 参数默认 true，理由写的是
+ * 「和 xterm 的本地滚动保持一致」——但本地滚动那条路根本不经过这个函数：attachHostWheel
+ * 判定不转发时直接 return，滚动、阻尼、余数全在 xterm 自己肚子里。于是两个调用点（转发给
+ * TUI、手指划屏）都显式传 false，默认值只有测试走得到，注释却在解释一个不存在的路径。
+ * 删掉参数，两条真实路径为什么不要阻尼见 attachHostWheel 和 touchScroll 里的说明。
  *
  * 保持纯函数：余数显式传入传出，调用方自己保管，测试才能一次跑完整串事件。
  */
@@ -22,15 +24,13 @@ export function wheelTicks(
   ev: WheelEvent,
   cellHeight: number,
   carry = 0,
-  damp = true,
 ): { ticks: number; carry: number } {
   if (ev.deltaY === 0) return { ticks: 0, carry };
   if (ev.deltaMode === DOM_DELTA_LINE) return { ticks: Math.trunc(ev.deltaY), carry };
   // 一页按一屏算；这里拿不到行数，沿用原先的近似值。
   if (ev.deltaMode === DOM_DELTA_PAGE) return { ticks: Math.trunc(ev.deltaY) * 8, carry };
   // 每格高度拿不到时（元素还没量出来）退回原先的 40px 近似，总比不滚强。
-  let amount = ev.deltaY / (cellHeight > 0 ? cellHeight : 40);
-  if (damp && Math.abs(ev.deltaY) < 50) amount *= 0.3;
+  const amount = ev.deltaY / (cellHeight > 0 ? cellHeight : 40);
   const total = carry + amount;
   // `|| 0` 是为了掐掉负零：反向滚动正好抵消时会算出 -0，它和 0 行为一样但比较不相等。
   return { ticks: Math.trunc(total) || 0, carry: total % 1 };
@@ -134,14 +134,15 @@ export function attachHostWheel(
     const rect = target.getBoundingClientRect();
     const cellHeight = now.rows > 0 ? rect.height / now.rows : 0;
     /*
-      转发给 TUI 时不打 0.3 阻尼。
+      转发给 TUI 的行数按真实位移算，不打 xterm 那道 0.3 阻尼。
 
       那 0.3 是 xterm 给**自己的本地滚动**用的：它一帧能重画好几次，滚慢一点是顺滑。
       而 TUI 自绘滚动是「一格 → 一次网络往返 → 重画一屏」的离散动作，Claude Code
       的全屏渲染器在探测不到倍率的终端上按 1 行/格算（实测确认），再叠上 0.3 就只剩
-      原生的三成——滑一下爬两行。这两条路径的取舍相反，所以只在本地滚动那条上保留。
+      原生的三成——滑一下爬两行。本地滚动那条路不经过这里（上面就 return 了），所以
+      wheelTicks 里索性没有阻尼这回事。
     */
-    const scrolled = wheelTicks(ev, cellHeight, carry, false);
+    const scrolled = wheelTicks(ev, cellHeight, carry);
     carry = scrolled.carry;
     // 不管这次攒没攒够一行都要吃掉事件：否则页面会跟着滚，终端反而不动。
     ev.preventDefault();

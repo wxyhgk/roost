@@ -120,11 +120,11 @@ export function moveGesture(
   /*
     手指向下 = 内容跟着往下走 = 往回翻历史 = 滚轮的 deltaY < 0。所以取负号。
 
-    `damp = false`：那 0.3 阻尼是 xterm 给自己本地滚动用的平滑，而手指是**直接位移**，
+    行数按真实位移算：xterm 那道 0.3 阻尼是它给自己本地滚动用的平滑，而手指是**直接位移**，
     打了阻尼就是「滑 100 像素内容走 30」，和手指脱钩。理由和 wheel.ts 转发给 TUI 那条
-    一样，只是成因不同：那边是怕滚得太少，这边是手指必须跟手。
+    一样，只是成因不同：那边是怕滚得太少，这边是手指必须跟手。所以 wheelTicks 里没有阻尼。
   */
-  const scrolled = wheelTicks(asWheelDelta(-(y - lastY)), cellHeight, carry, false);
+  const scrolled = wheelTicks(asWheelDelta(-(y - lastY)), cellHeight, carry);
   return {
     gesture: { ...g, axis, snapX, snapY, lastY: y, carry: scrolled.carry },
     ticks: scrolled.ticks,

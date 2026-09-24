@@ -237,3 +237,70 @@ test("an orphaned tool result stays the agent's action, not the user's", () => {
       "工具条目一律算 AI 的动作，不跟着承载它的消息角色走");
   }
 });
+
+import { roleFlags } from "../src/features/conversations/parts.ts";
+
+/*
+  **「这条上面要不要标谁在说话」的三条规则。**
+
+  它原来是 `ConversationDetail` 里的一个 useMemo，一行测试都没有——`tests/ui/` 那一层把
+  `showRole` 写死成 true，所以判据错了界面照样绿。抽成纯函数就是为了在这里逐条钉住。
+
+  一律走真管道（groupMessages → buildItems），不手捏 Item：这三条规则里有两条说的正是
+  「diff / 压缩 / 注入这些**不是人说的**条目怎么办」，而它们是不是这个形状、落在哪个位置，
+  只有 buildItems 说得准。
+*/
+test("同一个人连着说好几条，只标第一条", () => {
+  const flags = roleFlags(buildItems(groupMessages([
+    msg("user", "问一句"),
+    msg("assistant", "第一段"),
+    msg("assistant", "第二段"),
+    msg("user", "再问一句"),
+  ])));
+  assert.deepEqual(flags, [true, true, false, true],
+    "AI 连着说的第二条不该再顶一个「AI」——那把真正的分界（换人说话）淹掉了");
+});
+
+/*
+  压缩摘要和注入的上下文**不算换人**：它们没有角色、夹在同一个回合中间。
+  不跨过去的后果有两重——它们自己顶一个 `roleName(undefined)`，而且它们后面那条
+  AI 发言会莫名其妙又标一次「AI」。
+*/
+test("压缩摘要和注入的上下文都不打断「同一个人在说话」", () => {
+  const items = buildItems(groupMessages([
+    msg("user", "帮我改一下", [{ type: "text", text: "帮我改一下" }]),
+    msg("assistant", "好的", [{ type: "text", text: "好的" }]),
+    msg("user", "", [{ type: "compaction", text: "这段对话的摘要……" }]),
+    msg("assistant", "接着说", [{ type: "text", text: "接着说" }]),
+    msg("user", "", [{ type: "context", contextLabel: "environment", text: "工作目录是 /w" }]),
+    msg("assistant", "再说一句", [{ type: "text", text: "再说一句" }]),
+  ]));
+  assert.deepEqual(items.map(i => i.kind), ["text", "text", "compaction", "text", "context", "text"],
+    "前提变了这条用例就不在测原来那件事");
+  assert.deepEqual(roleFlags(items), [true, true, false, false, false, false],
+    "跨过压缩和注入之后，AI 还是同一个人在说话");
+});
+
+/* 回合末尾的改动汇总同样没有角色，它自己也不该被标成谁说的。 */
+test("回合改动汇总不标角色", () => {
+  const items = buildItems(groupMessages([
+    msg("user", "改一下"),
+    msg("assistant", "", [{ type: "tool_call", name: "Edit", toolCallId: "c1", text: "Edit: src/a.ts" }]),
+    msg("user", "", [{ type: "tool_result", toolCallId: "c1", text: "ok",
+      patch: { filePath: "src/a.ts", truncated: false, hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ["+x"] }] } }]),
+    msg("user", "再问一句"),
+  ]));
+  assert.deepEqual(items.map(i => i.kind), ["text", "tools", "diff", "text"]);
+  assert.deepEqual(roleFlags(items), [true, true, false, true]);
+});
+
+/*
+  **回合的第一句一定要标上，即使上一条也是同一个人说的。** 用户连发两条就是这种情形：
+  两条都是新回合的开头，而它们角色相同——只看「和上一条是不是同一个人」会把第二条的
+  署名吞掉，于是界面上一条回合边界的下面光秃秃地悬着一段话。
+*/
+test("新回合的第一句压过「和上一条同一个人」", () => {
+  const items = buildItems(groupMessages([msg("user", "第一句"), msg("user", "第二句")]));
+  assert.deepEqual(items.map(i => i.turnStart), [true, true], "用户的每一句都开一个新回合");
+  assert.deepEqual(roleFlags(items), [true, true]);
+});

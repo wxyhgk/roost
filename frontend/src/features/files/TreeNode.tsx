@@ -1,21 +1,23 @@
 import { useEffect, useRef, useState, type DragEvent as ReactDragEvent } from "react";
-import { downloadFileUrl, listDir, readFilePreview, renamePath, deletePath, type FileNode } from "../../shared/api";
+import { listDir, renamePath, deletePath, type FileNode } from "../../shared/api";
 import { IconChevron, IconEdit, IconFolder, IconTrash } from "../../shared/icons";
 import { InlineRename } from "../../shared/ui/InlineRename";
-import { ROOST_PATH_MIME, quoteShellPath, sendToSession } from "../terminal/public";
+import { ROOST_PATH_MIME } from "../terminal/public";
 import { t } from "@roost/i18n";
-import { writeClipboard } from "../../shared/clipboard";
 import { FileIcon } from "./FileGlyphs";
 import { NewEntryRow } from "./NewEntryRow";
-import type { FolderActions, NewKind, PendingCreate } from "./types";
+import { NodeMenu } from "./NodeMenu";
+import type { FolderActions, PendingCreate } from "./types";
+import { renameTarget } from "./rename";
 import { createCoalescedLoad } from "./coalescedLoad";
-import { Menu, MenuItem, MenuSeparator } from "./Menu";
 
 /**
- * 树上的一行，以及它的右键菜单。
+ * 树上的一行：它怎么画、展开时取什么、改名删除拖放。
  *
- * 从 `Tree.tsx` 拆出来：那个文件里原本装着三个组件 628 行，而这两个和「当前打开的是
- * 哪个文件」那套路由逻辑完全无关——它们只关心自己这一行怎么画、展开时取什么。
+ * 从 `Tree.tsx` 拆出来：那个文件里原本装着三个组件 628 行，而这一个和「当前打开的是
+ * 哪个文件」那套路由逻辑完全无关——它只关心自己这一行怎么画、展开时取什么。
+ *
+ * 右键菜单（「右键这一行能干什么」那份清单）在 `NodeMenu.tsx`，同一条理由再用一次。
  */
 
 function MatchedName({ name, query }: { name: string; query: string }) {
@@ -79,6 +81,8 @@ export function TreeNode({
   const [open, setOpen] = useState(false);
   const [children, setChildren] = useState<FileNode[] | null>(null);
   const [loading, setLoading] = useState(false);
+  /** 取子项失败。**只在一个条目都没有时才显示**，刷新失败保留旧列表。 */
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
 
@@ -98,26 +102,79 @@ export function TreeNode({
   const filteredOut = !!q && !isDir && !node.name.toLowerCase().includes(q);
 
   /*
+    取子项的**唯一一条路**。
+
+    原来有三条：pending 自动展开一条裸 `listDir`、`toggle()` 一条裸 `listDir`、刷新这一条
+    走排队取数器。前两条不传 signal、也没有 cancelled 守卫，而三条都 `setChildren`，
+    于是终端里跑着构建（文件监听在推 `rev`）时点开一个目录，两个响应无序到达，**慢的那个
+    用旧内容盖掉新内容**；更糟的是当时 `rev` 已经被下面那个 effect 消费掉了，于是要等下一次
+    文件变化才会纠正，中间一直显示着过期的列表。
+
+    取数器按 (cwd, node.path) 建一次，`rev` 和展开只是戳它一下。它在途时再戳只记一笔、
+    不打断，所以「展开」和「刷新」撞在一起的结果是**后发的那次一定最后写**，没有谁盖谁。
+  */
+  // 回调闭在建取数器那一轮渲染上，读 children 得走一份渲染期同步的 ref（同 usePreviewPanes）。
+  const childrenRef = useRef(children);
+  childrenRef.current = children;
+  const loadChildren = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    const feed = createCoalescedLoad((signal) => listDir(cwd, node.path, signal), {
+      start() { setLoading(true); },
+      data(list) { setChildren(list); setLoadError(null); },
+      error(reason) {
+        /*
+          **展开失败要说出来。** 原来这里是个空 catch，于是「取不到」和「空目录」在界面上
+          长得一模一样——一个展不开的目录看起来就是个空目录，连重试的理由都没有。
+
+          反过来，刷新失败时保留旧列表：半棵树也比空白强，所以有内容时不覆盖成错误。
+        */
+        if (childrenRef.current == null) {
+          setLoadError(reason instanceof Error ? reason.message : t.files.node.expandFailed);
+        }
+      },
+      settled() { setLoading(false); },
+    });
+    loadChildren.current = feed.load;
+    return () => {
+      loadChildren.current = null;
+      feed.dispose();
+      // dispose 之后 settled 不会再来，`loading` 得自己落下去，否则占位一直挂着。
+      setLoading(false);
+    };
+  }, [cwd, node.path]);
+
+  /*
     新建落到这个目录上时，它得自己展开——新条目那一行就长在 children 里，目录收着就
     看不见。做成声明式的而不是在右键菜单里手动 setOpen：目标从哪儿设过来都一样生效
     （右键条目、右键空白、工具栏 +），不用每加一个入口就补一次。
 
     只在 pending.dir 变成自己时跑一次；之后用户手动收起来是他的自由，不硬按着。
+    **这里只负责展开，不取数**：取数由下面那个 effect 按「展开了没有内容」推出来。
   */
   useEffect(() => {
     if (pending?.dir !== node.path || !isDir || onNavigate) return;
     setOpen(true);
-    if (children == null && !loading) {
-      setLoading(true);
-      listDir(cwd, node.path)
-        .then(setChildren)
-        .catch(() => { /* 展开失败就是空目录的样子，新建仍然可以提交 */ })
-        .finally(() => setLoading(false));
-    }
-    // children / loading 故意不进依赖：它们变了不该再触发一次展开。
-  }, [pending?.dir, node.path, isDir, onNavigate, cwd]); // eslint-disable-line
+  }, [pending?.dir, node.path, isDir, onNavigate]);
 
-  async function toggle() {
+  /*
+    什么时候该取一次：展开着，而且**要么还没有内容，要么内容比 `rev` 旧**。
+
+    写成推导而不是在 `toggle()` 里发请求，是为了让「首次展开」和「文件变化后刷新」共用
+    同一个判据。`seenRev` 只在真的取了之后才推进——原来是先推 `seenRev` 再判断要不要刷，
+    于是目录收着（或首次取数还在途）时来的那一拍被吞掉，展开后拿到的是那一拍之前的内容。
+  */
+  const seenRev = useRef(rev);
+  useEffect(() => {
+    if (!open) return;
+    if (children != null && seenRev.current === rev) return;
+    seenRev.current = rev;
+    loadChildren.current?.();
+  }, [open, rev, children]);
+
+  // Every hook above must run unconditionally; hiding happens only at render time.
+  if (filteredOut) return null;
+
+  function toggle() {
     if (!isDir) {
       onSelect(node.path);
       return;
@@ -126,54 +183,18 @@ export function TreeNode({
       onNavigate(node.path);
       return;
     }
-    if (!open && children == null) {
-      setLoading(true);
-      try {
-        setChildren(await listDir(cwd, node.path));
-      } catch (err) {
-        window.alert(err instanceof Error ? err.message : t.files.node.expandFailed);
-      } finally {
-        setLoading(false);
-      }
-    }
+    /*
+      **只翻开，取数交给上面那个 effect。** 原来是 `await listDir(...)` 之后才 setOpen，
+      于是慢链路上点下去要等一整个往返才有反应，而且那次取数在 `open` 还是 false 的时候
+      发生——期间来的 `rev` 因此被判成「没展开，不用刷」丢掉。
+    */
     setOpen((v) => !v);
   }
 
-  /*
-    增删改之后刷新已展开目录的内容。
-
-    和根目录同一套「在途就排队、不打断」——而且这里更要紧：树上每个展开着的目录都有
-    一个这样的 effect，原来的写法下一次文件变化通知会让**每一个**都打断重发。
-    展开十个目录、终端里跑着构建，就是每秒几十个互相掐掉的请求，一个都到不了。
-
-    取数器按 (cwd, node.path) 建一次，`rev` 只是戳它一下。
-  */
-  const refreshChildren = useRef<(() => void) | null>(null);
-  useEffect(() => {
-    const feed = createCoalescedLoad((signal) => listDir(cwd, node.path, signal), {
-      data: setChildren,
-      error() { /* 刷新失败时保留旧列表：半棵树也比空白强。 */ },
-    });
-    refreshChildren.current = feed.load;
-    return () => { refreshChildren.current = null; feed.dispose(); };
-  }, [cwd, node.path]);
-
-  const seenRev = useRef(rev);
-  useEffect(() => {
-    if (seenRev.current === rev) return;
-    seenRev.current = rev;
-    // 没展开、或者还没加载过的目录不用刷——展开时自然会取。
-    if (open && children != null) refreshChildren.current?.();
-  }, [rev, open, children]);
-
-  // Every hook above must run unconditionally; hiding happens only at render time.
-  if (filteredOut) return null;
-
   async function commitRename(name: string) {
-    const clean = name.trim();
-    if (!clean || clean === node.name || clean.includes("/")) return;
-    const slash = node.path.lastIndexOf("/");
-    const newPath = slash < 0 ? clean : `${node.path.slice(0, slash + 1)}${clean}`;
+    const newPath = renameTarget(node.path, name);
+    // null＝这不构成一次改名（空、同名、含 `/`），当作没按过，见 rename.ts。
+    if (!newPath) return;
     try {
       await renamePath(cwd, node.path, newPath);
       onRenamed(node.path, newPath);
@@ -248,7 +269,7 @@ export function TreeNode({
             <button
               className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-text"
               title={node.name}
-              onClick={() => void toggle()}
+              onClick={toggle}
             >
               {isDir ? (
                 <IconChevron open={open} />
@@ -283,9 +304,15 @@ export function TreeNode({
       </div>
       {isDir && open && !onNavigate && (
         <ul>
-          {loading && (
+          {/* 「加载中」只在没内容时占位：刷新一个已经展开的目录不该把它的内容换成一行字。 */}
+          {loading && children == null && (
             <li className="px-2.5 py-2 text-caption leading-[1.45] text-text-dim">
               {t.files.tree.loading}
+            </li>
+          )}
+          {loadError && !loading && (
+            <li role="alert" className="px-2.5 py-2 text-caption leading-[1.45] text-danger">
+              {loadError}
             </li>
           )}
           {pending?.dir === node.path && (
@@ -338,142 +365,8 @@ export function TreeNode({
  * 「上传到这里」和「新建」落在被右键的那个目录上，而上传队列和新建行都住在
  * `FilesView`——树只负责把用户点的是哪个目录报上去。走一个对象而不是两个 prop，
  * 是因为 `TreeNode` 是递归的：每多一个 prop 就要在递归那一处多抄一行。
+ *
+ * 这一行转发是 `FilesView` 在用的（它从 `TreeNode` 取 `FolderActions`），菜单搬走之后
+ * 仍然留在这里。
  */
 export type { NewKind, FolderActions, PendingCreate } from "./types";
-
-function NodeMenu({
-  x,
-  y,
-  cwd,
-  node,
-  sessionId,
-  folder,
-  onNavigate,
-  onRename,
-  onDelete,
-  onClose,
-}: {
-  x: number;
-  y: number;
-  cwd: string;
-  node: FileNode;
-  sessionId: string;
-  folder: FolderActions;
-  /** 列表模式下才有。有它就说明这棵树是平的，没有子列表可以就地长出新建行。 */
-  onNavigate?: (path: string) => void;
-  onRename: () => void;
-  onDelete: () => void;
-  onClose: () => void;
-}) {
-  const isDir = node.kind === "dir";
-
-  /*
-    「在这个文件夹里新建」。
-
-    **列表模式下不能只设 pending 就完事**——那是这个菜单三个新建项以前什么都不做的原因：
-    新建行只有两个落脚点，顶层那个要求 `pending.dir === 当前浏览目录`（右键的是子目录，
-    不匹配），节点里那个在列表模式下被 `!onNavigate` 整段关掉了（平列表没有子列表）。
-    于是 pending 设上了，却没有任何地方渲染得出来，看起来就是「点了没反应」。
-
-    所以列表模式先进到那个目录里去：directory 变成它，新建行就落在顶层，和「在当前目录
-    新建」完全是同一条路。树模式下 onNavigate 是 undefined，照旧就地展开。
-  */
-  const createIn = (kind: NewKind) => {
-    onClose();
-    onNavigate?.(node.path);
-    /*
-      **等菜单把焦点还完再挂输入框。**
-
-      菜单用的是 floating-ui 的 `FloatingFocusManager`，它带 `returnFocus`——关闭时把
-      焦点还给触发它的那一行。而那次归还是在 `queueMicrotask` 里做的（见
-      `@floating-ui/react` 里 `getFirstTabbableElement(returnElement)` 那段），**晚于**
-      React 这一轮提交，也就晚于新建行 `autoFocus` 拿到焦点。
-
-      于是：输入框刚拿到焦点 → 菜单把焦点抢回那一行 → 输入框失焦 → `InlineRename` 的
-      onBlur 判定为「编辑结束」→ `NewEntryRow` 当成取消 → 行当场消失。用户看到的就是
-      「点了没反应」。（而且因为名字是空串，那次 blur 连提交都不会做：
-      `draft.trim() || value` 等于 value，`next !== value` 不成立。）
-
-      `setTimeout(0)` 是宏任务，跨过整批微任务，所以归还先发生、输入框后拿焦点。
-      不用 `queueMicrotask`：我们的微任务排在点击处理器里，**早于**它那一个，没用。
-    */
-    setTimeout(() => folder.create(node.path, kind), 0);
-  };
-
-  async function copy(text: string) {
-    onClose();
-    if (!(await writeClipboard(text))) window.alert(t.files.menu.copyFailed);
-  }
-
-  async function copyContent() {
-    onClose();
-    let file;
-    try {
-      file = await readFilePreview(cwd, node.path);
-    } catch (err) {
-      window.alert(err instanceof Error ? err.message : t.files.menu.readFailed);
-      return;
-    }
-    // 二进制读回来的 content 是空串。照抄会**静悄悄地清空剪贴板**，
-    // 看起来和复制成功一模一样。
-    if (file.binary) {
-      window.alert(t.files.menu.copyBinary);
-      return;
-    }
-    if (!(await writeClipboard(file.content))) {
-      window.alert(t.files.menu.copyFailed);
-      return;
-    }
-    // 后端在 8 MiB 处截断。复制成功但内容不全，这件事必须说出来。
-    if (file.truncated) window.alert(t.files.menu.copyTruncated);
-  }
-
-  function insertToTerminal() {
-    onClose();
-    if (sendToSession(sessionId, `${quoteShellPath(node.path)} `) === "rejected") {
-      window.alert(t.files.menu.insertFailed);
-    }
-  }
-
-  /*
-    下载走一个临时 <a download>，而不是 location.href。
-
-    直接改 location 会让整个 SPA 走一遍导航——即使浏览器最终认出这是 attachment
-    转而下载，中间那一下也可能把终端的 WebSocket 连接掐了。
-  */
-  function download() {
-    onClose();
-    const a = document.createElement("a");
-    a.href = downloadFileUrl(cwd, node.path);
-    a.download = node.name;
-    a.rel = "noopener";
-    document.body.append(a);
-    a.click();
-    a.remove();
-  }
-
-  return (
-    <Menu x={x} y={y} onClose={onClose}>
-      <MenuItem label={t.files.menu.copyPath} onClick={() => void copy(node.path)} />
-      <MenuItem label={t.files.menu.copyAbsolutePath} onClick={() => void copy(`${cwd}/${node.path}`)} />
-      {!isDir && <MenuItem label={t.files.menu.copyContent} onClick={() => void copyContent()} />}
-      <MenuItem label={t.files.menu.insertToTerminal} onClick={insertToTerminal} />
-      <MenuSeparator />
-      {isDir ? (
-        <MenuItem label={t.files.menu.uploadHere} onClick={() => { onClose(); folder.upload(node.path); }} />
-      ) : (
-        <MenuItem label={t.files.menu.download} onClick={download} />
-      )}
-      <MenuSeparator />
-      {isDir && (
-        <>
-          <MenuItem label={t.files.menu.newFile} onClick={() => createIn("file")} />
-          <MenuItem label={t.files.menu.newFolder} onClick={() => createIn("dir")} />
-          <MenuItem label={t.files.menu.newMolecule} onClick={() => createIn("mol")} />
-        </>
-      )}
-      <MenuItem label={t.files.menu.rename} onClick={() => { onClose(); onRename(); }} />
-      <MenuItem label={t.files.menu.remove} danger onClick={() => { onClose(); onDelete(); }} />
-    </Menu>
-  );
-}

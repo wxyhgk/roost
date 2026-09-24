@@ -72,12 +72,12 @@ test("触控板的细碎像素事件要攒够一行才滚，攒不够时返回 0
   const cellHeight = 20;
   // 一次轻扫发十几个 deltaY≈2 的事件。逐个向上取整就会滚十几行。
   let carry = 0, ticks = 0;
-  for (let i = 0; i < 12; i++) {
+  for (let i = 0; i < 9; i++) {
     const result = wheelTicks(wheel(2), cellHeight, carry);
     carry = result.carry;
     ticks += result.ticks;
   }
-  // 2px * 0.3 阻尼 / 20px 每行 = 0.03 行/次，12 次总共 0.36 行——一行都不该滚。
+  // 2px / 20px 每行 = 0.1 行/次，9 次总共 0.9 行——一行都不该滚。
   assert.equal(ticks, 0, "轻扫不该滚出行来");
 
   // 但余数不能丢：继续扫下去必须累积成真的滚动。
@@ -86,12 +86,12 @@ test("触控板的细碎像素事件要攒够一行才滚，攒不够时返回 0
     carry = result.carry;
     ticks += result.ticks;
   }
-  assert.equal(ticks, 3, "112 次 × 0.03 行 ≈ 3.36 行");
+  assert.equal(ticks, 10, "109 次 × 0.1 行 = 10.9 行");
 });
 
 test("整格的鼠标滚轮一次就滚，方向与行模式都保留", () => {
   const cellHeight = 20;
-  // 传统鼠标一格 100px，超过 50 不算触控板，不打阻尼：100/20 = 5 行。
+  // 传统鼠标一格 100px：100/20 = 5 行。
   assert.equal(wheelTicks(wheel(100), cellHeight).ticks, 5);
   assert.equal(wheelTicks(wheel(-100), cellHeight).ticks, -5);
   // 行模式和页模式不走像素累积。
@@ -104,12 +104,12 @@ test("整格的鼠标滚轮一次就滚，方向与行模式都保留", () => {
 
 test("换方向时余数跟着反向消耗，不会凭空多滚一行", () => {
   const cellHeight = 20;
-  // 先向下攒一点余数。
-  const down = wheelTicks(wheel(40), cellHeight);
+  // 先向下攒一点余数：10px / 20px 每行 = 半行，还不够滚。
+  const down = wheelTicks(wheel(10), cellHeight);
   assert.equal(down.ticks, 0);
   assert.ok(down.carry > 0);
   // 立刻反向：新的量要和已攒的余数抵消，而不是各自独立向上取整。
-  const up = wheelTicks(wheel(-40), cellHeight, down.carry);
+  const up = wheelTicks(wheel(-10), cellHeight, down.carry);
   assert.equal(up.ticks, 0, "抵消后不该滚出行来");
   assert.ok(Math.abs(up.carry) < 1e-9);
 });
@@ -155,28 +155,26 @@ test("DECTCEM inside a combined sequence does not disturb the other modes", () =
 
 
 /*
-  转发给 TUI 的那条路径不打 0.3 阻尼。
+  行数按真实位移算，不打 xterm 那道 0.3 触控板阻尼。
 
   实测：Claude Code 的全屏渲染器在探测不到滚轮倍率的终端（xterm.js 系）上按 1 行/格
   算，所以「发出几格」就是「滚几行」。再叠一道 0.3，一次轻扫只剩原生的三成。
+
+  原来 `wheelTicks` 有个 `damp` 参数、默认 true，而两个调用点（转发给 TUI、手指划屏）
+  都传 false：那个默认值只有这个测试在走。参数删了，这一条守的是位移和行数的换算本身。
 */
-test("转发给 TUI 时不打触控板阻尼，格数跟住原生行数", () => {
+test("轻扫的行数按真实位移走，不打触控板阻尼", () => {
   const cellHeight = 20;
-  // 同一串轻扫事件：打阻尼只滚 3 行，不打阻尼滚满 11 行（112 × 2px / 20px）。
-  const sweep = (damp: boolean) => {
-    let carry = 0, ticks = 0;
-    for (let i = 0; i < 112; i++) {
-      const r = wheelTicks(wheel(2), cellHeight, carry, damp);
-      carry = r.carry;
-      ticks += r.ticks;
-    }
-    return ticks;
-  };
-  assert.equal(sweep(true), 3, "本地滚动保持和 xterm 一致");
-  assert.equal(sweep(false), 11, "转发路径按真实位移走");
-  // 整格鼠标滚轮本来就不打阻尼，两边必须一样。
-  assert.equal(wheelTicks(wheel(100), cellHeight, 0, true).ticks, 5);
-  assert.equal(wheelTicks(wheel(100), cellHeight, 0, false).ticks, 5);
+  let carry = 0, ticks = 0;
+  for (let i = 0; i < 112; i++) {
+    const r = wheelTicks(wheel(2), cellHeight, carry);
+    carry = r.carry;
+    ticks += r.ticks;
+  }
+  // 112 × 2px / 20px = 11.2 行。若还打着 0.3 阻尼，这里只会是 3。
+  assert.equal(ticks, 11, "轻扫的总行数要跟住手指走过的像素");
+  // 整格鼠标滚轮：原来 |deltaY| ≥ 50 本来就绕过阻尼，删掉参数后结果必须还是这个数。
+  assert.equal(wheelTicks(wheel(100), cellHeight).ticks, 5);
 });
 
 function fakeHost() {

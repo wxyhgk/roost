@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { request } from "../../../shared/api/request";
 import { t } from "@roost/i18n";
 
@@ -25,18 +25,47 @@ export function TerminalProcesses({ sessionId, active }: { sessionId: string | n
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  /**
+   * 在途的那一条。**只能有一条**：换终端、连点刷新都要先把上一条掐掉。
+   *
+   * 清掉 answer 只能让旧答案不留在屏幕上，拦不住**还在路上**的那一条。症状：在这个视图里
+   * 从终端 A 快切到 B，A 的响应（一次 ps + lsof 约 41ms）后到，于是顶上是 A 的 tty、列表是
+   * A 的进程，而选中的是 B；它的 `setLoading(false)` 还会把 B 的加载态提前清掉，看起来
+   * 就像「B 里什么都没跑」。
+   */
+  const inflight = useRef<AbortController | null>(null);
+
   const load = useCallback(async (id: string) => {
+    inflight.current?.abort();
+    const mine = new AbortController();
+    inflight.current = mine;
     setLoading(true); setError(null);
-    try { setAnswer(await request<Answer>(`/api/sessions/${encodeURIComponent(id)}/processes`)); }
-    catch (err) { setError(err instanceof Error ? err.message : String(err)); }
-    finally { setLoading(false); }
+    try {
+      const next = await request<Answer>(`/api/sessions/${encodeURIComponent(id)}/processes`, { signal: mine.signal });
+      if (mine.signal.aborted) return;
+      setAnswer(next);
+    } catch (err) {
+      /*
+        中止也会走到这里，而且**看不出是中止**：`request` 把 AbortError 统一翻成
+        「请求超时」那句文案（见 shared/api/request.ts 的说明）。所以判断只能问 signal
+        自己——否则每次切换终端都会在新终端上挂一条假的超时报错。
+      */
+      if (mine.signal.aborted) return;
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      // 加载态归最后发出的那一条管。中止的那条已经不是它了，不许代它宣布「加载完了」。
+      if (inflight.current === mine) { inflight.current = null; setLoading(false); }
+    }
   }, []);
 
   // 换终端要重取，而且先把上一条的答案清掉——否则会把别的终端的进程显示成这一条的。
   useEffect(() => {
-    setAnswer(null); setError(null);
+    // 切到「没有终端」或收起这个视图时也要清加载态：这两条路上没有新的 load 来接手。
+    setAnswer(null); setError(null); setLoading(false);
     if (!sessionId || active === false) return;
     void load(sessionId);
+    // 清理一定跑在下一次 effect 之前，所以上一条在途的一定死在新的发出去之前。
+    return () => { inflight.current?.abort(); inflight.current = null; };
   }, [sessionId, active, load]);
 
   if (!sessionId) return <Empty text={t.terminal.processes.noSession} />;

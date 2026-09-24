@@ -9,14 +9,13 @@ import { TERMINAL_FONT_FAMILY, TERMINAL_FONT_SIZE } from "./font";
 import "./cjk-spacing.css";
 import { Terminal } from "@xterm/xterm";
 import type { TermHandle, TermTheme, Cell } from "../types";
-import { bufferFileLinks } from "./fileLinkBuffer";
 import { createDecTracker } from "./dec";
 import { attachTuiIme } from "./ime";
 import { attachLocalEcho } from "./localEchoView";
-import { attachBrowserShortcutPassthrough, isMac } from "./keys";
-
-// Scrollback rows to attempt per snapshot, largest first; 0 keeps the viewport only.
-const SNAPSHOT_SCROLLBACK_STEPS = [2000, 500, 0];
+import { attachBrowserShortcutPassthrough, linkModifier } from "./keys";
+import { attachCopyPaste } from "./copyPaste";
+import { attachFileLinks } from "./fileLinkProvider";
+import { pickSnapshot } from "./snapshot";
 import { attachHostWheel } from "./wheel";
 import { attachHostTouchScroll } from "./touchScroll";
 import { pointToCell, selectionArgs } from "./touchSelect";
@@ -24,8 +23,6 @@ import { attachAppearance } from "./appearance";
 import "@xterm/xterm/css/xterm.css";
 import "./ime.css";
 import { stableRuntime } from '../../../shared/runtime';
-import { writeClipboard } from "../../../shared/clipboard";
-import { t } from "@roost/i18n";
 
 type RenderCore = {
   _renderService?: {
@@ -92,56 +89,6 @@ function fitExact(term: Terminal) {
   return { cols: term.cols, rows: term.rows };
 }
 
-function linkModifier(ev: MouseEvent) {
-  return isMac() ? ev.metaKey : ev.ctrlKey;
-}
-
-/**
- * Windows / Linux 上的复制粘贴裁决。
- *
- * 这两个平台上 Ctrl+C / Ctrl+V 身兼两职：既是系统的复制粘贴，又是终端的
- * 中断（0x03）和字面量转义（0x16）。xterm 默认一律当终端键处理并 preventDefault，
- * 于是浏览器根本没机会复制或粘贴。macOS 没有这个问题——那里复制粘贴走 ⌘，
- * 和终端的 Ctrl 天然分开，所以整段只对非 Mac 生效。
- *
- * 裁决规则和 GNOME Terminal / Windows Terminal 一致：
- * - 有**非空白**选区时 Ctrl+C 复制并清掉选区，于是下一次按就是中断，两个意图都留得住。
- *   （agent 在跑的话，那一次还会先被 interruptGuard 换成「清空输入」，见它的说明。）
- * - 没有选区、或者选区全是空白时，原样放行成 SIGINT。
- * - Ctrl+V 交还给浏览器原生粘贴，而不是自己去读剪贴板：
- *   navigator.clipboard 在非 https 下不存在，读不到；原生 paste 事件则一直可用，
- *   xterm 自己就监听着它（CoreBrowserTerminal 在 textarea 与 element 上都注册了）。
- *   这里返回 false 时 xterm 直接返回、**不会** preventDefault，原生粘贴照常发生。
- */
-function attachCopyPaste(term: Terminal) {
-  if (isMac()) return;
-  term.attachCustomKeyEventHandler(ev => {
-    if (ev.type !== "keydown" || !ev.ctrlKey || ev.altKey || ev.metaKey) return true;
-    if (ev.code === "KeyC") {
-      /*
-        **只有非空白的选区才算「有东西可复制」。**
-
-        在空白处手滑拖出三五个像素，xterm 就会给出一段全是空格的选区。原来那一行拿它
-        当真值，于是走复制分支：preventDefault、清选区、**不发 SIGINT**——用户看到的是
-        「按了 Ctrl+C 完全没反应」，而且重现不了，因为那次手滑没人记得。
-      */
-      const selection = term.getSelection();
-      if (!selection.trim()) {
-        // Ctrl+Shift+C 在 Chrome 里是「检查元素」。没有选区时原来直接漏给浏览器，于是
-        // 反射性地连按两下就把 DevTools 开出来盖住整个界面。挡掉，但也不送进终端。
-        if (ev.shiftKey) { ev.preventDefault(); return false; }
-        return true;
-      }
-      ev.preventDefault();
-      void writeClipboard(selection);
-      term.clearSelection();
-      return false;
-    }
-    if (ev.code === "KeyV") return false;
-    return true;
-  });
-}
-
 function openWebLink(ev: MouseEvent, uri: string) {
   if (!linkModifier(ev)) return;
   ev.preventDefault();
@@ -196,48 +143,9 @@ export function mountXterm(host: HTMLElement, theme: TermTheme, onFileLink?: (li
   term.loadAddon(new ClipboardAddon());
   attachCopyPaste(term);
   term.loadAddon(new WebLinksAddon(openWebLink));
-  let filePress: { x: number; y: number; dragged: boolean } | null = null;
-  const onFileDown = (event: MouseEvent) => {
-    filePress = event.button === 0 ? { x: event.clientX, y: event.clientY, dragged: false } : null;
-  };
-  const onFileMove = (event: MouseEvent) => {
-    if (filePress && Math.hypot(event.clientX - filePress.x, event.clientY - filePress.y) > 4) filePress.dragged = true;
-  };
-  host.addEventListener('mousedown', onFileDown, true);
-  host.addEventListener('mousemove', onFileMove, true);
-  let linkHint: HTMLDivElement | null = null;
-  const hideLinkHint = () => { linkHint?.remove(); linkHint = null; };
-  const fileLinks = term.registerLinkProvider({
-    provideLinks(y, callback) {
-      const links = bufferFileLinks(term.buffer.active, y, term.cols).map(m => ({
-        range: m.range,
-        text: m.path,
-        decorations: { pointerCursor: true, underline: true },
-        activate: (event: MouseEvent) => {
-          const press = filePress;
-          filePress = null;
-          if (!linkModifier(event) || event.button !== 0 || !press || press.dragged || Math.hypot(event.clientX - press.x, event.clientY - press.y) > 4) return;
-          event.preventDefault();
-          hideLinkHint();
-          onFileLink?.({ path: m.path, line: m.line });
-        },
-        hover: () => {
-          hideLinkHint();
-          linkHint = document.createElement('div');
-          // 字号和 TermView 里那几条终端浮层一致（text-caption），它们是同一类东西。
-          linkHint.className = 'xterm-hover absolute left-2 right-2 top-1 z-20 pointer-events-none rounded border border-border bg-bg-panel px-3 py-2 text-caption text-text shadow-lg break-words';
-          const modifier = /mac|iphone|ipad/i.test(navigator.platform) ? '⌘ Command' : 'Ctrl';
-          linkHint.textContent = t.misc.terminal.openLinkHint(modifier, m.path, m.line ? t.misc.terminal.lineSuffix(m.line) : '');
-          term.element?.append(linkHint);
-        },
-        leave: hideLinkHint,
-        dispose: hideLinkHint,
-      }));
-      callback(links.length ? links : undefined);
-    },
-  });
   term.open(host);
   fitExact(term);
+  const detachFileLinks = attachFileLinks(term, host, onFileLink);
 
   const outputs = new Set<(data: string) => void>();
   const appearanceOutputs = new Set<(data: string) => void>();
@@ -392,17 +300,12 @@ export function mountXterm(host: HTMLElement, theme: TermTheme, onFileLink?: (li
     },
     snapshot(maxLength = Infinity) {
       try {
-        const suffix = appearance.snapshot();
-        const wantsSgrMouse = dec.sgrMouse() || term.modes.mouseTrackingMode !== "none";
-        // An oversized snapshot is discarded whole, so shrink the walk instead of serializing
-        // all of the scrollback and throwing the result away. The viewport alone always fits.
-        for (const scrollback of SNAPSHOT_SCROLLBACK_STEPS) {
-          let data = serialize.serialize({ scrollback }) || "";
-          if (wantsSgrMouse && !data.includes("\x1b[?1006h")) data += "\x1b[?1006h";
-          const full = data + suffix;
-          if (full.length <= maxLength) return full || null;
-        }
-        return null;
+        return pickSnapshot(
+          scrollback => serialize.serialize({ scrollback }),
+          appearance.snapshot(),
+          dec.sgrMouse() || term.modes.mouseTrackingMode !== "none",
+          maxLength,
+        );
       } catch {
         return null;
       }
@@ -505,10 +408,7 @@ export function mountXterm(host: HTMLElement, theme: TermTheme, onFileLink?: (li
       detachWheel();
       detachTouchScroll();
       dataSub.dispose();
-      host.removeEventListener('mousedown', onFileDown, true);
-      host.removeEventListener('mousemove', onFileMove, true);
-      hideLinkHint();
-      fileLinks.dispose();
+      detachFileLinks();
       outputs.clear();
       term.dispose();
     },

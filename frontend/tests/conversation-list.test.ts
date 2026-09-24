@@ -55,3 +55,29 @@ test("失败保留已加载内容，只记错误", () => {
   // 重试时清掉上一次的错误，不要两条错误叠着显示。
   assert.equal(reduceList(failed, { type: "loading" }).error, null);
 });
+
+/*
+  **改完之后列表里那一行要换掉。**
+
+  复现过的那条路：目录里点开一条 → 改标题 → 返回列表 → 标题还是旧的 → 再点同一行，
+  详情拿到的是列表里那个对象，它带着**旧 revision** → 下一次改任何一项都先撞一次 409
+  「别处刚改过」，而「别处」就是自己刚才。所以这里换的不只是标题，更是 revision。
+*/
+test("详情里改完，列表里那一行换成新记录（含新 revision）", () => {
+  const before = loaded();
+  const renamed: Conversation = { ...item("b"), title: "改过的标题", revision: 2 };
+  const after = reduceList(before, { type: "replace", conversation: renamed });
+  assert.deepEqual(after.items.map(i => i.id), ["a", "b"], "位置不动——行在用户刚点过的地方跳走更糟");
+  assert.equal(after.items[1].title, "改过的标题");
+  assert.equal(after.items[1].revision, 2, "旧 revision 留着就是下一次 409 的来源");
+  assert.equal(after.items[0].title, "ta", "别的行一个字都不该动");
+  // 翻页状态和这件事无关，不能被顺手重置掉。
+  assert.equal(after.cursor, "cur1");
+});
+
+test("列表里没有这一行就什么都不做，不往筛过的列表里插一条", () => {
+  const before = loaded();
+  const stranger: Conversation = { ...item("zzz"), title: "不在这一页里" };
+  const after = reduceList(before, { type: "replace", conversation: stranger });
+  assert.equal(after, before, "原样返回：它可能压根不匹配当前筛选条件");
+});

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { request } from "../src/shared/api/request.ts";
+import { request, fetchWithSession, onSessionExpired } from "../src/shared/api/request.ts";
+import { request as libraryRequest } from "../src/features/library/api.ts";
+import { createCliConfigStore } from "../src/shared/cli-configs/store.ts";
 import { listDir, readFilePreview } from "../src/shared/api/files.ts";
 
 const realFetch = globalThis.fetch;
@@ -188,4 +190,91 @@ test("调用方传了自己的 signal 时，兜底不被顶掉、调用方也不
       return true;
     });
   });
+});
+
+/*
+  401 广播和兜底截止时间这两件事**必须对每一个请求都成立**，不只是走 `request<T>` 的那些。
+
+  `features/library`（笔记/片段/命令面板）和 `shared/cli-configs`（所有 SessionLogo 的图标
+  来源）原来用裸 `fetch`：会话过期时它们的 401 不触发登录关卡，界面停在那儿而人不知道
+  自己已经登出；请求挂住就永远停在「加载中」，没有重试入口。
+*/
+test("fetchWithSession 也广播 401——绕过它的调用方原来会静默停在登出状态", async () => {
+  const seen: string[] = [];
+  const off = onSessionExpired(() => seen.push("expired"));
+  const original = globalThis.fetch;
+  try {
+    globalThis.fetch = (async () => new Response("{}", { status: 401 })) as typeof fetch;
+    const res = await fetchWithSession("/api/anything");
+    assert.equal(res.status, 401, "响应原样交回调用方——错误类型归它自己管");
+    assert.deepEqual(seen, ["expired"]);
+  } finally { globalThis.fetch = original; off(); }
+});
+
+test("非 401 不广播", async () => {
+  const seen: string[] = [];
+  const off = onSessionExpired(() => seen.push("expired"));
+  const original = globalThis.fetch;
+  try {
+    globalThis.fetch = (async () => new Response("{}", { status: 500 })) as typeof fetch;
+    await fetchWithSession("/api/anything");
+    assert.deepEqual(seen, [], "500 不是登出");
+  } finally { globalThis.fetch = original; off(); }
+});
+
+test("调用方自己的 signal 仍然有效——截止时间是第二个中止理由,不是替代", async () => {
+  /*
+    合并而不是覆盖：调用方的 signal 被覆盖的话，切走的请求会继续占着连接、在慢链路上
+    排在新请求前面；截止时间被覆盖的话，挂死的请求又变回无限等待。
+  */
+  const original = globalThis.fetch;
+  try {
+    globalThis.fetch = ((_input: unknown, init?: RequestInit) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+      })) as typeof fetch;
+    const controller = new AbortController();
+    const pending = fetchWithSession("/api/slow", { signal: controller.signal });
+    controller.abort();
+    /*
+      **不能直接 `assert.rejects`**：signal 真被覆盖时这个 promise 永远不落地，用例表现为
+      整个测试进程挂死而不是失败——那是个糟糕的信号，看不出是哪一条坏了。
+      和一个短定时器赛跑，把「挂住」变成一句明确的断言失败。
+    */
+    const settled = await Promise.race([
+      pending.then(() => "resolved", (err: Error) => err.name),
+      new Promise<string>(resolve => setTimeout(() => resolve("挂住了"), 200)),
+    ]);
+    assert.equal(settled, "AbortError", "调用方 abort 之后请求必须真的中止；挂住说明 signal 被截止时间覆盖了");
+  } finally { globalThis.fetch = original; }
+});
+
+/*
+  下面两条测的是**接线**，不是逻辑。
+
+  上面那些只证明 `fetchWithSession` 自己会广播 401；变异测试显示把 library 和 cli-configs
+  改回裸 `fetch`，所有用例照样绿——也就是说「它们真的走了这一层」从来没有被钉住过。
+  这一类「逻辑有覆盖、接线没有」的缺口，这一轮里已经出现第三次了。
+*/
+test("library 的请求走 fetchWithSession——否则笔记和命令面板的 401 静默丢掉", async () => {
+  const seen: string[] = [];
+  const off = onSessionExpired(() => seen.push("expired"));
+  const original = globalThis.fetch;
+  try {
+    globalThis.fetch = (async () => new Response(JSON.stringify({ error: { code: "authentication_required" } }), { status: 401 })) as typeof fetch;
+    await libraryRequest("notes").catch(() => {});
+    assert.deepEqual(seen, ["expired"]);
+  } finally { globalThis.fetch = original; off(); }
+});
+
+test("cli-configs 的默认 transport 也走它——所有 SessionLogo 的图标都从这儿来", async () => {
+  const seen: string[] = [];
+  const off = onSessionExpired(() => seen.push("expired"));
+  const original = globalThis.fetch;
+  try {
+    globalThis.fetch = (async () => new Response("{}", { status: 401 })) as typeof fetch;
+    // 不注入 transport，正是要验默认值这一格。
+    await createCliConfigStore().refresh().catch(() => {});
+    assert.deepEqual(seen, ["expired"]);
+  } finally { globalThis.fetch = original; off(); }
 });

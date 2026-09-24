@@ -104,6 +104,12 @@ export function ConversationList({ browse = false }: { browse?: boolean } = {}) 
         conversation={open}
         onBack={() => { if (browse) setOpen(null); else selectConversation(null); }}
         onJumpToTerminal={sessionId => { selectSession(sessionId); }}
+        /*
+          详情里改完名字/置顶/分组，**两份副本都要换掉**：`open` 是当前正在看的那一份，
+          `state.items` 是返回列表后看到的那一行。原来两份都不动，于是返回列表还是旧标题，
+          再点同一行又把那个带旧 revision 的对象送回详情——下一次修改必撞一次 409。
+        */
+        onConversationChanged={next => { setOpen(next); dispatch({ type: "replace", conversation: next }); }}
       /></div>
     );
   }

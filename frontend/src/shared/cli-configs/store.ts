@@ -1,4 +1,5 @@
 import { errorText } from '@roost/i18n';
+import { fetchWithSession } from '../api/session-fetch';
 export type CliRule = {
   kind: 'executable' | 'script' | 'executablePathContains';
   value: string;
@@ -21,7 +22,14 @@ export type CliConfigPatch = Partial<Omit<CliConfigInput, 'id'>>;
 type Snapshot = { configs: CliConfig[]; loading: boolean; error: string | null };
 
 /** Shared cache, independent of the UI so request ordering is testable. */
-export function createCliConfigStore(request: typeof fetch = (...args) => fetch(...args)) {
+/*
+  默认走 `fetchWithSession` 而不是裸 `fetch`。
+
+  这个 store 是所有 `SessionLogo` 图标的来源，会话一过期它就该跟着走登录关卡；原来用裸
+  `fetch`，401 不广播、也没有兜底截止时间，于是过期之后它安静地失败、请求挂住就永远停在
+  加载中。参数仍然留着——测试注入自己的实现，那正是它当初被写成参数的理由。
+*/
+export function createCliConfigStore(request: typeof fetch = fetchWithSession) {
   let snapshot: Snapshot = { configs: [], loading: false, error: null };
   let loaded = false;
   let version = 0;
