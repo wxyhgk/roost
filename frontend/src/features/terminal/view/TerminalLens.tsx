@@ -22,6 +22,16 @@ import { fetchConversation, listConversations, type Conversation } from "../../.
 const loadConversationDetail = () => import("../../conversations/ConversationDetail");
 const ConversationDetail = lazy(() => loadConversationDetail().then(m => ({ default: m.ConversationDetail })));
 const LensComposer = lazy(() => import("../../conversations/LensComposer"));
+/*
+  **全量目录的入口要开在这儿。**
+
+  这个下拉只列**本终端**跑过的对话——名字上写着「终端历史」，但人在这儿看到「只有一条」
+  的时候，第一反应是「我的记录呢」，而不是「哦这是按终端筛过的」。实测：库里 21 条对话
+  横跨 10 天，而一个终端名下往往只有一两条。
+
+  全量目录本来只有左栏一个按钮，那是另一块屏幕上的另一个图标。墙在哪儿门就开在哪儿。
+*/
+const ConversationCatalog = lazy(() => import("../../conversations/ConversationCatalog").then(m => ({ default: m.ConversationCatalog })));
 import type { Lens } from "../../../shared/view";
 import { sendBlock, type SendBlock } from "../../conversations/sendability";
 import { useSessionActivity } from "../../session-status/public";
@@ -105,6 +115,7 @@ export function ConversationLens({ terminalId, conversationId, current }: { term
     } catch { if (version === epoch.current) setError(true); }
     finally { if (version === epoch.current) setLoading(false); }
   }
+  const [catalogOpen, setCatalogOpen] = useState(false);
   const active = selected || conversationId;
   /*
     **对象身份要稳。** 列表每 1.5 秒轮询一次，`items` 每次都是新数组、里面也是新对象。
@@ -127,6 +138,9 @@ export function ConversationLens({ terminalId, conversationId, current }: { term
     <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-2.5 py-2 text-caption text-text-dim">
       <label className="flex min-w-0 flex-1 items-center gap-2"><span className="shrink-0">{t.bookmarks.terminalHistory}</span><select aria-label={t.bookmarks.terminalHistory} value={selected} onChange={event => setSelected(event.target.value)} className="min-w-0 flex-1 rounded border border-border bg-bg p-1 text-text"><option value="">{current ? t.bookmarks.followCurrent : t.bookmarks.latestHistory}</option>{selected && !items.some(item => item.id === selected) && <option value={selected}>{t.bookmarks.readingHistory}</option>}{items.map(item => <option key={item.id} value={item.id}>{item.source.cliId} · {item.title} · {new Date(item.lastMessageAt ?? item.createdAt).toLocaleString()}</option>)}</select></label>
       {(cursor || error) && <button disabled={loading} className="rounded px-2 py-1 hover:bg-bg-hover" onClick={() => void more()}>{error ? t.bookmarks.retry : t.bookmarks.more}</button>}
+      <button type="button" className="shrink-0 rounded px-2 py-1 hover:bg-bg-hover hover:text-text"
+        aria-haspopup="dialog" onClick={() => setCatalogOpen(true)}>{t.misc.conversations.catalogEntryPlain}</button>
+      {catalogOpen && <Suspense fallback={null}><ConversationCatalog onClose={() => setCatalogOpen(false)} /></Suspense>}
     </div>
     {error && <p role="status" className="px-3 text-caption text-text-dim">{t.bookmarks.historyFailed}</p>}
     {active && !current && !selected && <p className="border-b border-border px-3 py-1.5 text-caption text-text-dim">{t.bookmarks.historyFallback}</p>}
