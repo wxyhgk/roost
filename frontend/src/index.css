@@ -87,6 +87,24 @@
     以后加一个不定义它的终端配色时，光标会变成这个蓝色。
   */
   --color-accent: #0a84ff;
+  /*
+    **抬升面的内描边高光。**
+
+    一块比背景浅的方块，只靠「更浅」是读不出厚度的——深色界面里两块深灰挨着，边界全靠
+    那根 1px 的分隔线，而分隔线是「这里有条缝」不是「这块浮起来了」。真正给出厚度的是
+    沿着上沿那道极细的亮边：现实里的抬升面会在朝光的那一侧收到一点高光。
+
+    用 `inset 0 0 0 .7px` 而不是 `border`：border 会挤占布局盒，而且圆角处会和内容裁切
+    打架；内阴影画在盒子里侧，不影响任何尺寸。
+  */
+  --color-rim: rgba(255, 255, 255, 0.14);
+  /*
+    抬升面不是纯色，是一道 160° 的微渐变——上偏亮、下偏暗，均值仍是 `--color-bg-raised`。
+
+    差别只有百分之几的亮度，但它让一整块面不再是「一片死灰」：同一块表面上有明暗，
+    眼睛才读得出它是个有朝向的物体。这是「高级感」里最便宜的一项。
+  */
+  --surface-raised: linear-gradient(160deg, #333337, #262629);
   --color-bar: #1c1c1e;
   --color-bar-text: #ffffff;
   --color-bar-dim: rgba(255, 255, 255, 0.6);
@@ -174,8 +192,8 @@
     纯阴影在深色背景上几乎看不出层次——两块都是深灰，阴影又被背景吃掉，于是弹层看着像
     贴在页面上而不是浮在上面。那圈极细的亮边是「它有厚度」的主要信号，阴影只负责距离感。
   */
-  --shadow-pop: 0 0 0 0.5px rgba(255, 255, 255, 0.10), 0 8px 24px rgba(0, 0, 0, 0.40);
-  --shadow-modal: 0 0 0 0.5px rgba(255, 255, 255, 0.12), 0 18px 48px rgba(0, 0, 0, 0.45);
+  --shadow-pop: inset 0 0 0 0.7px var(--color-rim), 0 12px 32px rgba(0, 0, 0, 0.36);
+  --shadow-modal: inset 0 0 0 0.7px var(--color-rim), 0 24px 60px rgba(0, 0, 0, 0.48);
 }
 html[data-theme="light"] {
   /* Strict black & white: surfaces white, text black, hairlines black-based.
@@ -204,6 +222,12 @@ html[data-theme="light"] {
     比两个主题的选中态长得一模一样更重要。
   */
   --color-accent: #000000;
+  /*
+    浅色这一侧 rim 是**黑的**，而且淡得多：白底上那道「高光」其实是一圈极淡的暗边，
+    用白色描边在白面板上什么都看不见。渐变方向同深色，上偏亮下偏暗。
+  */
+  --color-rim: rgba(0, 0, 0, 0.055);
+  --surface-raised: linear-gradient(160deg, #ffffff, #f6f6f8);
   --color-scrollbar: rgba(0, 0, 0, 0.25);
   --color-scrollbar-hover: rgba(0, 0, 0, 0.40);
   --color-danger: #c62828;
@@ -215,8 +239,8 @@ html[data-theme="light"] {
   color-scheme: light;
   /* White surfaces need far less alpha than the dark ramp to read as elevation. */
   /* 浅色底上那圈描边要是黑的，否则在白面板上看不见。 */
-  --shadow-pop: 0 0 0 0.5px rgba(0, 0, 0, 0.08), 0 8px 24px rgba(0, 0, 0, 0.10);
-  --shadow-modal: 0 0 0 0.5px rgba(0, 0, 0, 0.10), 0 18px 48px rgba(0, 0, 0, 0.16);
+  --shadow-pop: inset 0 0 0 0.7px var(--color-rim), 0 12px 32px rgba(20, 30, 60, 0.14);
+  --shadow-modal: inset 0 0 0 0.7px var(--color-rim), 0 24px 60px rgba(20, 30, 60, 0.20);
 }
 
 /* Aliases for xtermThemeFromCss() which reads --bg, --text, --accent, --border */
@@ -686,10 +710,23 @@ html[data-theme="light"] .mono-icon svg [stroke]:not([stroke="none"]) {
     那是目前唯一的真实证据。大面积的对话框和浮动窗口不动——模糊的成本随面积走，而那
     正是证据够不到的地方。
   */
+  /*
+    抬升面：微渐变 + 内描边高光。不带投影——投影是「离底多远」，那由调用方按场景挑
+    `shadow-pop` 还是 `shadow-modal`，两件事不该焊死在一起。
+  */
+  .raised {
+    background: var(--surface-raised);
+    box-shadow: inset 0 0 0 0.7px var(--color-rim);
+  }
   .glass {
     background: color-mix(in srgb, var(--color-bg-raised) 80%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
-    backdrop-filter: blur(12px);
+    /*
+      `saturate` 是这套玻璃里最容易被漏掉、而观感差别最大的一项：只模糊会把底下的颜色
+      一起摊平成灰，补一点饱和度回去，玻璃才像玻璃而不像磨砂塑料。
+    */
+    backdrop-filter: blur(20px) saturate(160%);
+    box-shadow: inset 0 0 0 0.7px var(--color-rim);
   }
   .shadow-pop {
     box-shadow: var(--shadow-pop);

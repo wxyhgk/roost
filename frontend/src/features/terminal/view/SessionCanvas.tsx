@@ -29,7 +29,14 @@ export function SessionCanvas({ sessions, selectedId, onOpen, onNew }: {
   useEffect(() => { if (!hasSelectedCard) container.current?.focus({ preventScroll: true }); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div ref={container} tabIndex={-1} className="min-h-0 flex-1 overflow-auto bg-bg-panel p-3 outline-none">
+    <div ref={container} tabIndex={-1} /*
+        画布底色退到最暗的 `bg-bg`，而不是和卡片几乎同深的 `bg-bg-panel`。
+
+        抬升面的那道内高光和渐变，效果全取决于它和身下那层差多少；底色和卡片一样深的
+        时候，rim 没有东西可衬，光影就白做了。这是不改布局、只靠配色把卡片"浮"起来的
+        那一下。
+      */
+      className="min-h-0 flex-1 overflow-auto bg-bg p-3 outline-none">
       {sessions.length === 0 && <Empty title={t.terminal.pane.emptyTitle} hint={t.terminal.pane.emptyHint} />}
       <ul className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(196px,1fr))]">
         {sessions.map(session => (

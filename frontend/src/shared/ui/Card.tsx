@@ -41,10 +41,17 @@ export function Card({
   return (
     <div
       {...rest}
-      className={`group relative flex select-none flex-col overflow-hidden rounded-xl border transition-colors ${
+      /*
+        默认态用 `raised`（微渐变 + 内描边高光）而不是一块纯色加一圈边框：纯色方块只靠
+        「比背景浅」是读不出厚度的，而那道沿着上沿的亮边才是「这块浮起来了」的信号。
+
+        选中和告警仍然走**实边框**——它们要盖过 rim 说一件更重要的事，而边框比内高光更
+        容易一眼认出来。这两态因此保持纯色底，不叠渐变，免得边框和渐变互相打架。
+      */
+      className={`group relative flex select-none flex-col overflow-hidden rounded-2xl border transition-colors ${
         alert ? "border-warning bg-bg-panel"
         : selected ? "border-accent bg-bg-active/40"
-        : "border-border bg-bg-panel hover:bg-bg-hover/50"
+        : "raised border-transparent hover:bg-bg-hover/50"
       } ${dragging ? "cursor-grabbing" : ""} ${className ?? ""}`}
     >
       {top && (

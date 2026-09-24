@@ -91,8 +91,15 @@ export function FloatingWindow({ title, rect, shaded, maximized, front, viewport
       aria-label={title}
       onPointerDown={onFocus}
       style={{ left: rect.x, top: rect.y, width: rect.width, height: shaded ? undefined : rect.height, zIndex }}
-      className={`absolute flex flex-col overflow-hidden rounded-lg border bg-bg-panel ${
-        front ? 'border-border shadow-modal' : 'border-border/50 shadow-pop'
+      /*
+        圆角从 lg 放大到 16px：浮动窗口是这个界面上唯一真正「浮在别的东西上面」的东西，
+        圆角小了它就和底下那些贴边的面板长得一样，看不出层次。
+
+        `raised` 给它微渐变和内描边高光，`shadow-modal` / `shadow-pop` 给「离底多远」——
+        在最前那一张浮得更高。边框去掉：rim 已经在描边了，再叠一圈会变成两道线。
+      */
+      className={`raised absolute flex flex-col overflow-hidden rounded-2xl ${
+        front ? 'shadow-modal' : 'shadow-pop'
       } ${busy ? 'select-none' : ''}`}
     >
       <header
