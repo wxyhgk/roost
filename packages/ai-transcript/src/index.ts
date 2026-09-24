@@ -43,7 +43,18 @@ const BATCH = 256 * 1024, LINE = 1024 * 1024, PREVIEW = 4000;
 function fingerprint(stat: {dev: number; ino: number; birthtimeMs: number}) { return `${stat.dev}:${stat.ino}:${stat.birthtimeMs}`; }
 const object = (value: unknown): value is Record<string, any> => !!value && typeof value === "object" && !Array.isArray(value);
 
-export async function discoverOmpTranscript(nativeId: string, roots: string[]): Promise<string | null> {
+/**
+ * 按**原生会话 id** 在几个根目录下找转录文件。
+ *
+ * 名字里没有 CLI，是因为 omp 和 claude 的落盘形态恰好同构：都是
+ * `<根>/<按 cwd 派生的一层目录>/…<会话id>.jsonl`（omp 多一个时间戳前缀，所以这里两种
+ * 文件名都认）。**关键是这条路径完全不依赖 cwd 那一段**——仓库改个名、换个位置，
+ * 按 id 照样找得到，而按记下来的绝对路径就找不到了。
+ *
+ * 命中多个就报 `ambiguous_transcript`，不挑一个：两份都叫同一个会话 id 的文件里，
+ * 挑错那份会把别人的对话内容接进来。
+ */
+export async function discoverTranscriptById(nativeId: string, roots: string[]): Promise<string | null> {
   if (!/^[a-zA-Z0-9_-]{1,512}$/.test(nativeId)) throw new TranscriptError("invalid_native_id");
   let count = 0; const matches: string[] = [];
   async function scan(dir: string, depth: number) {

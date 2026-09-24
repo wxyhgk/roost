@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, writeFile, appendFile, rm, rename, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readOmpTranscript, discoverOmpTranscript, readOmpDetail, type TranscriptCheckpoint } from "../src/index.ts";
+import { readOmpTranscript, discoverTranscriptById, readOmpDetail, type TranscriptCheckpoint } from "../src/index.ts";
 const header = JSON.stringify({ type: "session", version: 3, id: "native" }) + "\n";
 const row = (id: string, role = "assistant", text = "hello") => ({ type: "message", id, parentId: null, timestamp: "2026-09-09T00:00:00Z", message: { role, content: [{ type: "text", text }] } });
 test("byte checkpoints preserve split UTF-8/JSON, resume without rereading messages, and detect replacement", async t => {
@@ -66,10 +66,10 @@ test("part count truncation remains explicit in durable detail",async t=>{
 test("discovery is narrow and verifies header identity/version before publishing",async t=>{
   const dir=await mkdtemp(join(tmpdir(),"omp-discovery-"));t.after(()=>rm(dir,{recursive:true,force:true}));await mkdir(join(dir,"project"));
   const file=join(dir,"project","date_native.jsonl");await writeFile(file,header);
-  assert.equal(await discoverOmpTranscript("native",[dir]),file);
+  assert.equal(await discoverTranscriptById("native",[dir]),file);
   await assert.rejects(readOmpTranscript(file,"other"),/session_mismatch/);
   await writeFile(file,JSON.stringify({type:"session",version:99,id:"native"})+"\n");
   await assert.rejects(readOmpTranscript(file,"native"),/unsupported_version/);
   await writeFile(join(dir,"native.jsonl"),header);
-  await assert.rejects(discoverOmpTranscript("native",[dir]),/ambiguous/);
+  await assert.rejects(discoverTranscriptById("native",[dir]),/ambiguous/);
 });
