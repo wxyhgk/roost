@@ -1,4 +1,5 @@
 import { createAiCommands } from './ai-commands.ts';
+import { isDefaultSessionTitle } from "./conversation-schema.ts";
 import { createConversations } from './conversations.ts';
 import { createConversationRuns } from './conversation-runs.ts';
 import { createPeerMessages } from './peer-messages.ts';
@@ -108,14 +109,55 @@ function initializeWorkspaceStore(db: ReturnType<typeof openDatabase>) {
   */
   function setSessionTitle(id: string, title: string) {
     sessions.setSessionTitle(id, title);
-    try {
-      const binding = aiSessions.list().find(record => record.binding.webSessionId === id)?.binding;
-      if (!binding) return;
-      const conversation = conversations.findBySource(binding.cliId, binding.nativeSessionId);
-      if (!conversation || conversation.titleOrigin !== "fallback") return;
-      conversations.patch(conversation.id, { revision: conversation.revision, title });
-    } catch { /* 附带动作，失败不回滚终端改名 */ }
+    try { adoptTerminalTitle(id, title); }
+    catch { /* 附带动作，失败不回滚终端改名 */ }
   }
+
+  /** 把终端此刻的名字给到绑在它上面的那条对话；只顶掉兜底标题。返回有没有真的改。 */
+  function adoptTerminalTitle(sessionId: string, title: string): boolean {
+    const binding = aiSessions.list().find(record => record.binding.webSessionId === sessionId)?.binding;
+    if (!binding) return false;
+    const conversation = conversations.findBySource(binding.cliId, binding.nativeSessionId);
+    if (!conversation || conversation.titleOrigin !== "fallback") return false;
+    conversations.patch(conversation.id, { revision: conversation.revision, title });
+    return true;
+  }
+
+  /*
+    **开库时把已经错开的名字对齐一次。**
+
+    改名传播只管「以后」。而库里已经攒下的那些是断开的：终端叫「roost-前端」，它跑着的
+    那条对话还叫「Terminal」——同一个东西两个名字，而对话目录是终端删掉之后唯一的回家路。
+    只修「以后」等于让用户挨个去重命名一遍，那是把我们的遗留问题派给他做。
+
+    只动 `fallback` 的那些，而且只在终端**真的有名字**时动（`isDefaultSessionTitle`
+    和入库那边用的是同一条判据——两处各写一份迟早会漂）。所以「Terminal → Terminal」
+    这种不会被碰：那种情况下界面本来就改显示第一条用户消息，比一个兜底标题有用。
+
+    做成**带标记的一次性迁移**（`schema.conversation-title-adopt.v1`），和同一个库里
+    另一条存量修正一个套路。不做成每次开库都跑，是因为那样会和别的逻辑反复打架——
+    实测就撞到过：`ai-sessions.ts` 那条迁移刚把「冒充 native 的默认标题」降回 fallback，
+    这边下一拍又把它升成终端名，那条用例当场红。
+
+    **这一步和那条迁移的自律相反，是有意的。** 它写着「只改来源标记，不动标题文字——
+    文字是用户看得见的东西」。那条在一般情形下对，但这里要替换掉的文字是
+    `"omp n1"`、`"claude 3749983a…"` 这种**机器拼的占位符**，不是任何人写的东西，
+    换掉它什么都没丢；而留着它，用户在目录里就认不出自己的对话。
+
+    失败不影响开库——名字没对齐只是难找，开不了库是什么都没有。
+  */
+  function reconcileFallbackTitles() {
+    try {
+      if (db.prepare("SELECT 1 FROM ai_history_meta WHERE key='schema.conversation-title-adopt.v1'").get()) return;
+      for (const record of aiSessions.list()) {
+        const session = sessions.getSessionRecord(record.binding.webSessionId);
+        if (!session || isDefaultSessionTitle(session.title)) continue;
+        adoptTerminalTitle(session.id, session.title.trim());
+      }
+      db.prepare("INSERT INTO ai_history_meta VALUES('schema.conversation-title-adopt.v1','1')").run();
+    } catch { /* 对齐失败不该拦住开库 */ }
+  }
+  reconcileFallbackTitles();
 
   function deleteSessionRecord(id: string) {
     db.exec("SAVEPOINT delete_session_record");
