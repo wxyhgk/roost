@@ -1,5 +1,5 @@
 /*
-  自定义 utility：`row-rest` / `raised` / `glass` / `shadow-pop` / `shadow-modal`。
+  自定义 utility：`raised` / `glass` / `shadow-pop` / `shadow-modal`。
 
   它们是「几种表面长什么样」的收口——组件里写一个类名，而不是各自抄一遍渐变和内描边。
 */
@@ -29,20 +29,6 @@
     抬升面：微渐变 + 内描边高光。不带投影——投影是「离底多远」，那由调用方按场景挑
     `shadow-pop` 还是 `shadow-modal`，两件事不该焊死在一起。
   */
-  /*
-    列表行的静息态：一层极淡的填充加一圈更淡的内描边环，**而不是一条边框线**。
-
-    原来未选中的行是 `bg-bg-panel`，而侧栏容器也是这个色——等于完全透明，一行行之间
-    没有任何形状，全靠文字自己排开。给它一点点填充之后每一行才是「一块东西」，而用
-    内描边环而不是 border 的理由和 `.raised` 一样：线画在盒子里侧，不挤布局也不和圆角
-    裁切打架。
-
-    数值抄自 Lunavect 那套组件的 `.row`（填充 3.3%、环 4%），实测在这套底色上也成立。
-  */
-  .row-rest {
-    background: color-mix(in srgb, var(--color-text) 3.3%, transparent);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-text) 4%, transparent);
-  }
   .raised {
     background: var(--surface-raised);
     box-shadow: inset 0 0 0 0.7px var(--color-rim);

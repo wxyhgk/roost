@@ -517,7 +517,216 @@ function checkDynamicImportSpecifiers() {
 }
 checkDynamicImportSpecifiers();
 
-if (errors.length) {
-  console.error(errors.join('\n'));
-  process.exitCode = 1;
-} else console.log('Workspace source boundaries passed');
+/*
+  **有一个语义令牌，而某处用了绕开它的写法。**
+
+  这个形状一天之内撞到三次，每一次都是「改了 token，用它的人根本不读它，而且不报错」：
+
+    · 给 `--shadow-modal` 加了一圈 0.5px 的描边，而 SettingsDialog / BookmarksDialog /
+      MoleculeModal 用的是 Tailwind 默认的 `shadow-2xl`——压根不读那个变量，于是那圈描边
+      永远到不了它们身上。
+    · 同一件事的另一份藏在 CSS 里：`features/subscriptions/subscriptions.css` 写死了
+      `box-shadow: 0 8px 32px #0003`，绕过 `--shadow-pop`。按 className 搜的那一轮扫不到它，
+      因为它根本不是 className——**所以这条检查必须同时看 .tsx、.ts 和 .css**。
+    · `.subscription-meter` 拿 `--color-border` 当**实心填充**，而那个 token 后来被改成半透明
+      的分隔线色，槽和进度的对比度就没了。
+
+  前两条是「读的不是那个变量」，形状固定、正则抓得住。**第三条抓不住**：它读的就是正确的
+  token，只是语义选错了（分隔线色 ≠ 填充色）。这里不假装能管第三条——能管的写清楚，管不了的
+  说明白，比装作全覆盖强。
+
+  只对 `frontend/src` 生效：这套令牌就定义在 `frontend/src/styles/tokens.css`，
+  stable-workbench 既不用 Tailwind 也没有这套变量，把它拉进来只会凭空制造要豁免的东西。
+*/
+/*
+  **动手之前必须先把注释挖掉，这是这条检查能不能活下来的前提。**
+
+  实测：今天全仓库 `text-xs`(4 处)、`text-sm`(4 处)、`shadow-2xl`(1 处) 的**全部**命中
+  都在注释里，而且正是**记录这几次事故的那几段注释本身**——tokens.css 里「text-xs/text-sm
+  现在是 0 处」那段、subscriptions.css 里「阴影原来是写死的，绕过了 --shadow-pop」那段。
+
+  不挖注释，这条检查上线第一天就红在「解释它为什么存在」的文字上，然后被人加豁免加到废掉。
+
+  行号要留住（注释换成等量空白而不是删掉），否则报错指的行是错的，比不报还难查。
+*/
+/** 把注释换成等量空白。`line` 关掉时不处理 `//`——CSS 没有行注释，而 url(http://…) 会被误伤。 */
+export function blankComments(text, { line = true } = {}) {
+  const blank = s => s.replace(/[^\n]/g, ' ');
+  let out = text.replace(/\/\*[\s\S]*?\*\//g, blank);
+  // 前一个字符不许是 `:`，否则 `https://x` 的后半段会被当成行注释吃掉（那是假阴性，更难发现）。
+  if (line) out = out.replace(/(^|[^:\\])\/\/[^\n]*/gm, (m, lead) => lead + blank(m.slice(lead.length)));
+  return out;
+}
+
+/*
+  颜色字面量归一成 `r,g,b,a`。
+
+  比字符串是不够的：`#fff` / `#ffffff` / `rgb(255,255,255)` 是同一个颜色的三种写法，
+  而 `rgba(255,255,255,0.10)` 和 `rgba(255, 255, 255, .1)` 也是。两边都过同一个函数，
+  才不会「值一样但写法不同」就漏掉。百分比形态（`rgb(100% 0% 0%)`）直接判不认识——
+  与其猜错，不如漏掉。
+*/
+export function canonicalColor(literal) {
+  const s = String(literal).trim().toLowerCase().replace(/\s+/g, '');
+  const hex = s.match(/^#([0-9a-f]+)$/);
+  if (hex) {
+    const digits = hex[1].length <= 4 ? hex[1].replace(/./g, c => c + c) : hex[1];
+    if (digits.length !== 6 && digits.length !== 8) return null;
+    const at = i => parseInt(digits.slice(i * 2, i * 2 + 2), 16);
+    return [at(0), at(1), at(2), digits.length === 8 ? at(3) / 255 : 1].join(',');
+  }
+  const fn = s.match(/^rgba?\(([^()]*)\)$/);
+  if (!fn) return null;
+  const parts = fn[1].split(',');
+  if (parts.length < 3 || parts.length > 4 || parts.some(p => p === '' || p.endsWith('%'))) return null;
+  const nums = parts.map(Number);
+  if (nums.some(Number.isNaN)) return null;
+  return [nums[0], nums[1], nums[2], parts.length === 4 ? nums[3] : 1].join(',');
+}
+
+/** tokens.css 里的 `--color-*` → 归一化值到名字的反查表。一个值可能有多个名字，都列出来。 */
+export function designTokenColors(tokensCss) {
+  const byValue = new Map();
+  for (const [, name, raw] of blankComments(tokensCss, { line: false }).matchAll(/(--color-[\w-]+)\s*:\s*([^;]+);/g)) {
+    const key = canonicalColor(raw);
+    if (!key) continue;
+    if (!byValue.has(key)) byValue.set(key, new Set());
+    byValue.get(key).add(name);
+  }
+  return byValue;
+}
+
+/** 按顶层逗号切 `box-shadow` 的各层：`rgba(0,0,0,.3)` 里的逗号不算。 */
+function shadowLayers(value) {
+  const out = [];
+  let depth = 0, start = 0;
+  for (let i = 0; i < value.length; i++) {
+    if (value[i] === '(') depth++;
+    else if (value[i] === ')') depth--;
+    else if (value[i] === ',' && depth === 0) { out.push(value.slice(start, i)); start = i + 1; }
+  }
+  out.push(value.slice(start));
+  return out.map(s => s.trim()).filter(Boolean);
+}
+
+/*
+  纯逻辑：给一个相对路径和**原始**文件内容，返回 `{ line, message }`。不读盘、不看仓库状态。
+
+  四条判据，以及每一条为什么长这样：
+
+  **一、Tailwind 默认阴影档（shadow-sm/md/lg/xl/2xl/inner）一律不许。** 仓库有 `shadow-pop`
+  和 `shadow-modal` 两个语义 token，它们带着那圈 0.5px 的 rim 描边；用默认档就是明说
+  「我不读主题」。判据宽到整个 frontend/src 是有意的：出事的那一处（fileLinkProvider.ts）
+  就在 `.ts` 里拼 className，只扫 `.tsx` 等于把当初漏掉它的那个盲区原样保留下来。
+
+  **二、CSS 里 `box-shadow` 的某一层既不是 `var(--shadow-*)` 也不是 inset。** 不能简单地
+  禁掉字面 `box-shadow`——`utilities.css` 里 `.raised` / `.glass` / `.row-rest` 三处写的是
+  `inset 0 0 0 .7px var(--color-rim)` 这类**内描边环**，tokens.css 讲得很清楚：那是「这块面
+  浮起来了」的高光，**不是投影**，和 `--shadow-pop` 不是一回事，并进去就是误报。
+  同理 `shadow-[inset_…]` 那条顶部高光也按 inset 放行。
+  分界线因此不是「有没有写 box-shadow」，而是「**这一层是不是一道投影**」。
+
+  **三、Tailwind 默认字号档（text-xs / text-sm / text-base）一律不许。** 和前两条不同，这条
+  现在是**零命中的防回潮**：那 109 处 12/14/16px 已经并回 `--text-caption` / `--text-body` /
+  `--text-title` 三档，tokens.css 写着「新代码只在这三个令牌里挑」——而一句注释拦不住下一个人。
+  只收 xs/sm/base 三档，**不收 lg/xl/2xl/3xl**：tokens.css 逐条写明仪表数字是另一根轴。
+  小于 caption 的 9/10px 角标和代码块的 12.5px 是任意值形态（`text-[9px]`），同样够不着这条。
+  这两类刻意在体系外的用法**是结构上不在判据里，不是靠豁免名单躲开的**——差别很大：
+  豁免名单会被一条条加长直到检查作废，而结构外的东西永远不会来敲门。
+
+  **四、字面颜色的值恰好等于某个 `--color-*` token 的值。** 四条里信噪比最难调的一条，
+  实跑之后收窄了三处，每一处都对应一类真实的误报：
+
+    · **跳过自定义属性声明**（`--x: #111113`）。`styles/terminal.css` 的 16 色 ANSI 调色板、
+      `features/server-monitor/monitor.css` 的一套局部配色，都是在**定义**另一根轴上的
+      token，字面值本来就该出现在那儿。不跳过，这两个文件一口气报 11 条，全是冤枉。
+    · **跳过纯黑纯白和全透明。** `shared/chemistry/elements.ts` 里氢是 `#ffffff`（CPK 标准
+      色，和主题没有半点关系），`plugins/xyz/xyz.tsx` 里 `#000000` 是**读不到 CSS 变量时的
+      兜底**——它恰恰是在读 token。黑白不携带主题身份，放进来只会淹掉真正的信号。
+    · **只认 `--color-*`。** `--surface-raised` 是渐变、`--shadow-*` 是阴影，都不是单色。
+
+  收窄之后这条今天是 0 命中，但它守的是真东西：谁哪天写下 `#0a84ff` 而不是
+  `var(--color-accent)`，当场红。
+*/
+export function styleTokenBypasses(rel, source, tokenColors = new Map()) {
+  const found = [];
+  const isCss = rel.endsWith('.css');
+  const text = blankComments(source, { line: !isCss });
+  const lineOf = index => text.slice(0, index).split('\n').length;
+  const add = (index, message) => found.push({ line: lineOf(index), message });
+
+  for (const m of text.matchAll(/\bshadow-(2xl|xl|lg|md|sm|inner)\b/g))
+    add(m.index, `用了 Tailwind 默认阴影 \`shadow-${m[1]}\`——它不读 \`--shadow-pop\` / \`--shadow-modal\`，`
+      + `主题给浮层加的那圈描边到不了这里。改用 shadow-pop（小浮层）或 shadow-modal（对话框）`);
+  for (const m of text.matchAll(/\bshadow-\[([^\]]*)\]/g))
+    if (!/^inset[_\s]/.test(m[1]))
+      add(m.index, `用了任意值阴影 \`shadow-[${m[1]}]\`——投影只走 \`--shadow-pop\` / \`--shadow-modal\`；`
+        + `内描边高光（inset）不在此列，那不是投影`);
+  for (const m of text.matchAll(/\btext-(xs|sm|base)\b/g))
+    add(m.index, `用了 Tailwind 默认字号 \`text-${m[1]}\`——字号只在 text-caption(11) / text-body(13) / `
+      + `text-title(15) 三档里挑，差 1px 不携带任何含义（这 109 处已经并过一次了，别再长回来）`);
+  if (isCss) {
+    for (const m of text.matchAll(/box-shadow\s*:\s*([^;}]+)/g)) {
+      for (const layer of shadowLayers(m[1])) {
+        if (/^inset\b/.test(layer) || /^var\(\s*--shadow-/.test(layer)) continue;
+        if (/^(none|unset|inherit|initial|revert)$/.test(layer)) continue;
+        add(m.index, `box-shadow 里写死了一层投影 \`${layer}\`——绕过 \`--shadow-pop\` / \`--shadow-modal\`，`
+          + `改主题时改不到它。内描边（inset …）不受这条管`);
+      }
+    }
+  }
+  // 自定义属性声明是**定义** token 的地方，字面值本来就该在那儿；挖掉再找字面颜色。
+  const values = text.replace(/--[\w-]+\s*:\s*[^;\n]*/g, s => s.replace(/[^\n]/g, ' '));
+  for (const m of values.matchAll(/#[0-9a-fA-F]{3,8}\b|\brgba?\([0-9.,\s]*\)/g)) {
+    const key = canonicalColor(m[0]);
+    if (!key || !tokenColors.has(key)) continue;
+    const [r, g, b, a] = key.split(',').map(Number);
+    if (a === 0 || (r === g && g === b && (r === 0 || r === 255))) continue;
+    add(m.index, `字面颜色 \`${m[0]}\` 的值就是 ${[...tokenColors.get(key)].sort().join(' / ')} ——`
+      + `写死它等于把这个 token 的另一半留在原地，换主题时只有一半会动。改成 var(…)`);
+  }
+  return found;
+}
+
+function checkStyleTokenBypass() {
+  const src = resolve(root, 'frontend/src');
+  if (!existsSync(src)) return;
+  /*
+    **锚点：令牌的真源必须在，而且必须还叫这几个名字。**
+
+    这条检查的判据全部挂在 `styles/tokens.css` 上——文件一搬，`tokenColors` 就是个空表，
+    第三条判据**静默失效**；token 一改名，前两条的报错信息就在指一个不存在的东西。
+    这正是这个文件顶上那段「规则锚点」讲的事，所以照样钉住。
+  */
+  const tokensFile = resolve(src, 'styles/tokens.css');
+  if (!existsSync(tokensFile)) {
+    errors.push('frontend/src/styles/tokens.css: 设计令牌的真源不存在——搬走或改名时请同步更新 scripts/check-boundaries.mjs');
+    return;
+  }
+  const tokensCss = readFileSync(tokensFile, 'utf8');
+  for (const token of ['--shadow-pop', '--shadow-modal'])
+    if (!new RegExp(`${token}\\s*:`).test(tokensCss))
+      errors.push(`frontend/src/styles/tokens.css: 语义令牌 ${token} 不见了——改名时请同步更新 scripts/check-boundaries.mjs 的报错信息`);
+  const tokenColors = designTokenColors(tokensCss);
+  // 空表意味着解析方式和 tokens.css 的写法对不上了，而那会让第三条判据一声不吭地失效。
+  if (tokenColors.size < 10) errors.push(`frontend/src/styles/tokens.css: 只解析出 ${tokenColors.size} 个 --color-* 令牌，解析方式多半已经和文件写法对不上了`);
+  for (const file of allFiles(src, /\.(tsx?|css)$/)) {
+    if (file === tokensFile) continue; // 真源自己就是定义处。
+    const rel = relative(root, file).split(sep).join('/');
+    for (const { line, message } of styleTokenBypasses(rel, readFileSync(file, 'utf8'), tokenColors))
+      errors.push(`${rel}:${line}: ${message}`);
+  }
+}
+checkStyleTokenBypass();
+
+/*
+  **被 import 时不许自己跑。** 上面几个纯函数配了测试（deploy/tests/style-token-bypass.test.mjs），
+  而测试一 import 这个文件，整套检查就会跟着跑一遍并把 `process.exitCode` 设成 1——
+  于是测试全过、进程仍然红。所以只有当它是被直接执行的那个文件时才汇报。
+*/
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  if (errors.length) {
+    console.error(errors.join('\n'));
+    process.exitCode = 1;
+  } else console.log('Workspace source boundaries passed');
+}

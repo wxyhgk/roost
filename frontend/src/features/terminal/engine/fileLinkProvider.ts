@@ -55,7 +55,7 @@ export function attachFileLinks(
           hideHint();
           hint = document.createElement('div');
           // 字号和 TermView 里那几条终端浮层一致（text-caption），它们是同一类东西。
-          hint.className = 'xterm-hover absolute left-2 right-2 top-1 z-20 pointer-events-none rounded border border-border bg-bg-panel px-3 py-2 text-caption text-text shadow-lg break-words';
+          hint.className = 'xterm-hover absolute left-2 right-2 top-1 z-20 pointer-events-none rounded border border-border bg-bg-panel px-3 py-2 text-caption text-text shadow-pop break-words';
           hint.textContent = t.misc.terminal.openLinkHint(
             isMac() ? '⌘ Command' : 'Ctrl',
             m.path,
