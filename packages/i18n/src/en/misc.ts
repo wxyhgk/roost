@@ -368,6 +368,16 @@ export const misc = {
     retry: "Retry",
   },
 
+  windows: {
+    openAsWindow: "Open as window",
+    close: "Close window",
+    shade: "Roll up",
+    unshade: "Roll down",
+    maximize: "Maximize",
+    restore: "Restore",
+    moveHint: "Arrow keys move, Shift+arrows resize",
+    region: "Floating windows",
+  },
   rightPanel: {
     titles: {
       files: "Files",

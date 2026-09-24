@@ -5,7 +5,7 @@ import { NarrowDrawer } from "./NarrowDrawer";
 import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelHandle, type ImperativePanelGroupHandle } from "react-resizable-panels";
 import { LeftRail } from "./LeftRail";
-import { RightPanel } from "./RightPanel";
+import { RightPanel, panelTitles } from "./RightPanel";
 import { RightRail } from "./RightRail";
 import { Sidebar } from "../features/workspace/Sidebar";
 import type { MonitorTarget } from '../features/server-monitor/navigation';
@@ -13,6 +13,7 @@ import { StatusBar } from "./StatusBar";
 import { TerminalPane } from "../features/terminal/view/TerminalPane";
 import { TopBar } from "./TopBar";
 import { ErrorBoundary } from '../shared/ui/ErrorBoundary';
+import { WindowLayer } from '../features/windows/WindowLayer';
 import { EXTERNAL_EDITORS } from '../plugins/external';
 
 /*
@@ -209,7 +210,11 @@ export function Shell() {
         onToggleRight={toggleRight}
         onOpenPalette={() => setPaletteOpen(true)}
       />
-      <div className="flex min-h-0 flex-1">
+      {/*
+        `relative`：窗口层是 `absolute inset-0`，要相对这一块定位。**不能挂在最外层**
+        ——那样窗口能被拖到顶栏和状态栏底下去，上面还盖着东西，看着像坏了。
+      */}
+      <div className="relative flex min-h-0 flex-1">
         <LeftRail collapsed={leftCollapsed} onToggle={toggleLeft} onSettings={() => { setPaletteOpen(false); setSettingsOpen(true); }} />
         <PanelGroup
           ref={layoutRef}
@@ -285,6 +290,18 @@ export function Shell() {
             </ErrorBoundary>
           </NarrowDrawer>
         )}
+        {/*
+          窗口层放在这一层的最后：它是 `pointer-events-none` 的，只有窗口本身收事件，
+          所以盖在上面不会挡住终端和侧栏的点击。
+        */}
+        <WindowLayer
+          titleOf={content => panelTitles()[content.view]}
+          renderContent={(content, visible) => (
+            <ErrorBoundary region={panelTitles()[content.view]}>
+              <RightPanel view={content.view} onChangeView={() => {}} visible={visible} inWindow />
+            </ErrorBoundary>
+          )}
+        />
       </div>
       <StatusBar monitorVisible={rightView === 'server' && !rightCollapsed} onOpenMonitor={tab => { setMonitorTarget(previous => ({ tab, revision: previous.revision + 1 })); showRight('server'); }} />
       {settingsOpen && <ErrorBoundary region={t.misc.shell.regionSettings}><Suspense fallback={null}><SettingsDialog onClose={() => setSettingsOpen(false)} onResetLayout={() => layoutRef.current?.setLayout([23, 59, 18])} /></Suspense></ErrorBoundary>}

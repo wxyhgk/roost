@@ -463,6 +463,17 @@ export const misc = {
     retry: "重试",
   },
 
+  windows: {
+    openAsWindow: "在窗口中打开",
+    close: "关闭窗口",
+    shade: "卷起",
+    unshade: "展开",
+    maximize: "最大化",
+    restore: "还原",
+    /* 标题栏是可拖拽的,而拖拽在键盘上够不着。方向键移动、加 Shift 缩放。 */
+    moveHint: "方向键移动,Shift+方向键缩放",
+    region: "浮动窗口",
+  },
   rightPanel: {
     titles: {
       files: "文件",

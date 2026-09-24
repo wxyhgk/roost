@@ -9,6 +9,7 @@ import { IconClose } from "../shared/icons";
 import { IconButton } from "../shared/ui/IconButton";
 import { t } from "@roost/i18n";
 import { TasksView } from "../features/session-status/public";
+import { openWindow } from "../features/windows/store";
 
 import type { MonitorTarget } from '../features/server-monitor/navigation';
 
@@ -27,7 +28,22 @@ const ServerMonitorView = lazy(() => import("../features/server-monitor/ServerMo
 const FilesView = lazy(() => import("../features/files/FilesView").then(m => ({ default: m.FilesView })));
 const NotesView = lazy(() => import("../features/notes/NotesView").then(m => ({ default: m.NotesView })));
 const TerminalProcesses = lazy(() => import("../features/terminal/view/TerminalProcesses").then(m => ({ default: m.TerminalProcesses })));
-export function RightPanel({ view, onChangeView, visible = true, monitorTarget }: { view: RightView; onChangeView: (view: RightView) => void; visible?: boolean; monitorTarget?: MonitorTarget }) {
+/**
+ * 各个视图的标题。
+ *
+ * **是个函数，不是模块顶层的常量**——切换语言之后标题要跟着变，常量会把语言定死在
+ * 首次加载那一刻。浮动窗口的标题栏也用这一份，所以它得导出：两处显示同一块内容，
+ * 名字不一样是最没必要的一种不一致。
+ */
+export const panelTitles = (): Record<"files" | "server" | "processes" | "tasks" | NotesTab, string> => ({
+  server: t.serverMonitor.title, processes: t.terminal.processes.title,
+  tasks: t.misc.rightPanel.titles.tasks, files: t.misc.rightPanel.titles.files,
+  notes: t.misc.rightPanel.titles.notes, snippets: t.misc.rightPanel.titles.snippets,
+});
+
+export function RightPanel({ view, onChangeView, visible = true, monitorTarget, inWindow = false }: { view: RightView; onChangeView: (view: RightView) => void; visible?: boolean; monitorTarget?: MonitorTarget;
+  /** 这一份正被浮动窗口渲染。窗口里不再显示「在窗口中打开」——那会无限套娃。 */
+  inWindow?: boolean }) {
   // 每次渲染重取：切换语言后标题要跟着变，不能缓存在模块顶层。
   // 同上：占位文案也要每次渲染重取，模块级常量会把语言定死在首次加载那一刻。
   // 载入中是状态读数 → text-caption。下面资料库头里的按钮/提示同理并档：
@@ -39,7 +55,7 @@ export function RightPanel({ view, onChangeView, visible = true, monitorTarget }
     把 shared/view.ts 里的 RightView 和 features/library 的 Kind 钉成同一个集合。
     理由写在 shared/view.ts 的 RightView 上面。
   */
-  const titles: Record<"files" | "server" | "processes" | "tasks" | NotesTab, string> = { server: t.serverMonitor.title, processes: t.terminal.processes.title, tasks: t.misc.rightPanel.titles.tasks, files: t.misc.rightPanel.titles.files, notes: t.misc.rightPanel.titles.notes, snippets: t.misc.rightPanel.titles.snippets };
+  const titles = panelTitles();
   const { sessions, selectedId } = useWorkspace("sessions", "selectedId");
   const session = sessions.find(s => s.id === selectedId && !s.closed);
   // 文件和 AI 两个视图都是终端自己的内容，不走「资料库」那套弹出布局。
@@ -48,7 +64,15 @@ export function RightPanel({ view, onChangeView, visible = true, monitorTarget }
 
   return <section className={`flex h-full flex-col bg-bg-panel ${view === "server" ? "server-monitor" : ""}`}>
     <PanelHeader title={titles[view]} sub={view === "files" ? session?.cwd : undefined}
-      actions={isLibrary && <button ref={expandButton} className="rounded px-2 py-1 text-body font-normal text-text-dim hover:bg-bg-hover hover:text-text" onClick={() => setExpanded(true)} aria-haspopup="dialog">{t.misc.rightPanel.expandLibrary}</button>} />
+      actions={<>
+        {/*
+          把这块面板拉出来当一个浮动窗口。**入口放在这儿而不是右栏图标上**：想把某块
+          内容拉出来，是在看着它的时候才想到的，那时鼠标就在这块面板上。
+        */}
+        {!inWindow && <button className="rounded px-2 py-1 text-body font-normal text-text-dim hover:bg-bg-hover hover:text-text"
+          onClick={() => openWindow({ kind: 'panel', view })}>{t.misc.windows.openAsWindow}</button>}
+        {isLibrary && <button ref={expandButton} className="rounded px-2 py-1 text-body font-normal text-text-dim hover:bg-bg-hover hover:text-text" onClick={() => setExpanded(true)} aria-haspopup="dialog">{t.misc.rightPanel.expandLibrary}</button>}
+      </>} />
     {view === "files" ? <div key="files" className="flex min-h-0 flex-1 flex-col"><Suspense fallback={panelFallback}><FilesView /></Suspense></div>
       : view === "server" ? <Suspense fallback={<p className="p-3 text-caption text-text-dim">{t.serverMonitor.loading}</p>}><ServerMonitorView active={visible} target={monitorTarget} /></Suspense>
       : view === "processes" ? <Suspense fallback={panelFallback}><TerminalProcesses sessionId={session?.id ?? null} active={visible} /></Suspense>
