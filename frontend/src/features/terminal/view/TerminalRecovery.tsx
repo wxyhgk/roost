@@ -12,7 +12,7 @@ export function TerminalRecovery({ sessionId, restarting, restartError, revision
     : query.plan && !query.plan.available ? resumeReason(query.plan.reason)
     : query.loading ? t.terminal.recovery.checking : null;
   return (
-    <div className="term-status-exited absolute top-2 left-1/2 z-[6] -translate-x-1/2 flex w-max max-w-[calc(100%-24px)] flex-wrap items-center gap-2 rounded-lg bg-bg-raised/80 border border-border/60 px-3 py-1.5 text-caption text-text-dim pointer-events-auto backdrop-blur-md shadow-pop"
+    <div className="term-status-exited absolute top-2 left-1/2 z-[6] -translate-x-1/2 flex w-max max-w-[calc(100%-24px)] flex-wrap items-center gap-2 rounded-lg glass px-3 py-1.5 text-caption text-text-dim pointer-events-auto shadow-pop"
       onMouseUp={event => event.stopPropagation()}>
       <span>{t.terminal.view.exited}</span>
       {/* 这个按钮会**先重启这个终端**，按钮上那四个字看不出来，所以补一句 title。 */}

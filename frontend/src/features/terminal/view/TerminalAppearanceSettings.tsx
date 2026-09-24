@@ -8,7 +8,8 @@ export function TerminalAppearanceSettings() {
        别在标题和元信息之间再插一个 12px。font-normal 是为了不继承标题的 semibold。 */
     <details className="relative text-body font-normal">
       <summary className="cursor-pointer list-none rounded px-2 py-1 text-text-dim hover:bg-bg-hover hover:text-text" aria-label={t.settings.terminal.triggerLabel}>{t.settings.terminal.trigger}</summary>
-      <div className="absolute right-0 top-8 z-30 w-64 space-y-3 rounded-lg border border-border bg-bg-panel p-3 text-text shadow-pop">
+      {/* 小浮层，和终端上方那几条状态条同一个尺寸量级，所以跟着用 glass；理由见 index.css。 */}
+      <div className="glass absolute right-0 top-8 z-30 w-64 space-y-3 rounded-lg p-3 text-text shadow-pop">
         <label className="flex items-center justify-between gap-2">
           {t.settings.terminal.label}
           <select aria-label={t.settings.terminal.label} value={terminalAppearance} onChange={event => setTerminalAppearance(event.target.value as TerminalAppearance)} className="rounded border border-border bg-bg px-2 py-1 text-text">

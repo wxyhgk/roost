@@ -665,6 +665,32 @@ html[data-theme="light"] .mono-icon svg [stroke]:not([stroke="none"]) {
 
 /* Hand-written so the box-shadow reads the variable at use time and follows the theme. */
 @layer utilities {
+  /*
+    浮层的「玻璃」：半透明的抬升底 + 背景模糊 + 一道比普通边框更淡的描边。
+
+    这不是新发明的效果——终端上方那几条状态条一直是
+    `bg-bg-raised/80 border border-border/60 backdrop-blur-md`，只是各写各的、还带着
+    细微出入。收成一处之后，「玻璃长什么样」只有一个答案。
+
+    **为什么没有铺到对话框和浮动窗口上。** 常见的建议是「玻璃只用在非常驻浮层」，那条
+    规则的前提是浮层背后是静态内容；而 roost 里**几乎每一层浮层背后都是活的终端**——
+    连模态对话框也是，它的遮罩是半透明的，终端照样在下面重绘。backdrop-filter 会跟着
+    底下每一次重绘重算，所以那条规则在这个产品里买不到它在别处买到的安全。
+
+    我试过在本机量这个代价，三种设计都失败了：这台机器上的无头 Chrome 是软件合成
+    （`gpu_compositing: disabled_software`），rAF 又被 vsync 量化成 16.7ms 的整数倍，
+    噪声比效应大一个量级——同一个条件各轮 p50 在 17/83/117/150 之间跳。量不出来就不该
+    凭感觉铺开。
+
+    所以只用在**和现有那几条状态条同一个尺寸量级**的小浮层上：它们已经这么跑了很久，
+    那是目前唯一的真实证据。大面积的对话框和浮动窗口不动——模糊的成本随面积走，而那
+    正是证据够不到的地方。
+  */
+  .glass {
+    background: color-mix(in srgb, var(--color-bg-raised) 80%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+    backdrop-filter: blur(12px);
+  }
   .shadow-pop {
     box-shadow: var(--shadow-pop);
   }
