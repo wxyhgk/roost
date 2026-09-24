@@ -221,3 +221,143 @@ test('backup includes committed WAL data, leaves legacy schema unmigrated and ne
   assert.deepEqual(readFileSync(destination),bytes);
   assert.equal(readdirSync(dir).filter(name=>name.includes('.partial-')).length,0);
 });
+
+/*
+  对话的名字和归属：从对话自己推，不从建它那一刻的终端拍快照。
+
+  原来是快照：建对话那一刻取终端的 title 和 project_id，而 project_id 此后再也不更新。
+  实测这台机器 21 条对话里 14 条标题是 `omp 3749983a-1594-47` 这种、10 条永远没有归属，
+  因为三分之二的对话被观测到时根本没有一个可用的终端。
+
+  （「人起的名字不被新消息冲掉」那一条在上面的 metadata 用例里已经覆盖，这里不重复。）
+*/
+test('标题从第一条用户消息推出来，而不是留一个 `omp <id前缀>`', t => {
+  const f = fixture(t); f.bind('derived-title');
+  f.bridge.publish('web-derived-title', {type: 'message', eventId: 'e1', role: 'user', content: '帮我把端口面板重排一下'});
+  const record = f.store.conversations.list({state: 'all'}).items.find(item => item.source.nativeSessionId === 'derived-title')!;
+  assert.equal(record.title, '帮我把端口面板重排一下');
+  assert.equal(record.titleOrigin, 'derived');
+});
+
+test('助手的回答不会被当成标题——标题要取第一条**用户**消息', t => {
+  // 取错角色的后果是整个目录的标题都变成 AI 的开场白，彼此长得一模一样。
+  const f = fixture(t); f.bind('assistant-first');
+  f.bridge.publish('web-assistant-first', {type: 'message', eventId: 'a1', role: 'assistant', content: '好的，我来看一下'});
+  f.bridge.publish('web-assistant-first', {type: 'message', eventId: 'u1', role: 'user', content: '这是我的问题'});
+  const record = f.store.conversations.list({state: 'all'}).items.find(item => item.source.nativeSessionId === 'assistant-first')!;
+  assert.equal(record.title, '这是我的问题');
+});
+
+test('归属按运行记录重算，不是创建时从终端抄一次', t => {
+  const f = fixture(t);
+  const project = f.store.createProject({id: 'p1', name: '分组一', color: '#fff'});
+  f.bind('derived-project');
+  f.bridge.publish('web-derived-project', {type: 'message', eventId: 'e1', role: 'user', content: '一句话'});
+  const created = f.store.conversations.list({state: 'all'}).items.find(item => item.source.nativeSessionId === 'derived-project')!;
+  assert.equal(created.projectId, null, '终端此时还没有归属');
+
+  // 终端后来才被放进分组——这正是原来永远补不上的那一格。
+  f.store.setSessionProject('web-derived-project', project.id);
+  f.bridge.publish('web-derived-project', {type: 'message', eventId: 'e2', role: 'user', content: '又一句'});
+  assert.equal(f.store.conversations.get(created.id).projectId, project.id);
+});
+
+test('人自己选过的归属，后续观测不会把它重算掉', t => {
+  /*
+    **这一条是整组里最要紧的。** 归属原来没有「来源」这一格（标题有 title_origin），
+    所以分不出「人选的」和「创建时从终端捡的」。分不出就不能重算——一重算就会把人手动
+    挪进去的对话自己挪回来，而且是静默的。
+  */
+  const f = fixture(t);
+  const chosen = f.store.createProject({id: 'chosen', name: '我选的', color: '#fff'});
+  const derived = f.store.createProject({id: 'derived', name: '推出来的', color: '#000'});
+  f.bind('pinned-project');
+  f.bridge.publish('web-pinned-project', {type: 'message', eventId: 'e1', role: 'user', content: '一句话'});
+  const record = f.store.conversations.list({state: 'all'}).items.find(item => item.source.nativeSessionId === 'pinned-project')!;
+
+  f.store.conversations.patch(record.id, {revision: record.revision, projectId: chosen.id});
+  // 终端归到另一个分组；推导会算出 derived，但不该覆盖人选的 chosen。
+  f.store.setSessionProject('web-pinned-project', derived.id);
+  f.bridge.publish('web-pinned-project', {type: 'message', eventId: 'e2', role: 'user', content: '又一句'});
+  assert.equal(f.store.conversations.get(record.id).projectId, chosen.id);
+});
+
+test('人把对话移出分组也算人的选择，不会被重算成有归属', t => {
+  // 设成「无分组」和设成某个分组一样是人的决定，同样要盖章。
+  const f = fixture(t);
+  const project = f.store.createProject({id: 'p2', name: '分组二', color: '#fff'});
+  f.bind('cleared-project');
+  f.store.setSessionProject('web-cleared-project', project.id);
+  f.bridge.publish('web-cleared-project', {type: 'message', eventId: 'e1', role: 'user', content: '一句话'});
+  const record = f.store.conversations.list({state: 'all'}).items.find(item => item.source.nativeSessionId === 'cleared-project')!;
+  assert.equal(record.projectId, project.id);
+
+  f.store.conversations.patch(record.id, {revision: record.revision, projectId: null});
+  f.bridge.publish('web-cleared-project', {type: 'message', eventId: 'e2', role: 'user', content: '又一句'});
+  assert.equal(f.store.conversations.get(record.id).projectId, null, '移出去了就该留在外面');
+});
+
+test('人起的名字挡得住推导出来的——上面那条 metadata 用例挡不住这个', t => {
+  /*
+    **变异测试发现的**：把「推导标题让开人设的标题」这道判断删掉，所有用例照样绿。
+    原因是上面那条 metadata 用例发的消息**没有 role**，于是根本推不出标题，
+    那道判断从来没被走到过。一条带 role 的用户消息才真的会去抢标题。
+  */
+  const f = fixture(t); f.bind('user-vs-derived');
+  f.bridge.publish('web-user-vs-derived', {type: 'message', eventId: 'e1', role: 'user', content: '第一句问话'});
+  const record = f.store.conversations.list({state: 'all'}).items.find(item => item.source.nativeSessionId === 'user-vs-derived')!;
+  const renamed = f.store.conversations.patch(record.id, {revision: record.revision, title: '我自己起的名字'});
+
+  f.bridge.publish('web-user-vs-derived', {type: 'message', eventId: 'e2', role: 'user', content: '第二句问话'});
+  assert.equal(f.store.conversations.get(renamed.id).title, '我自己起的名字');
+  assert.equal(f.store.conversations.get(renamed.id).titleOrigin, 'user');
+});
+
+test('终端被移出分组之后，对话的归属跟着清掉，不留旧值', t => {
+  /*
+    旧归属在那条终端离开分组之后就是个**已经不成立的说法**，留着比空着更容易把人带偏：
+    在分组里找这条对话会找到它，而它其实已经不属于那儿了。
+  */
+  const f = fixture(t);
+  const project = f.store.createProject({id: 'leaving', name: '会被移出的分组', color: '#fff'});
+  f.bind('project-cleared-by-terminal');
+  f.store.setSessionProject('web-project-cleared-by-terminal', project.id);
+  f.bridge.publish('web-project-cleared-by-terminal', {type: 'message', eventId: 'e1', role: 'user', content: '一句话'});
+  const record = f.store.conversations.list({state: 'all'}).items.find(item => item.source.nativeSessionId === 'project-cleared-by-terminal')!;
+  assert.equal(record.projectId, project.id);
+
+  f.store.setSessionProject('web-project-cleared-by-terminal', null);
+  f.bridge.publish('web-project-cleared-by-terminal', {type: 'message', eventId: 'e2', role: 'user', content: '又一句'});
+  assert.equal(f.store.conversations.get(record.id).projectId, null);
+});
+
+test('同一条对话换了终端时，归属跟最近那一代走', t => {
+  /*
+    一条 CLI 会话可以先后在两个终端里跑（重新绑定、换窗口）。归属要跟**最近**那一代——
+    取最早那一代的话，换了终端之后归属永远停在第一次的位置上，而且不报错。
+  */
+  const f = fixture(t);
+  const first = f.store.createProject({id: 'first', name: '先前的', color: '#fff'});
+  const second = f.store.createProject({id: 'second', name: '后来的', color: '#000'});
+  f.bind('moved-conversation', 'terminal-a');
+  f.store.setSessionProject('terminal-a', first.id);
+  f.bridge.publish('terminal-a', {type: 'message', eventId: 'e1', role: 'user', content: '在第一个终端里'});
+  const record = f.store.conversations.list({state: 'all'}).items.find(item => item.source.nativeSessionId === 'moved-conversation')!;
+  assert.equal(record.projectId, first.id);
+
+  /*
+    同一条 CLI 会话换到另一个终端里继续。先解掉原来那条绑定——一条 CLI 会话同一时刻只能
+    绑一个终端，桥会直接拒绝（`native session already bound`）。
+
+    **只解绑定，不删那条终端。** 删掉的话它的 sessions 行就没了，那一代在 JOIN 里被过滤掉，
+    表里只剩一代——「取最近那一代」和「取最早那一代」就分不出来了，这条用例也就白写了
+    （变异测试发现：第一版正是这么写的，把 DESC 改成 ASC 照样绿）。
+  */
+  f.store.aiSessions.remove('terminal-a');
+  const fresh = createAiSessionBridge({storage: f.store.aiSessions});
+  f.store.upsertSession({id: 'terminal-b', cwd: f.dir});
+  f.store.setSessionProject('terminal-b', second.id);
+  fresh.bind({webSessionId: 'terminal-b', terminalInstanceId: 'instance-terminal-b', cliId: 'omp', nativeSessionId: 'moved-conversation'});
+  fresh.publish('terminal-b', {type: 'message', eventId: 'e2', role: 'user', content: '在第二个终端里'});
+  assert.equal(f.store.conversations.get(record.id).projectId, second.id);
+});

@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { BridgeRecord, BridgeStorage, EventEnvelope } from "@roost/ai-session-bridge";
-import { registerConversationWriter, conversationSchema, backfillConversations, protectConversationWrites } from "./conversation-schema.ts";
+import { registerConversationWriter, conversationSchema, backfillConversations, protectConversationWrites, refreshDerived } from "./conversation-schema.ts";
 import { transaction } from "./database.ts";
 import { atomic, createHistoryStore, historySchema, writeGeneration, writeMessages } from "./ai-history.ts";
 
@@ -49,6 +49,21 @@ export function createAiSessionStorage(db: DatabaseSync): BridgeStorage {
         WHERE title_origin='native' AND (TRIM(title)='' OR TRIM(title)='Terminal' OR TRIM(title) GLOB 'Session [0-9]*')`);
       db.prepare("INSERT INTO ai_history_meta VALUES('schema.conversation-title-origin.v1','1')").run();
     }
+    /*
+      存量回填：把名字和归属从「创建那一刻的终端快照」改成「从对话自己推」。
+
+      这条要跑一次全量，是因为改动只作用于**之后**被观测到的对话，而一条早就不再活跃的
+      对话可能再也不会被观测——那正是问题最重的一批：实测这台机器 21 条里 14 条标题是
+      `claude 3749983a-1594-47`、10 条永远没有归属。
+
+      `observeConversation` 里已经带了 `refreshDerived`，所以这里直接重放一遍即可。
+      **只动标题和归属，不碰任何正文**；而且 `refreshDerived` 自己会让开人手动设过的
+      （title_origin='user' / project_origin='user'）。
+    */
+    if (!db.prepare("SELECT 1 FROM ai_history_meta WHERE key='schema.conversation-derived-metadata.v1'").get()) {
+      backfillConversations(db);
+      db.prepare("INSERT INTO ai_history_meta VALUES('schema.conversation-derived-metadata.v1','1')").run();
+    }
     protectConversationWrites(db);
     // Reject old gateway writers instead of silently accepting writes that omit durable history.
     db.exec(`CREATE TRIGGER IF NOT EXISTS ai_history_writer_insert BEFORE INSERT ON ai_session_records
@@ -70,6 +85,13 @@ export function createAiSessionStorage(db: DatabaseSync): BridgeStorage {
       if (result.changes !== 1) throw new Error("AI binding concurrent writer conflict");
       const cid=writeGeneration(db,record);
       writeMessages(db,cid,changes ? changes.events??[] : record.events,changes?.details,changes?.messages);
+      /*
+        **消息写完之后再推一次标题。** `writeGeneration` 里面那次跑在 `writeMessages`
+        之前，所以一条全新对话的第一条消息那时还不在库里——标题会慢一条消息才出现，
+        目录里先闪一行 `omp derived-title`。用例当场抓到的就是这个。
+      */
+      const catalog=db.prepare("SELECT conversation_id FROM conversation_sources WHERE legacy_conversation_id=?").get(cid) as {conversation_id:string}|undefined;
+      if(catalog)refreshDerived(db,catalog.conversation_id,cid,record.binding.updatedAt??Date.now());
       // Sync only bounded replay IDs; metadata and history bodies are not rewritten.
       const keep=new Set(record.events.map(e=>`${e.generation}:${e.seq}`));
       const rows=db.prepare("SELECT generation,seq FROM ai_session_replay WHERE session_id=?").all(id) as {generation:string;seq:number}[];

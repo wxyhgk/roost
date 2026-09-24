@@ -122,7 +122,12 @@ export function createConversations(db:DatabaseSync) {
       if(change.projectId!=null&&!db.prepare("SELECT 1 FROM projects WHERE id=?").get(change.projectId))invalid("project not found");
       const sets:string[]=[],values:SQLInputValue[]=[],now=Date.now();
       if(change.title!==undefined){sets.push("title=?","title_origin='user'");values.push(change.title.trim());}
-      if("projectId" in change){sets.push("project_id=?");values.push(change.projectId!);}
+      /*
+        **人自己选的归属要盖章**，和标题那一格同一套（`title_origin='user'`）。
+        少了这一下，下一次观测就会按运行记录把它重算掉——人把一条对话挪进某个分组，
+        过一会儿自己跑回去了，而且不报错。设成「无分组」也算人的选择，同样盖章。
+      */
+      if("projectId" in change){sets.push("project_id=?","project_origin='user'");values.push(change.projectId!);}
       for(const field of ["archived","trashed","pinned"] as const)if(change[field]!==undefined){sets.push(`${field}_at=?`);values.push(change[field]?(current[`${field}At`]??now):null);}
       if(!sets.length)return current;
       db.prepare(`UPDATE conversation_catalog SET ${sets.join(",")},revision=revision+1,updated_at=MAX(updated_at,?) WHERE id=? AND revision=?`).run(...values,now,id,change.revision);
