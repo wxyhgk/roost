@@ -203,7 +203,7 @@ export function MoleculeModal({ open, root, path, sessionId, onClose, onDirtyCha
     <div className={`fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4${open ? '' : ' invisible pointer-events-none'}`}
       aria-hidden={open ? undefined : true}
       onMouseDown={event => { if (event.target === event.currentTarget) close(); }}>
-      <section role="dialog" aria-modal="true" aria-label={t.files.molecule.dialogLabel} className="flex h-[90vh] w-[min(1400px,96vw)] flex-col overflow-hidden rounded-xl border border-border bg-bg text-text shadow-2xl">
+      <section role="dialog" aria-modal="true" aria-label={t.files.molecule.dialogLabel} className="flex h-[90vh] w-[min(1400px,96vw)] flex-col overflow-hidden rounded-xl border border-border bg-bg text-text shadow-modal">
         <header className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3">
           <div className="min-w-0 flex-1"><div className="truncate text-body font-medium" title={`${root}/${path}`}>{path}</div><div role="status" className="text-caption text-text-dim">{dirty ? '● ' : ''}{message}</div></div>
           <button className={button} disabled={!ready || busy || conflict} onClick={() => void save()}><ArrowDownTrayIcon className="size-4"/>{t.files.molecule.save}</button>

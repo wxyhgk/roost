@@ -1,7 +1,16 @@
 .subscription-trigger { width: 92px; justify-content: space-between; }
 .subscription-stale { opacity: .65; }
-.subscription-meter { height: 4px; margin-top: 6px; border-radius: 2px; overflow: hidden; background: var(--color-border); }
-.subscription-meter > span { display: block; height: 100%; background: var(--color-text); }
+/*
+  轨道**不再借用 `--color-border`**。
+
+  那个 token 现在是半透明的分隔线色（10%），而这里要的是一条实实在在的槽——借用之后
+  槽和进度的对比度不够，读数看不出来。分隔线和填充是两件事，各用各的值。
+
+  高度 4 → 5px 并改成胶囊：4px 的方角条在 2x 屏上看起来像一条毛边的线，而这是一个
+  「用了多少」的读数，应该长得像个量表。
+*/
+.subscription-meter { height: 5px; margin-top: 6px; border-radius: 999px; overflow: hidden; background: color-mix(in srgb, var(--color-text) 14%, transparent); }
+.subscription-meter > span { display: block; height: 100%; border-radius: 999px; background: var(--color-text); }
 .subscription-action { padding: 6px 10px; border: 1px solid var(--color-border); border-radius: 5px; font-size: 11px; }
 .subscription-action:hover { background: var(--color-bg-hover); }
 .subscription-action:disabled { opacity: .4; }

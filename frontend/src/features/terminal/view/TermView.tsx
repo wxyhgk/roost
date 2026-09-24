@@ -174,26 +174,26 @@ export function TermView({ sessionId, active, onCwd, onCli }: Props) {
       {active && <TerminalWatermark sessionId={sessionId} />}
       {active && <TerminalDiagnostics diagnostics={diagnostics} repaint={repaint} reloadView={reloadView} viewIssue={viewIssue} />}
       {active && inputNotice && (
-        <div role="status" onMouseUp={e => e.stopPropagation()} className="absolute bottom-3 left-3 z-[7] flex max-w-[calc(100%-24px)] items-center gap-2 rounded-lg border border-border bg-bg-raised px-3 py-2 text-caption text-text shadow-lg">
+        <div role="status" onMouseUp={e => e.stopPropagation()} className="absolute bottom-3 left-3 z-[7] flex max-w-[calc(100%-24px)] items-center gap-2 rounded-lg border border-border bg-bg-raised px-3 py-2 text-caption text-text shadow-pop">
           <span>{t.misc.terminal.inputNotSent}</span>
           <button type="button" aria-label={t.misc.terminal.dismissInputNotice} className="shrink-0 rounded px-1 hover:bg-bg-hover" onClick={dismissInputNotice}>×</button>
         </div>
       )}
       {showHistoryNotice && (
-        <div role="status" onMouseUp={e => e.stopPropagation()} className="absolute top-2 left-1/2 z-[6] flex max-w-[calc(100%-24px)] -translate-x-1/2 items-center gap-2 rounded-lg border border-border/60 bg-bg-raised/80 px-3 py-1 text-caption text-text-dim pointer-events-auto backdrop-blur-md shadow-[0_2px_12px_rgba(0,0,0,0.3)]">
+        <div role="status" onMouseUp={e => e.stopPropagation()} className="absolute top-2 left-1/2 z-[6] flex max-w-[calc(100%-24px)] -translate-x-1/2 items-center gap-2 rounded-lg border border-border/60 bg-bg-raised/80 px-3 py-1 text-caption text-text-dim pointer-events-auto backdrop-blur-md shadow-pop">
           <span>{t.terminal.view.historyNotice}</span>
           <button type="button" aria-label={t.terminal.view.dismissHistory} className="shrink-0 rounded px-1 hover:bg-bg-hover" onClick={() => setDismissedHistoryFor(sessionId)}>×</button>
         </div>
       )}
       {active && status === "reconnecting" && !viewIssue && (
-        <div className="absolute top-2 left-1/2 z-[6] -translate-x-1/2 flex items-center gap-1.5 rounded-full border border-border/60 bg-bg-raised/80 px-3 py-1 text-caption text-text-dim pointer-events-none backdrop-blur-md shadow-[0_2px_12px_rgba(0,0,0,0.3)]">
+        <div className="absolute top-2 left-1/2 z-[6] -translate-x-1/2 flex items-center gap-1.5 rounded-full border border-border/60 bg-bg-raised/80 px-3 py-1 text-caption text-text-dim pointer-events-none backdrop-blur-md shadow-pop">
           <span className="h-1.5 w-1.5 rounded-full bg-text-dim animate-pulse" />
           {t.terminal.view.reconnecting}
         </div>
       )}
       {active && status === "offline" && (
         <div
-          className="term-status-exited absolute top-2 left-1/2 z-[6] -translate-x-1/2 flex max-w-[calc(100%-24px)] flex-wrap items-center gap-2 rounded-lg bg-bg-raised/80 border border-border/60 px-3 py-1.5 text-caption text-text-dim pointer-events-auto backdrop-blur-md shadow-[0_2px_12px_rgba(0,0,0,0.3)]"
+          className="term-status-exited absolute top-2 left-1/2 z-[6] -translate-x-1/2 flex max-w-[calc(100%-24px)] flex-wrap items-center gap-2 rounded-lg bg-bg-raised/80 border border-border/60 px-3 py-1.5 text-caption text-text-dim pointer-events-auto backdrop-blur-md shadow-pop"
           role="alert"
         >
           {/* 标题跟着原因走：`connectionError` 那一类是真的不再重连，和「后端连不上、
@@ -264,7 +264,7 @@ export function TermView({ sessionId, active, onCwd, onCli }: Props) {
         </button>
       )}
       {active && imagePaste && (
-        <div className="pointer-events-auto flex max-w-full items-center gap-3 rounded-lg border border-border bg-bg-raised p-3 text-caption text-text shadow-lg" role={imagePaste.phase === "error" ? "alert" : "status"}>
+        <div className="pointer-events-auto flex max-w-full items-center gap-3 rounded-lg border border-border bg-bg-raised p-3 text-caption text-text shadow-pop" role={imagePaste.phase === "error" ? "alert" : "status"}>
           {imagePaste.preview && <img src={imagePaste.preview} alt={t.terminal.view.pendingImageAlt} className="h-12 w-16 rounded object-contain" />}
           <span>{imagePaste.message}</span>
           {imagePaste.phase === "confirm" && <button type="button" className="shrink-0 rounded border border-border px-2 py-1" onClick={insertImage}>{t.terminal.view.insertImage}</button>}

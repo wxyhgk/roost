@@ -48,7 +48,7 @@ export function SettingsDialog({ onClose, onResetLayout }: { onClose(): void; on
     <dialog ref={dialog} aria-labelledby="settings-title" onCancel={event => { event.preventDefault(); close(); }}
       onKeyDown={event => event.stopPropagation()}
       onClick={event => { if (event.target === event.currentTarget) { const box = event.currentTarget.getBoundingClientRect(); if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) close(); } }}
-      className="fixed inset-0 m-auto h-[min(720px,85dvh)] max-h-[85dvh] w-[min(1080px,94vw)] max-w-[94vw] overflow-hidden rounded-xl border border-border bg-bg-panel p-0 text-text shadow-2xl backdrop:bg-black/50">
+      className="fixed inset-0 m-auto h-[min(720px,85dvh)] max-h-[85dvh] w-[min(1080px,94vw)] max-w-[94vw] overflow-hidden rounded-xl border border-border bg-bg-panel p-0 text-text shadow-modal backdrop:bg-black/50">
       <div className="flex h-full flex-col">
         <header className="flex h-14 shrink-0 items-center justify-between border-b border-border px-5">
           <h2 id="settings-title" className="text-title font-semibold">{t.settings.dialog.title}</h2>
