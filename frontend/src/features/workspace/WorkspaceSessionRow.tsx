@@ -4,6 +4,7 @@ import { useState } from "react";
 import { IconPin } from "../../shared/icons";
 import { sessionBadge, useQuietFor, useSessionActivity } from "../session-status/public";
 import { sessionTitle } from "../../shared/sessionTitle";
+import { shortPath } from "../../shared/shortPath";
 import { useWorkspace } from "../../shared/store";
 import type { Session } from "../../shared/types";
 import { InlineRename } from "../../shared/ui/InlineRename";
@@ -105,7 +106,7 @@ export function WorkspaceSessionRow({ session, current, onOpen }: {
         {...drag.listeners}
         {...drag.attributes}
         style={{ transform: CSS.Translate.toString(drag.transform), opacity: drag.isDragging ? 0.35 : 1 }}
-        className={`session-card relative flex w-full cursor-pointer items-center gap-2.5 rounded-lg border px-2.5 py-2 min-h-12 text-text transition-colors ${
+        className={`session-card relative flex w-full cursor-pointer items-center gap-2.5 rounded-[11px] border px-2.5 py-2 min-h-[50px] text-text transition-colors ${
           /*
             选中态和画布上的会话卡片用**同一句话**：`border-accent` 加一层浅填充
             （`shared/ui/Card.tsx` 那一处）。它们是同一个语义——「这是你正在看的那条」——
@@ -115,7 +116,7 @@ export function WorkspaceSessionRow({ session, current, onOpen }: {
             未选中保持 `bg-bg-panel`：侧栏容器本身也是这个色，所以它实际上是透明的，
             只有悬停那一层叠上去才显形。
           */
-          current ? "border-accent bg-bg-active/40" : "border-transparent bg-bg-panel hover:bg-bg-hover"
+          current ? "border-accent bg-bg-active/40" : "row-rest border-transparent hover:bg-bg-hover"
         }`}
       >
         <span className={`relative grid h-9 w-9 shrink-0 place-items-center rounded-lg transition-colors duration-150 ${
@@ -157,7 +158,17 @@ export function WorkspaceSessionRow({ session, current, onOpen }: {
           {/* cwd、静默时长、活动状态是同一层元数据，同一条基线上却是 12/11/12 三档。
               都是「元数据/状态读数」，并到 text-caption。 */}
           <span className="flex items-baseline gap-1.5">
-            <span className="min-w-0 flex-1 truncate font-mono text-caption text-text-dim">{session.cwd}</span>
+            {/*
+              只显示末两段，而不是整条绝对路径。
+
+              先试过让浏览器从左边截（`direction: rtl`），结果是 `…irtualized/Code/Lunavect`
+              ——从字符中间切开，比不截还难看。**按路径段截才对**：切在 `/` 上，留下的
+              永远是完整的目录名。`shortPath` 本来就在做这件事（画布卡片一直在用），
+              侧栏这边一直漏了。完整路径留在 title 里。
+            */}
+            <span title={session.cwd} className="min-w-0 flex-1 truncate text-right font-mono text-caption text-text-dim">
+              {shortPath(session.cwd)}
+            </span>
             {(badge.quietLabel || badge.quietUnknown) && (
               <span className="shrink-0 text-caption text-text-dim"
                 title={badge.quietUnknown ? t.session.quiet.unknownHint : t.session.quiet.hint}>

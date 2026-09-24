@@ -59,7 +59,12 @@ export function SubscriptionSwitcher() {
         <button type="button" aria-label={m.close} title={m.close} onClick={() => popover.current?.hidePopover()} className="rounded p-1 hover:bg-bg-hover"><XMarkIcon className="size-4" /></button>
       </header>
       <div className="space-y-4 p-4">
-        <div><p className="text-caption text-text-dim">{m.remaining}{primary && ' · ' + windowLabel(primary)}</p><p className="mt-1 text-2xl tabular-nums">{number(remaining)}</p>
+        <div><p className="text-caption text-text-dim">{m.remaining}{primary && ' · ' + windowLabel(primary)}</p>{/*
+            这是整块弹窗里唯一要一眼看到的东西，所以给它体系外那根「仪表数字」轴
+            （index.css 里写明 text-lg/2xl/3xl 属于另一根轴，不并进正文那三档）。
+            2xl → 3xl 加半粗加紧字距：原来它和旁边的说明文字几乎一样重，扫一眼找不到。
+          */}
+          <p className="mt-1 text-3xl font-semibold tracking-tight tabular-nums">{number(remaining)}</p>
           {stale && <p className="mt-1 flex items-center gap-1 text-caption text-text-dim"><ClockIcon className="size-3" />{m.stale}</p>}
           {message && <p role="status" className="mt-2 text-caption text-text-dim">{message}</p>}
         </div>
@@ -68,7 +73,7 @@ export function SubscriptionSwitcher() {
           <div role="progressbar" aria-label={window.scope + ' ' + windowLabel(window) + ' ' + m.used} aria-valuenow={window.usedPercent == null ? undefined : Math.min(100, window.usedPercent)} aria-valuemin={0} aria-valuemax={100} className="subscription-meter"><span style={{ width: Math.min(100, window.usedPercent ?? 0) + '%' }} /></div>
           <p className="mt-1 flex items-center gap-1 text-caption text-text-dim"><ClockIcon className="size-3" aria-hidden="true" />{m.reset} · {dateText(window.resetsAt)}</p>
         </div>)}</div>}
-        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-caption">
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2.5 text-caption">
           {[[m.runtime, snapshot?.runtimeId], [m.account, snapshot?.accountLabel || (selected === 'claude' && snapshot?.windows.length ? m.sessionSource : null)], [m.plan, snapshot?.plan], [m.renewal, dateText(snapshot?.renewalAt)], [m.updated, dateText(snapshot?.observedAt)], [m.source, snapshot ? m.sources[snapshot.source] : null]].map(([label, value]) => <div key={label} className="contents"><dt className="text-text-dim">{label}</dt><dd className="min-w-0 break-words text-right">{value || '—'}</dd></div>)}
         </dl>
         {selected === 'claude' && snapshot?.canConnect && <button type="button" disabled={saving} className="subscription-action" onClick={() => void configure(connectClaudeSubscription)}>{m.connectClaude}</button>}

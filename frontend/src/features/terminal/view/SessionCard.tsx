@@ -3,7 +3,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { useEffect, useRef, useState } from "react";
 import { IconFolder, IconPin } from "../../../shared/icons";
 import { sessionBadge, useQuietFor, useSessionActivity } from "../../session-status/public";
-import { shortPath } from "./shortPath";
+import { shortPath } from "../../../shared/shortPath";
 import { sessionTitle } from "../../../shared/sessionTitle";
 import { useWorkspace } from "../../../shared/store";
 import type { Session } from "../../../shared/types";
