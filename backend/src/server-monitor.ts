@@ -3,9 +3,23 @@ import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createServerMonitorProcess, normalizeServiceNames, type ServerMonitor } from '@roost/server-monitor';
+import { listeningServices, listeningSockets, normalizeTty, processTable } from '@roost/terminal-runtime';
+import type { TerminalService } from '@roost/terminal-runtime';
+import type { WorkspaceStore } from '@roost/workspace-store';
 import { readJson, sendError, HttpInputError } from './http';
 
-export function createServerMonitorHandler(dataDir?: string, monitor: ServerMonitor = createServerMonitorProcess()) {
+/**
+ * `/api/server/*` 全在这儿。
+ *
+ * **端口那条原来落在 `server.ts` 里**，于是「服务器状态」这一块的后端被劈成了两处：
+ * 三条走这个文件、一条走那个一千多行的总路由表。同一块功能分散在两个地方，下次改的人
+ * 只会找到一半。
+ *
+ * 它需要 `runtime`/`store`（要拿各条 PTY 的 ptsName 把端口归属回终端），所以这个工厂
+ * 多收一个可选的 `terminals`——给不了就不注册那条路由，而不是注册一条会报错的。
+ */
+export function createServerMonitorHandler(dataDir?: string, monitor: ServerMonitor = createServerMonitorProcess(),
+  terminals?: { runtime: TerminalService; store: WorkspaceStore }) {
   const path = dataDir ? join(dataDir, 'monitored-services.json') : null;
   let loading: Promise<void> | undefined, writes = Promise.resolve();
   const load = () => loading ??= (async () => {
@@ -16,7 +30,9 @@ export function createServerMonitorHandler(dataDir?: string, monitor: ServerMoni
   const json = (res: ServerResponse, data: unknown) => { res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(data)); };
   return {
     async handle(req: IncomingMessage, res: ServerResponse, url: URL) {
-      if (!['/api/server/status', '/api/server/summary', '/api/server/services'].includes(url.pathname)) return false;
+      const routes = ['/api/server/status', '/api/server/summary', '/api/server/services',
+        ...(terminals ? ['/api/server/ports'] : [])];
+      if (!routes.includes(url.pathname)) return false;
       res.setHeader('cache-control', 'no-store');
       if (url.pathname === '/api/server/summary' && req.method === 'GET') {
         try { json(res, await monitor.summary()); }
@@ -26,6 +42,36 @@ export function createServerMonitorHandler(dataDir?: string, monitor: ServerMoni
       if (url.pathname === '/api/server/status' && req.method === 'GET') {
         try { await load(); json(res, await monitor.snapshot()); }
         catch { sendError(res, 503, 'source_unavailable', 'Server metrics are temporarily unavailable'); }
+        return true;
+      }
+      if (url.pathname === '/api/server/ports' && req.method === 'GET' && terminals) {
+        /*
+          整机在监听的端口 → 各是谁。**按需调用，不做常驻轮询**：它要 fork 一次 lsof，
+          本机约 28ms，点开面板时问一次绰绰有余；挂成每秒一次，进程多的机器上会变味。
+
+          `supported:false` 和「一个都没有」严格分开——lsof 没装、被策略挡住、超时都属于
+          前者，而把「看不到」画成「什么都没跑」是在撒谎。
+        */
+        const [rows, probe] = await Promise.all([processTable(), listeningSockets()]);
+        if (!probe.supported) { json(res, { supported: false, services: [] }); return true; }
+        /*
+          **把 tty 翻译回 roost 的终端。** 「8080 是谁占着」之后紧接着的问题是
+          「那玩意是我在哪儿起的」，而控制终端在进程被过继给 launchd 之后仍然保留，
+          是唯一还能回答这个问题的线索。对不上就是 null——别猜：开机自启的服务本来就
+          不属于任何终端，硬塞一个会把人引到错的地方。
+        */
+        const byTty = new Map<string, string>();
+        for (const session of terminals.store.loadWorkspace().sessions) {
+          const tty = normalizeTty(terminals.runtime.getSession(session.id)?.ptsName);
+          if (tty) byTty.set(tty, session.id);
+        }
+        json(res, { supported: true, services: listeningServices({ rows, listeners: probe.rows }).map(service => ({
+          ...service,
+          // 命令行可能夹带密钥，截断是有界性不是脱敏；父进程同理。
+          command: service.command?.slice(0, 512) ?? null,
+          parent: service.parent?.slice(0, 256) ?? null,
+          terminalId: service.tty ? byTty.get(service.tty) ?? null : null,
+        })) });
         return true;
       }
       if (url.pathname === '/api/server/services' && req.method === 'PUT') {

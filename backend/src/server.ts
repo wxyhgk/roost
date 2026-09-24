@@ -39,7 +39,7 @@ import { createIsolatedFileWatcher } from './watcher-process';
 import { createAiSessionBridge, AiSessionBridgeError, type AiSessionBridge } from "@roost/ai-session-bridge";
 import { createSessionResume, resumePlanFor, type ResumePlan } from "./session-resume.ts";
 import { DEFAULT_CLI_DEFINITIONS } from "@roost/cli-adapters";
-import { listeningSockets, listeningServices, normalizeTty, processTable, terminalServices } from "@roost/terminal-runtime";
+import { listeningSockets, processTable, terminalServices } from "@roost/terminal-runtime";
 /* 前端拿到 GET .../resume 之后按钮就不该出现了；走到这里说明中间变了，文案给的是那个变化。 */
 const RESUME_UNAVAILABLE = {
   no_conversation: "this terminal has no AI conversation to resume",
@@ -72,7 +72,7 @@ export function createBackendServer({ store, runtime, workspaceRoot, access, aut
   cliIcons?: CliIconStore;
   sessionBridge?: AiSessionBridge;
 }) {
-  const serverMonitor = createServerMonitorHandler(monitorDataDir);
+  const serverMonitor = createServerMonitorHandler(monitorDataDir, undefined, { runtime, store });
   const subscriptions = createSubscriptionsHandler(monitorDataDir);
   const checkAccess = createAccessPolicy(access);
   const authentication = createAuthentication(auth);
@@ -476,48 +476,6 @@ export function createBackendServer({ store, runtime, workspaceRoot, access, aut
       **按需，不轮询**：lsof 实测 41ms（连 ps 一起），点一下绰绰有余；常驻会在进程多的
       机器上变味。
     */
-    /*
-      整机在监听的端口 → 各是谁。
-
-      和 `/api/sessions/:id/processes` 不同，那条按 tty 过滤、只看这条终端起的东西。
-      而人想知道「8080 是谁占着」的时候，往往正因为那玩意**不是从当前终端起的**
-      ——上周起的、或者 launchd 拉起来的。
-
-      **按需调用，不做常驻轮询**：它要 fork 一次 lsof，本机约 28ms，点开面板时问一次
-      绰绰有余；挂成每秒一次，进程多的机器上会变味。
-
-      `supported:false` 和「一个都没有」严格分开——lsof 没装、被策略挡住、超时都属于前者，
-      而界面把「看不到」画成「什么都没跑」是在撒谎。
-    */
-    if (req.method === "GET" && pathname === "/api/server/ports") {
-      const [rows, probe] = await Promise.all([processTable(), listeningSockets()]);
-      if (!probe.supported) { json(res, 200, { supported: false, services: [] }); return; }
-      // 命令行可能很长、也可能夹带密钥（`FOO_KEY=... node server.js` 这种形状）。
-      // 截断是有界性，不是脱敏。
-      /*
-        **把 tty 翻译回 roost 的终端。** 这是这个面板比一般的端口列表多出来的那一样：
-        「8080 是谁占着」之后紧接着的问题是「那玩意是我在哪儿起的」，而 tty 在进程被
-        过继给 launchd 之后仍然保留，是唯一还能回答这个问题的线索。
-
-        对不上就是 null——**别猜**。没有控制终端的服务（开机自启的那些）本来就不属于
-        任何终端，硬塞一个会把人引到错的地方。
-      */
-      const byTty = new Map<string, string>();
-      for (const session of store.loadWorkspace().sessions) {
-        const tty = normalizeTty(runtime.getSession(session.id)?.ptsName);
-        if (tty) byTty.set(tty, session.id);
-      }
-      const services = listeningServices({ rows, listeners: probe.rows }).map(service => ({
-        ...service,
-        // 命令行可能夹带密钥，截断是有界性不是脱敏；父进程同理。
-        command: service.command?.slice(0, 512) ?? null,
-        parent: service.parent?.slice(0, 256) ?? null,
-        terminalId: service.tty ? byTty.get(service.tty) ?? null : null,
-      }));
-      json(res, 200, { supported: true, services });
-      return;
-    }
-
     const processQuery = pathname.match(/^\/api\/sessions\/([^/]+)\/processes$/);
     if (processQuery && req.method === "GET") {
       const id = decodeURIComponent(processQuery[1]);
