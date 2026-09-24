@@ -86,6 +86,37 @@ function initializeWorkspaceStore(db: ReturnType<typeof openDatabase>) {
     }
   }
 
+  /*
+    给终端改名时，**把名字一起给到它此刻跑着的那条对话**。
+
+    两边原来是断开的：对话建立时抓的是终端当时的标题，之后终端改名不再传过去。于是
+    你把终端改成「roost-前端」，目录里那条对话还叫「Terminal」——同一个东西两个名字，
+    而目录是终端删掉之后唯一的回家路，名字对不上就找不着。
+
+    **只覆盖 `fallback`。** CLI 自己起的名字（`native`，比如「B 树讲解」）比一个终端标签
+    更贴切；用户在对话详情里亲手改过的（`user`）更不能动。只有那种「Terminal」「claude
+    3749983a…」的兜底值才该被顶掉——那种名字本来就不携带信息。
+
+    覆盖之后标成 `user`：**是人打的字**。这样后面 CLI 再报一个自动标题也不会把它盖回去。
+
+    改名失败不影响改终端：终端的名字是用户此刻要的东西，不能因为一个**附带动作**没成
+    而回滚。
+
+    这个 catch 现在按构造走不到（同一个 tick 里读的 revision，紧接着就用；单线程，
+    中间没人能插进来改），变异测试也因此抓不住它。留着是因为它守的是「主动作不被副作用
+    拖累」这条，而副作用这一侧以后还会加东西——那时它就有用了。
+  */
+  function setSessionTitle(id: string, title: string) {
+    sessions.setSessionTitle(id, title);
+    try {
+      const binding = aiSessions.list().find(record => record.binding.webSessionId === id)?.binding;
+      if (!binding) return;
+      const conversation = conversations.findBySource(binding.cliId, binding.nativeSessionId);
+      if (!conversation || conversation.titleOrigin !== "fallback") return;
+      conversations.patch(conversation.id, { revision: conversation.revision, title });
+    } catch { /* 附带动作，失败不回滚终端改名 */ }
+  }
+
   function deleteSessionRecord(id: string) {
     db.exec("SAVEPOINT delete_session_record");
     try {
@@ -126,7 +157,7 @@ function initializeWorkspaceStore(db: ReturnType<typeof openDatabase>) {
     setSessionClosed: sessions.setSessionClosed,
     setSessionCwd: sessions.setSessionCwd,
     setSessionProject: sessions.setSessionProject,
-    setSessionTitle: sessions.setSessionTitle,
+    setSessionTitle,
     setSessionNote: sessions.setSessionNote,
     reorderSession: sessions.reorderSession,
     getProjectRecord: projects.getProjectRecord,
