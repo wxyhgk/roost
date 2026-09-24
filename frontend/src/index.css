@@ -195,8 +195,15 @@ html[data-theme="light"] {
   --color-terminal-selection: #d1d1d6;
   --color-text: #000000;
   --color-text-dim: rgba(0, 0, 0, 0.58);
-  /* 浅色也给强调色：只给深色加的话，浅色的选中态仍然是灰底加灰边，眼睛照样没落点。 */
-  --color-accent: #007aff;
+  /*
+    **浅色不要强调色。** 上面那句「严格黑白」是这套浅色的设计声明，不是疏漏；
+    半透明用黑色 alpha 写字面值，同样属于黑白。
+
+    一度给它加过 #007aff，和深色对齐。代价说清楚：浅色的选中态因此仍然是灰底加灰边，
+    不像深色那样有个蓝环可以落眼。这是知情之后的取舍——保住「浅色是严格黑白」这条声明，
+    比两个主题的选中态长得一模一样更重要。
+  */
+  --color-accent: #000000;
   --color-scrollbar: rgba(0, 0, 0, 0.25);
   --color-scrollbar-hover: rgba(0, 0, 0, 0.40);
   --color-danger: #c62828;

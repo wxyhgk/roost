@@ -134,8 +134,19 @@ export function WorkspaceSessionRow({ session, current, onOpen }: {
 
         <span className="flex min-w-0 flex-1 flex-col gap-px">
           <InlineRename
-            className={`truncate transition-colors duration-150 ${
-              current ? "font-semibold text-text" : "font-medium text-text/90"
+            /*
+              侧栏这一行走 `text-caption`（11px），不是全局默认的 13px。
+
+              理由是**密度**：侧栏是导航，一屏要放得下足够多条；而 13px 在这儿比它需要的
+              大一档。字号体系里没有 12px——那一档是被特意并掉的（见 index.css 那段：
+              「给一个没有语义差的尺寸起名字，等于鼓励继续在 11/12 之间随手挑」），
+              所以往下就是 11。
+
+              和路径同为 11px 之后，区分靠的是**字重加字体**：标题是半粗的无衬线，路径是
+              常规的等宽。同尺寸下这两项的差别比 2px 的字号差明显得多。
+            */
+            className={`truncate text-caption transition-colors duration-150 ${
+              current ? "font-semibold text-text" : "font-semibold text-text/90"
             }`}
             value={title}
             editing={renaming}
