@@ -1,23 +1,25 @@
-/* Scope neutral colors to both portal locations, including the expanded header. */
+/*
+  `.server-monitor` 不是「服务器面板的皮肤」——它挂在四个地方：底部状态栏、右栏的
+  server 视图、右下角的额度弹窗、以及面板放大后的 dialog。这几块的共同点是**都不在
+  正常的排版流里**（状态栏是 chrome，另外两个是 portal / top-layer），所以需要一处
+  统一交代「文字、表单强调色、滚动条、焦点圈长什么样」。
+
+  **这里曾经还重定义过七个 `--color-*`**（bg / bg-panel / bg-raised / bg-hover /
+  border / text / text-dim），用的是一套写死的不透明灰。删掉了，原因有三：
+
+  1. 它是**半遮蔽**。`--color-bg-active`、`--color-accent`、`--color-rim`、
+     `--surface-raised` 从来没在这里重定义过，于是这几块同时吃着两套值——比如
+     `--color-rim` 是按 `#2c2c2e` 调的，却压在本地的 `#282828` 上。半套比两套都糟。
+  2. 它让 `tokens.css` 对这四块**完全失效**。深色的描边（10% 白）和浅色的严格黑白
+     （`#000`）都到不了这里，本地版本卡在 `#444444` 和 `#111111`。
+  3. 顶层 dialog 和 portal 照样按 DOM 继承自定义属性，主题 token 本来就够得着，
+     注释里说的「scope 到两个 portal 位置」不需要靠重定义来实现。
+
+  改完前后截图对比过，四块的观感只是跟着主题略偏暖、描边略软，没有可读性损失。
+*/
 .server-monitor {
-  --color-bg: #141414;
-  --color-bg-panel: #202020;
-  --color-bg-raised: #282828;
-  --color-bg-hover: #363636;
-  --color-border: #444444;
-  --color-text: #f5f5f5;
-  --color-text-dim: #a0a0a0;
   color: var(--color-text);
   accent-color: var(--color-text);
-  scrollbar-color: #777777 transparent;
-}
-html[data-theme="light"] .server-monitor {
-  --color-bg: #f5f5f5;
-  --color-bg-panel: #ffffff;
-  --color-bg-raised: #ffffff;
-  --color-bg-hover: #eeeeee;
-  --color-border: #bdbdbd;
-  --color-text: #111111;
-  --color-text-dim: #666666;
+  scrollbar-color: var(--color-text-dim) transparent;
 }
 .server-monitor :is(button,input,textarea):focus-visible { outline: 2px solid var(--color-text); outline-offset: 2px; }
