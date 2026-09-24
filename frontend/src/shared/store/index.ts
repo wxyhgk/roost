@@ -32,7 +32,7 @@ import { stableRuntime } from '../runtime';
 import { saveWorkspaceCache, STORAGE_KEY } from "./cache";
 import { t } from "@roost/i18n";
 import { createWorkspacePoller } from './poll';
-import { mergeLiveSessionRead, mergeWorkspaceRead } from './read';
+import { wantsFullRead, mergeLiveSessionRead, mergeWorkspaceRead } from './read';
 export function isOpen(session: Session) {
   return !session.closed;
 }
@@ -141,7 +141,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       },
       apply: ({ first, before, data }) => {
         const current = source.snapshot();
-        if (first || stableRuntime) {
+        if (wantsFullRead({ first, stable: stableRuntime, needsFullRead: current.needsFullRead })) {
           const merged = mergeWorkspaceRead(data, before, current);
           if (stableRuntime && !first && merged.sessions.some(s => s.id === current.selectedId)) merged.selectedId = current.selectedId;
           dispatch({ type: 'hydrate', data: merged });
@@ -264,7 +264,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       reorderProject: (id, beforeId) => {
         const before = source.snapshot();
         dispatch({ type: "reorderProject", id, beforeId });
-        syncOptimistic(patchRemoteProject(id, { beforeId }), dispatch, "分组排序保存失败，已恢复", before);
+        syncOptimistic(patchRemoteProject(id, { beforeId }), dispatch, t.misc.store.reorderProjectFailed, before);
       },
       renameProject: (id, name) => {
         const next = name.trim();

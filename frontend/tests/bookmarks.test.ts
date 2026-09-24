@@ -11,7 +11,7 @@ test('search and filters preserve manual order and match notes or directories', 
  assert.deepEqual(filterBookmarks(cards,'','','').map(c=>c.id),['z','b']);
 });
 test('resume command quotes directory shell characters and refuses unsupported or invalid sessions', () => {
- assert.equal(quoteArg("a'b"),`'a'"'"'b'`);
+ assert.equal(quoteArg("a'b"),`'a'"'"'b'`); // 现在是 shared/shell 的 shellQuote，见 shell-quote.test.ts
  assert.equal(bookmarkResumeCommand(card('a')), "cd -- '/my work' && 'claude' '--resume' 'session-one'");
  assert.equal(bookmarkResumeCommand(card('a',{cliId:'not-supported'})),null);
  assert.equal(bookmarkResumeCommand(card('a',{nativeSessionId:'$(touch /tmp/no)'})),null);

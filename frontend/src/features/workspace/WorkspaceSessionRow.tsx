@@ -75,6 +75,26 @@ export function WorkspaceSessionRow({ session, current, onOpen }: {
       ref={drop.setNodeRef}
       className="session-row relative select-none py-0.5"
       data-toolbar-open={toolbarOpen}
+      /*
+        **这一行是「打开这个会话」的主入口，所以它必须是个按钮。**
+
+        原来是个裸 `<div onClick>`：没有 role、没有 tabIndex、没有键盘处理，于是**键盘
+        完全打不开侧栏里的任何会话**。同目录、同一个角色的分组行（`WorkspaceRow`）四样
+        俱全，只有会话行漏了。
+
+        `role="button"` 而不是换成 `<button>`：这一行里已经嵌着改名输入框和一排工具按钮，
+        按钮不能嵌按钮。
+      */
+      role="button"
+      tabIndex={renaming ? -1 : 0}
+      aria-label={title}
+      onKeyDown={event => {
+        // 改名时回车属于输入框，别在这里抢走。
+        if (renaming || (event.key !== "Enter" && event.key !== " ")) return;
+        // 空格默认会滚动页面；而且这两个键都不该继续冒泡去触发外层的快捷键。
+        event.preventDefault();
+        onOpen();
+      }}
       // 双击的第二下不重复打开，理由同分组行。
       onClick={event => { if (event.detail > 1 || renaming) return; onOpen(); }}
     >

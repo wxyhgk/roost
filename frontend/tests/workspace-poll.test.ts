@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createWorkspacePoller, WORKSPACE_POLL_INTERVAL_MS, WORKSPACE_REQUEST_TIMEOUT_MS } from '../src/shared/store/poll';
-import { mergeLiveSessionRead, mergeWorkspaceRead } from '../src/shared/store/read';
+import { mergeLiveSessionRead, mergeWorkspaceRead, wantsFullRead } from '../src/shared/store/read';
 import { createObservable } from '../src/shared/store/observable';
 import { empty, reducer } from '../src/shared/store/state';
 import type { Session } from '../src/shared/types';
@@ -162,4 +162,19 @@ test('workspace API forwards cancellation to fetch and bypasses HTTP cache', asy
   assert.equal(started, true);
   controller.abort();
   await assert.rejects(pending);
+});
+
+test('全量合并的三个触发条件，缺一个都是静默失效', () => {
+  /*
+    这个判断住在 WorkspaceProvider 的 effect 里，单测够不着，所以抽了出来。
+    三个条件漏掉任何一个的后果都不报错：
+    漏 first → 首屏拿不到会话列表；漏 stable → 稳定版永远不同步；
+    漏 needsFullRead → 乐观写回滚抹掉的东西永远回不来。
+  */
+  assert.equal(wantsFullRead({ first: true, stable: false }), true);
+  assert.equal(wantsFullRead({ first: false, stable: true }), true);
+  assert.equal(wantsFullRead({ first: false, stable: false, needsFullRead: true }), true);
+  // 平常那一路：只补活字段，别每 3 秒全量拉一遍。
+  assert.equal(wantsFullRead({ first: false, stable: false }), false);
+  assert.equal(wantsFullRead({ first: false, stable: false, needsFullRead: false }), false);
 });

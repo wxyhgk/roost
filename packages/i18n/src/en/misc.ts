@@ -47,6 +47,7 @@ export const misc = {
     selectSessionFailed: "Failed to save selected session, restored",
     toggleProjectFailed: "Failed to save group expansion, restored",
     reorderFailed: "Failed to save order, restored",
+    reorderProjectFailed: "Could not save the group order; it has been restored",
     togglePinFailed: "Failed to save pin, restored",
     selectConversationFailed: "Could not save the conversation selection; reverted",
     followConversationFailed: "Could not save the follow setting; reverted",

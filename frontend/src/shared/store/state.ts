@@ -1,10 +1,26 @@
 import type { WorkspaceSnapshot } from "../api";
 import type { Session } from "../types";
 
-export type Data = WorkspaceSnapshot & { error: string | null };
+export type Data = WorkspaceSnapshot & {
+  error: string | null;
+  /**
+   * 上一次乐观写回滚过，下一次轮询要走**全量合并**而不是只补活字段。
+   *
+   * **不加这一格就会丢数据。** `syncOptimistic` 失败时回滚的是整份快照，而首轮之后的
+   * 轮询只发 `patchLive`——它只补 `cwd` / `cli` / `cliId` 三个字段。于是在那次写发出到
+   * 它失败之间改过的标题、备注、置顶、分组、排序全部被抹掉，**而且永远回不来**，
+   * 只能刷新页面；报的错还是上一个操作的名字，人没有理由怀疑刚才的改名被撤了。
+   *
+   * 回滚本身是对的（服务端没存上，本地就不该显示成存上了）；缺的是回滚之后跟服务端
+   * 重新对一次账。
+   */
+  needsFullRead?: boolean;
+};
 
 export type Action =
   | { type: "hydrate"; data: WorkspaceSnapshot }
+  /** 乐观写失败回滚之后打的记号，见 `Data.needsFullRead`。 */
+  | { type: "markStale" }
   | { type: "addSession"; session: Session }
   | { type: "addProject"; project: WorkspaceSnapshot["projects"][number] }
   | { type: "selectSession"; id: string }
@@ -61,7 +77,11 @@ function reduce(state: Data, action: Action): Data {
         selectedConversationId: action.data.selectedConversationId ?? null,
         followTerminalConversation: action.data.followTerminalConversation ?? false,
         error: null,
+        // 全量合并已经跟服务端对过账了，记号可以摘掉。
+        needsFullRead: false,
       };
+    case "markStale":
+      return state.needsFullRead ? state : { ...state, needsFullRead: true };
     case "addSession": {
       return {
         ...state,

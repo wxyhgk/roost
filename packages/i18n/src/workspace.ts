@@ -142,6 +142,7 @@ export const workspace = {
       noSessionHint: "先进一个终端，这里显示它里面 agent 的任务清单。",
       empty: "还没有任务清单",
       emptyHint: "agent 在这个会话里列出任务之后，会出现在这里，而且不会随终端滚走。",
+      stateHint: "这一栏跟着终端状态走；连上之前它不知道有没有清单",
       progress: (done: number, total: number) => `${done} / ${total} 已完成`,
       status: {
         pending: "待办",

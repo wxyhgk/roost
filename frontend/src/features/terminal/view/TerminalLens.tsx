@@ -145,7 +145,15 @@ export function ConversationLens({ terminalId, conversationId, current }: { term
     {error && <p role="status" className="px-3 text-caption text-text-dim">{t.bookmarks.historyFailed}</p>}
     {active && !current && !selected && <p className="border-b border-border px-3 py-1.5 text-caption text-text-dim">{t.bookmarks.historyFallback}</p>}
     {active ? <ConversationContent key={active} conversationId={active} known={knownActive} readOnly={!!selected || !current} blocked={blocked} terminalId={terminalId} sendTarget={sendTarget} /> : <>
-      <p role="status" className="p-4 text-caption text-text-dim">{loading ? t.bookmarks.loading : t.bookmarks.noTerminalHistory}</p>
+      {/*
+        三态要分开：正在加载 / 加载失败 / 确实没有。
+
+        原来这里只分了前两种里的第一种——`loading ? 加载中 : 没有历史对话`，完全不看
+        `error`。于是请求失败时屏幕上**同时**出现两句话：上面那行「历史加载失败」，
+        和这里的「这个终端没有历史对话」。后者是假话，而且和前者直接矛盾。
+        失败时这里什么都不说，让上面那句唯一的、正确的话留在屏幕上。
+      */}
+      {!error && <p role="status" className="p-4 text-caption text-text-dim">{loading ? t.bookmarks.loading : t.bookmarks.noTerminalHistory}</p>}
       <div className="flex-1" />
       {sendTarget && <Suspense fallback={null}><LensComposer terminalId={sendTarget} /></Suspense>}
     </>}

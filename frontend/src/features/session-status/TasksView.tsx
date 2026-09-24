@@ -1,7 +1,7 @@
 import { Empty } from "../../shared/ui/Empty";
 import { t } from "@roost/i18n";
 import { useSessionActivity } from "./useSessionActivity";
-import type { AgentTask } from "./store";
+import type { ActivityView, AgentTask } from "./store";
 
 /*
   agent 自己列的任务清单。
@@ -13,6 +13,13 @@ import type { AgentTask } from "./store";
   清单跨状态存活（见 backend/src/session-status.ts 里 SessionAgent.tasks 的注释）：
   agent 跑完了（done）那份清单依然是它做了什么的说明，只有换会话才重开一份。
 */
+
+/**
+ * 这三档下 `agent` 恒为 null（见 `store.ts` 的 `ActivityView`），也就是说**我们不知道**
+ * 有没有清单，而不是知道没有。其余几档（active/quiet/exited/closed/unavailable）是终端
+ * 自己的状态，那时 agent 为空就是真的没列过清单。
+ */
+const BLIND = new Set<ActivityView["state"]>(["connecting", "disconnected", "unknown"]);
 
 const MARK: Record<AgentTask["status"], string> = {
   // 进行中那一条用实心点加强调色，是这一栏里唯一需要一眼找到的东西。
@@ -28,7 +35,20 @@ export function TasksView({ sessionId }: { sessionId: string | null }) {
 
 /** 单独一层，因为 hook 不能挂在上面那个提前返回的分支后面。 */
 function TaskList({ sessionId }: { sessionId: string }) {
-  const tasks = useSessionActivity(sessionId).agent?.tasks;
+  const activity = useSessionActivity(sessionId);
+  /*
+    **「看不到」和「没有」必须分开说。**
+
+    `connecting` / `disconnected` / `unknown` 这三档下 `agent` 恒为 null，而原来这里只看
+    `agent?.tasks`——于是状态流还在连、断了、或者后端根本没报，全都被画成「还没有任务
+    清单」。断线的时候人会以为 agent 没列清单，实际是这一栏瞎了。
+
+    这三档的文案 i18n 里早就有（侧栏徽标一直在用），这里只是没读。
+  */
+  if (BLIND.has(activity.state)) {
+    return <Empty title={t.session.activity[activity.state]} hint={t.session.tasks.stateHint} />;
+  }
+  const tasks = activity.agent?.tasks;
   if (!tasks?.length) return <Empty title={t.session.tasks.empty} hint={t.session.tasks.emptyHint} />;
   const done = tasks.filter((task) => task.status === "completed").length;
   return (

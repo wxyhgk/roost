@@ -90,3 +90,42 @@ test('hydrate 只反映后端的 null，不把它当成「清除偏好」', () =
   assert.equal(legacy.selectedConversationId, null);
   assert.equal(legacy.followTerminalConversation, false);
 });
+
+/*
+  乐观写失败回滚之后，必须跟服务端重新对一次账。
+
+  **这一组守的是一次真实的数据丢失。** 回滚的是整份快照，而首轮之后的轮询只发
+  `patchLive`——它只补 cwd/cli/cliId。于是在那次写发出到它失败之间改的标题、备注、
+  置顶、分组、排序会被一起抹掉，而且再也回不来，只能刷新页面；报的错还是上一个操作
+  的名字，人没有理由怀疑刚才的改名被撤了。
+*/
+test('回滚会打上「要全量对账」的记号，而全量合并之后记号摘掉', () => {
+  const before = { ...empty, sessions: [a, b], selectedId: 'a' };
+  assert.equal(before.needsFullRead, undefined, '平时不带这个记号');
+
+  // syncOptimistic 失败时做的就是这两步（外加 setError）。
+  const rolled = reducer(reducer(before, { type: 'hydrate', data: before }), { type: 'markStale' });
+  assert.equal(rolled.needsFullRead, true);
+
+  // 下一次轮询走全量合并 → hydrate；对完账记号就该摘掉，否则以后每一轮都全量。
+  assert.equal(reducer(rolled, { type: 'hydrate', data: before }).needsFullRead, false);
+});
+
+test('patchLive 不摘记号——它补不回被抹掉的那些字段', () => {
+  /*
+    这一条是整组的关键。`patchLive` 只碰 cwd/cli/cliId；要是它也把记号摘了，
+    「下一次全量对账」就永远轮不到，数据丢失照旧，而且看起来像修好了。
+  */
+  const stale = reducer({ ...empty, sessions: [a, b] }, { type: 'markStale' });
+  assert.equal(reducer(stale, { type: 'patchLive', sessions: [a, b] }).needsFullRead, true);
+  // 即使 patchLive 真的改了字段，也不该摘。
+  const changed = reducer(stale, { type: 'patchLive', sessions: [{ ...a, cwd: '/other' }, b] });
+  assert.equal(changed.needsFullRead, true);
+  assert.equal(changed.sessions[0]!.cwd, '/other', '该补的还是补了');
+});
+
+test('重复回滚不制造新对象——记号已经在了就原样返回', () => {
+  // markStale 会在每一次失败时打一遍；不做这个短路的话，连续失败会让所有订阅者空转重渲染。
+  const stale = reducer({ ...empty, sessions: [a] }, { type: 'markStale' });
+  assert.equal(reducer(stale, { type: 'markStale' }), stale);
+});

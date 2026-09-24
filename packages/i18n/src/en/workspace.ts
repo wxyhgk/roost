@@ -137,6 +137,7 @@ export const workspace = {
       noSessionHint: "Open a terminal and its agent's task list shows up here.",
       empty: "No task list yet",
       emptyHint: "Once the agent lays out its tasks in this session they appear here, and they do not scroll away with the terminal.",
+      stateHint: "This panel follows the terminal status; until it connects it cannot tell whether a list exists",
       progress: (done: number, total: number) => `${done} / ${total} done`,
       status: {
         pending: "To do",

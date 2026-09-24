@@ -47,6 +47,7 @@ export const misc = {
     selectSessionFailed: "选中会话保存失败，已恢复",
     toggleProjectFailed: "分组展开保存失败，已恢复",
     reorderFailed: "排序保存失败，已恢复",
+    reorderProjectFailed: "分组排序保存失败，已恢复",
     togglePinFailed: "置顶保存失败，已恢复",
     selectConversationFailed: "对话选择保存失败，已恢复",
     followConversationFailed: "跟随设置保存失败，已恢复",

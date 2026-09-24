@@ -67,3 +67,16 @@ export function mergeWorkspaceRead(
   result.sessions = mergeLiveSessionRead(mergeRows(remote.sessions, before.sessions, current.sessions), before.sessions, current.sessions);
   return result;
 }
+
+/**
+ * 这一轮轮询该走全量合并，还是只补活字段。
+ *
+ * 抽成函数是为了能单独测：判断本身住在 `WorkspaceProvider` 的 effect 里，那儿单测够不着，
+ * 而这三个条件里漏掉任何一个的后果都不是报错——
+ *
+ * - 漏 `first`：首屏拿不到服务端的会话列表
+ * - 漏 `stable`：稳定版里改动永远不同步
+ * - 漏 `needsFullRead`：乐观写回滚抹掉的东西永远回不来（见 `state.ts` 那段）
+ */
+export const wantsFullRead = (options: { first: boolean; stable: boolean; needsFullRead?: boolean }) =>
+  options.first || options.stable || !!options.needsFullRead;
