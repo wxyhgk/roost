@@ -33,3 +33,6 @@ desktop/artifacts/
 
 # 各人自己的 Claude Code 权限/偏好，不该进仓库
 .claude/settings.local.json
+# git worktree 的挂载点。它本身是一个内嵌的 git 仓库，`git add -A` 会把它当成 submodule
+# 收进索引（实测提交过一次），而它是本地工作副本，不属于这个仓库。
+.claude/worktrees/
