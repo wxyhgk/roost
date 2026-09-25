@@ -5,7 +5,11 @@ export function TerminalAppearanceSettings() {
   const { terminalAppearance, setTerminalAppearance, terminalContrast, setTerminalContrast, terminalAccel, setTerminalAccel } = useTheme();
   return (
     /* 挂在 PanelHeader 的 actions 里，和 13px 的标题同一排：这是控件，跟着走 text-body，
-       别在标题和元信息之间再插一个 12px。font-normal 是为了不继承标题的 semibold。 */
+       别在标题和元信息之间再插一个 12px。font-normal 是为了不继承标题的 semibold。
+
+       **触发器叫「显示」而不是「配色」。** 加进 GPU 渲染开关之后，「配色」这个名字就盖不住
+       里面的东西了——一个性能开关藏在叫配色的菜单里，等于没有：实测使用者按我给的指路去找，
+       没找到。名字要覆盖里面所有的项，而不是覆盖最早的那一项。 */
     <details className="relative text-body font-normal">
       <summary className="cursor-pointer list-none rounded px-2 py-1 text-text-dim hover:bg-bg-hover hover:text-text" aria-label={t.settings.terminal.triggerLabel}>{t.settings.terminal.trigger}</summary>
       {/* 小浮层，和终端上方那几条状态条同一个尺寸量级，所以跟着用 glass；理由见 index.css。 */}

@@ -37,8 +37,8 @@ export const settings = {
   },
 
   terminal: {
-    trigger: "Theme",
-    triggerLabel: "Terminal theme settings",
+    trigger: "Display",
+    triggerLabel: "Terminal display settings",
     label: "Terminal theme",
     follow: "Follow workspace",
     dark: "Always dark",

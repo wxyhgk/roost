@@ -37,8 +37,8 @@ export const settings = {
   },
 
   terminal: {
-    trigger: "配色",
-    triggerLabel: "终端配色设置",
+    trigger: "显示",
+    triggerLabel: "终端显示设置",
     label: "终端配色",
     follow: "跟随工作台",
     dark: "固定深色",
