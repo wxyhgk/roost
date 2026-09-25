@@ -56,6 +56,16 @@ Caddy 服务的两个 root **都在 `~/.local/share/roost/` 下**：`/assets/*` 
 两步的语义是相反的，所以是两个函数：资产按内容哈希、只增不删、撞名报冲突（而不是静默
 覆盖掉旧页面还在加载的懒加载块）并用硬链接去重；外壳没有哈希、每次构建都可能变、必须替换。
 
+**「只增不删」的代价要定期还：`npm run prune`。** 资产从不回收，所以发布目录只会长——
+一度到 930M / 4642 个文件，而当时那一版只占 125 个 / 24M，97% 是历史副本。prune 从已发布的
+外壳出发算可达闭包（按资产名的哈希形状在文件里找引用，HTML、chunk 之间、CSS 的 url() 一网
+打尽），可达的一律留，再加一条「最近 N 天发布的都不动」当宽限窗口。**默认是预演，不删任何
+东西**，看清楚了再加 `--apply`；`--list` 打印待删清单，`--keep-days` 调窗口。
+
+那条宽限窗口保的是「最近 N 天新出现的文件」，**不等于**「最近 N 天那几版用到的文件」——
+同内容的块会被复用而不重写，mtime 停在它第一次发布的那天。抱着更旧外壳的页面去点一个自己
+还没加载过的路由，仍可能 404，硬刷即可。要精确就得让 publish 记下每一版的可达集合。
+
 **`npm run workbench:build` / `workbench:install` 不是发布前端。** 它构建的是
 `stable-workbench`——用同一份前端源码打出的独立降级版本，有自己的服务器，默认只装成候选。
 跑它不会更新线上那份。
@@ -110,6 +120,7 @@ umask 022 && env -u ROOST_CLAUDE_OBSERVING npm test --workspaces --if-present
 | `deploy/wait-terminal-owner.mts` | 后端启动脚本先跑它，等 owner 就绪 |
 | `deploy/publish.mjs` | **`npm run publish` 的入口**：查 dist 新鲜度，然后资产先、外壳后 |
 | `deploy/publish-assets.mjs` | 上面那个调用的两个函数（`publishAssets` / `publishShell`），附带 br 预压缩；也能单独跑 |
+| `deploy/prune-assets.mjs` | **`npm run prune` 的入口**：publish 的逆运算，按可达性回收历史资产；默认预演 |
 | `deploy/static-server.mjs` `Dockerfile` `nas-*.sh` | 群晖 NAS 那套容器方案 |
 | `scripts/install-service.mjs` | 生成并装载三个 launchd plist（`npm run service:install`） |
 | `scripts/check-boundaries.mjs` | 依赖边界检查，见下一节 |

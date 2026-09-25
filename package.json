@@ -29,6 +29,7 @@
     "version:set": "npm version --include-workspace-root --workspace frontend --workspace backend --no-git-tag-version",
     "check:syntax": "find scripts deploy desktop -name \"*.mjs\" -not -path \"*/node_modules/*\" -print0 | xargs -0 -n1 node --check",
     "publish": "node deploy/publish.mjs",
+    "prune": "node deploy/prune-assets.mjs",
     "smoke:molecule": "node scripts/smoke-molecule.mjs",
     "build-diff": "node scripts/build-diff.mjs",
     "roost": "node --import tsx scripts/roost.mjs"
