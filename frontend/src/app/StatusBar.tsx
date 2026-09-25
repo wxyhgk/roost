@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { ArrowDownIcon, ArrowUpIcon, CpuChipIcon, CircleStackIcon, SignalIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import type { Metric } from '@roost/server-monitor/types';
 import { useWorkspace } from '../shared/store';
@@ -34,7 +34,24 @@ export function StatusBar({ onOpenMonitor, monitorVisible = false }: { onOpenMon
   const stale = (metric?: Metric<unknown>) => failed || !metric || metric.status !== 'ok' || metric.sampledAt == null || Date.now() - metric.sampledAt > 30000;
   const sampled = (metric?: Metric<unknown>) => !metric?.sampledAt ? m.unavailable : `${stale(metric) ? m.stale : t.statusBar.updated} · ${new Date(metric.sampledAt).toLocaleTimeString()}`;
   const warning = (metric?: Metric<unknown>) => stale(metric) ? <ExclamationTriangleIcon className="size-3 shrink-0" aria-label={sampled(metric)} /> : null;
-  const host = summary?.host.hostname ?? location.hostname;
+  /*
+    主机名**不回落到 `location.hostname`**。
+
+    那是两个不同的问题：`summary.host.hostname` 是「这台机器叫什么」，`location.hostname`
+    是「我的浏览器连到哪个地址」。监控读数偶尔断一下（请求失败、采样过期、重启服务），
+    机器就像自己改了名——实测从本机地址访问时它显示成那串回环地址，而这条栏一直在眼前、
+    宽度又会被挤，截断之后只剩前几个字符，看上去莫名其妙。从公网地址访问时，它会直接
+    把真实 IP 摆在界面上。
+
+    改成记住上一次拿到的名字：机器名不会变，一次读数中断不该重命名任何东西。真的从来
+    没拿到过才显示占位符。
+
+    （`ServerMonitorView` 里那处 `location.host` 不动——它的标签就是「访问地址」，
+    问的正是那个问题，答得也对。）
+  */
+  const lastHost = useRef<string | null>(null);
+  useEffect(() => { if (summary?.host.hostname) lastHost.current = summary.host.hostname; }, [summary?.host.hostname]);
+  const host = summary?.host.hostname ?? lastHost.current ?? '—';
   return <footer aria-label={t.statusBar.title} className="status-bar chrome-surface">
     <div className="status-connection">
       {stableRuntime && <span className="hidden xl:inline" title={window.workbenchConfig?.version}>{t.misc.statusBar.stableBuild}</span>}
