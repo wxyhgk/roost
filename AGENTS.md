@@ -88,7 +88,54 @@ npm test --workspaces --if-present 2>&1 \
 
 ---
 
-## 二、跑测试的环境要求
+## 二、你可以直接给别的终端里的 agent 发消息
+
+这台机器上同时开着好几个终端，每个里面跑着一个 CLI。**它们之间可以直接通信**，不用人
+当传声筒——这条链一直在，但以前没有任何东西告诉你它存在，所以从来没被用过。
+
+本应用创建的每个终端都带着 `ROOST_AGENT_MESSAGE_CLI`（指向 `scripts/agent-message.mjs`）
+和四个凭证变量。凭证由守护进程核验，不能通过 HTTP 自报身份，命令行也不打印它们。独立于
+本应用启动的普通终端没有这些变量，调用会明确报错——那不是 bug，是边界。
+
+```sh
+# 1. 先问自己是谁。后面每一条都要带上这两个 ID。
+node "$ROOST_AGENT_MESSAGE_CLI" context
+# → {"conversationId":"c32959c1-…","runId":"a81450e7-…"}
+
+# 2. 看现在能跟谁说话。
+node "$ROOST_AGENT_MESSAGE_CLI" peers --from CID --run RUNID
+# → {"peers":[{"recipientId":"70e35f73-…","title":"Terminal","cwd":"~/Code/retain-pdf",
+#              "cli":"claude","deliverable":true,"reason":null}, …]}
+
+# 3. 发。requestId 是你自己取的业务键，同一封信重试要用同一个。
+node "$ROOST_AGENT_MESSAGE_CLI" send --from CID --run RUNID \
+  --to RECIPIENT_ID --request-id some-stable-key --text "..."
+
+# 4. 收。对方发来的信在这里。
+node "$ROOST_AGENT_MESSAGE_CLI" inbox  --from CID --run RUNID
+node "$ROOST_AGENT_MESSAGE_CLI" outbox --from CID --run RUNID   # 自己发出去的 + 投递状态
+```
+
+**`--from` / `--run` 是身份钉子，不是样板参数。** 它们的作用是：终端被复用、CLI 重启、
+对话换了一个之后，你手上那对 ID 就不再成立，请求会以 `sender_changed` 失败。**这时候不要
+自动重新 `context` 一遍再发**——那等于把上一个任务的话说给了另一个对话听。要重新确认这封信
+现在还该不该发。
+
+**`peers` 里没有的对话，此刻根本收不到信。** 那个列表用的是投递泵判断收件人的同一套条件，
+所以 `deliverable: false` 的那几条会把原因写在 `reason` 里（`unsupported_cli`、
+`command_pending`、`busy` 等），和界面上显示的是同一句话。别绕过它去猜 recipientId，也别用
+`title` 或 `cwd` 当地址——那两个是给人看的，会变。
+
+**`queued` 只表示「存下来了」，不表示对方收到了、更不表示对方会照做。** 命令被中断、超时、
+连接断开都只能停止等待，不保证那封信没被保存；想知道结果去查 `outbox` 的投递状态，不要
+换个 requestId 重发。正文上限 15 KiB。
+
+细节和边界见 `packages/agent-messaging/README.md`。**这个包不会自我介绍**——凭证在环境里不
+等于模型知道该调它，所以这一节就是那个介绍。
+
+---
+
+## 三、跑测试的环境要求
 
 ```sh
 npm run verify   # check:syntax → typecheck → test --workspaces → deploy/tests → build frontend → check-boundaries
@@ -110,7 +157,7 @@ umask 022 && env -u ROOST_CLAUDE_OBSERVING npm test --workspaces --if-present
 
 ---
 
-## 三、`scripts/` vs `deploy/` vs `desktop/`
+## 四、`scripts/` vs `deploy/` vs `desktop/`
 
 **不要按名字猜**。`deploy/` 里有本机服务正在跑的东西：
 
@@ -170,7 +217,7 @@ node --import tsx scripts/observe.mjs s_xxx --capture claude-2-1-278-empty
 
 ---
 
-## 四、依赖边界是被强制的
+## 五、依赖边界是被强制的
 
 `scripts/check-boundaries.mjs` 会让验证失败。它管的事：
 
@@ -205,7 +252,7 @@ import。撞上了就改措辞，不要为此放宽检查。
 
 ---
 
-## 五、写代码的约定
+## 六、写代码的约定
 
 - **注释解释「为什么」，不解释「是什么」。** 这个仓库里几乎每处非显然的决定上面都压着
   一段说明，很多还带着实测数字。加代码时请延续，删代码时请先读懂那段说明再决定。
@@ -223,7 +270,7 @@ import。撞上了就改措辞，不要为此放宽检查。
 
 ---
 
-## 六、文档放哪
+## 七、文档放哪
 
 | 目录 | 放什么 |
 | --- | --- |
@@ -236,7 +283,7 @@ import。撞上了就改措辞，不要为此放宽检查。
 
 ---
 
-## 七、其他容易踩的
+## 八、其他容易踩的
 
 - **Claude 额度不显示**：`~/.claude/settings.json` 的 `statusLine.command` 和
   `~/.roost/subscriptions/claude-statusline-config.json` 的 `installedCommand` 必须**逐字相等**，
