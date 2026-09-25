@@ -37,8 +37,8 @@ function MarkdownPreview({ content, file }: { content: string; file: PreviewFile
     }
   }, [content, file.root, file.path]);
 
-  useCodeHighlight(host, html, theme);
-  useMathRender(host, html);
+  useCodeHighlight(host, theme);
+  useMathRender(host);
 
   // 链接用事件委托，而不是给每个 <a> 挂监听：内容是整块替换的，委托不会漏。
   useEffect(() => {

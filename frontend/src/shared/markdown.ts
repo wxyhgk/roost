@@ -70,7 +70,7 @@ export function renderMarkdown(content: string, customize?: (md: InstanceType<ty
  * 和 `useCodeHighlight` 是同一条纪律：同步那一步只出朴素结构，重的东西挂载之后按需拉。
  * 样式也一起动态取——CSS 和渲染结果是配对的，缺了它公式会散成一行看不懂的字符。
  */
-export function useMathRender(host: RefObject<HTMLElement | null>, html: string) {
+export function useMathRender(host: RefObject<HTMLElement | null>) {
   useEffect(() => {
     const root = host.current;
     if (!root) return;
@@ -94,7 +94,23 @@ export function useMathRender(host: RefObject<HTMLElement | null>, html: string)
       }
     })();
     return () => { cancelled = true; };
-  }, [host, html]);
+    /*
+      **没有依赖数组是有意的：这个 effect 必须在每次提交后都跑一遍。**
+
+      它在 React 之外改 DOM（把占位 span 换成 katex 输出），而 React 并不知道这件事。
+      只要 React 因为任何原因重写一次 `dangerouslySetInnerHTML`——即使 `html` 一个字节
+      都没变——我们插进去的公式就被整块冲掉，DOM 退回占位版；而依赖写成 `[host, html]`
+      时这个 effect 不会重跑，于是公式**永久**停在占位上，不报错、不自愈。
+
+      实测（2026-09-25，文件面板的 .md 预览）：把浏览器窗口拖到另一块缩放不同的显示器上，
+      `devicePixelRatio` 变化引发一次重渲染，20 个已渲染的公式全部退回 21 个占位，之后
+      改回原来的缩放、改窗口宽度都救不回来。给元素的 innerHTML setter 下断点抓到的调用栈
+      是 React 的 commit 阶段，控制台没有任何报错。
+
+      每次提交都跑的代价是一次 `querySelectorAll`：没有占位就立刻返回，已经渲染好的文档
+      走的就是这条空路。比起「偶尔永久性地不渲染公式」，这个代价可以忽略。
+    */
+  });
 }
 
 /**
@@ -103,7 +119,7 @@ export function useMathRender(host: RefObject<HTMLElement | null>, html: string)
  * markdown-it 的 highlight 回调是同步的、而 shiki 是异步的，所以先渲染出朴素的
  * `<pre><code>`，挂载之后再逐个替换。
  */
-export function useCodeHighlight(host: RefObject<HTMLElement | null>, html: string, theme: string) {
+export function useCodeHighlight(host: RefObject<HTMLElement | null>, theme: string) {
   useEffect(() => {
     const root = host.current;
     if (!root) return;
@@ -123,5 +139,7 @@ export function useCodeHighlight(host: RefObject<HTMLElement | null>, html: stri
       pre.replaceWith(holder);
     }));
     return () => { cancelled = true; };
-  }, [host, html, theme]);
+    // 同上：代码块也是在 React 之外替换的，同样会被一次重写抹掉。高亮完之后
+    // `pre > code` 就不存在了，所以重跑的代价同样是一次落空的查询。
+  });
 }

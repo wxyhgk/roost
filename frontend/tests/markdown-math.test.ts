@@ -132,3 +132,26 @@ test('katex 和它的样式都只在需要时才取', () => {
   assert.match(source, /import\(\s*["\']katex["\']\s*\)/, '要在用到的时候动态取');
   assert.match(source, /import\(\s*["\']katex\/dist\/katex\.min\.css["\']\s*\)/, '样式也要动态取，它和渲染结果是配对的');
 });
+
+test('改 DOM 的那两个 effect 不许写依赖数组——写了公式会永久停在占位上', () => {
+  /*
+    `useMathRender` / `useCodeHighlight` 都在 React 之外改 DOM：把占位 span 换成 katex
+    输出、把 `<pre>` 换成高亮后的块。React 不知道这件事，只要它因为任何原因重写一次
+    `dangerouslySetInnerHTML`——**哪怕 html 一个字节都没变**——插进去的东西就被整块冲掉。
+
+    依赖写成 `[host, html]` 时这个 effect 不会重跑，于是公式**永久**停在占位上，不报错、
+    不自愈。2026-09-25 实测：文件面板的 .md 预览，把浏览器窗口拖到另一块缩放不同的显示器
+    上，20 个已渲染的公式全部退回占位，之后改回缩放、改窗口宽度都救不回来。
+
+    所以这两个 effect 必须每次提交都跑。这条用例盯的就是那个依赖数组不许长回来。
+  */
+  const source = readFileSync(new URL('../src/shared/markdown.ts', import.meta.url).pathname, 'utf8');
+  for (const hook of ['useMathRender', 'useCodeHighlight']) {
+    const start = source.indexOf(`export function ${hook}`);
+    assert.ok(start >= 0, `${hook} 不见了`);
+    const body = source.slice(start, source.indexOf('\nexport ', start + 1) >= 0 ? source.indexOf('\nexport ', start + 1) : undefined);
+    assert.doesNotMatch(body, /\}\s*,\s*\[[^\]]*\]\s*\)\s*;/,
+      `${hook} 的 useEffect 带了依赖数组：DOM 被 React 重写之后它不会重跑，渲染结果回不来`);
+    assert.match(body, /useEffect\(/, `${hook} 里应当还是一个 useEffect`);
+  }
+});

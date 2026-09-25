@@ -29,8 +29,8 @@ function Prose({ value }: { value: string }) {
   const { theme } = useTheme();
   const host = useRef<HTMLDivElement>(null);
   const html = useMemo(() => { try { return renderMarkdown(value); } catch { return null; } }, [value]);
-  useCodeHighlight(host, html ?? "", theme);
-  useMathRender(host, html ?? "");
+  useCodeHighlight(host, theme);
+  useMathRender(host);
   // 渲染失败就退回纯文本：宁可样子朴素，也不能把内容吞掉。
   if (html === null) return <div className="whitespace-pre-wrap break-words">{value}</div>;
   return <div ref={host} className="md-body" dangerouslySetInnerHTML={{ __html: html }} />;
