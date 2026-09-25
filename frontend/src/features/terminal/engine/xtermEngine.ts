@@ -15,6 +15,7 @@ import { attachLocalEcho } from "./localEchoView";
 import { attachBrowserShortcutPassthrough, linkModifier } from "./keys";
 import { attachCopyPaste } from "./copyPaste";
 import { attachFileLinks } from "./fileLinkProvider";
+import { createAccelerator } from "./accel";
 import { pickSnapshot } from "./snapshot";
 import { attachHostWheel } from "./wheel";
 import { attachHostTouchScroll } from "./touchScroll";
@@ -144,6 +145,12 @@ export function mountXterm(host: HTMLElement, theme: TermTheme, onFileLink?: (li
   attachCopyPaste(term);
   term.loadAddon(new WebLinksAddon(openWebLink));
   term.open(host);
+  /*
+    加速渲染器要等 `term.open` 之后才能挂——它要拿到已经在文档里的 canvas。这里只是**创建
+    持有者**，一个上下文都还没申请；真正申请要等 `setAccelerated(true)`，也就是这个终端成为
+    前台的那一刻。
+  */
+  const accel = createAccelerator(term, () => document.documentElement.dataset.terminalAccel !== "off");
   fitExact(term);
   const detachFileLinks = attachFileLinks(term, host, onFileLink);
 
@@ -289,6 +296,8 @@ export function mountXterm(host: HTMLElement, theme: TermTheme, onFileLink?: (li
       term.options.minimumContrastRatio = next.minimumContrastRatio ?? 4.5;
       appearance.setTheme(next);
     },
+    setAccelerated: on => accel.set(on),
+    accelState: () => accel.state,
     setAppearanceOwner: appearance.setOwner,
     setAppearanceReady: appearance.setReady,
     setReplaying(value) { if (value) localEcho.clear(); appearance.setReplaying(value); },
@@ -400,6 +409,7 @@ export function mountXterm(host: HTMLElement, theme: TermTheme, onFileLink?: (li
       return term.onRender(cb);
     },
     dispose() {
+      accel.dispose();
       localEcho.dispose();
       appearance.dispose();
       appearanceOutputs.clear();

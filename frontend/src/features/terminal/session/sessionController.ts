@@ -356,6 +356,9 @@ export function createTerminalSessionController(options: {
       }
       lease.register(term, send, attachmentTarget);
       // setActive may have run before the engine existed; the active session still owns the keyboard.
+      // 加速渲染器同理：前台身份是引擎出生之前就定下的，这里补一次，否则第一次进来的那个
+      // 终端要等到下一次前后台切换才拿得到上下文。
+      term.setAccelerated?.(active);
       if (active) term.focus();
       resume = createResume(term);
 
@@ -563,10 +566,18 @@ export function createTerminalSessionController(options: {
       */
       repaint() { if(!valid()) return; trace.record('manual-repaint'); term?.setFrozen?.(false); term?.repaint?.(); gate.open(); if (!fit()) gate.nudge(); },
       diagnostics: () => ({ phase, status: state.status, historyTruncated: state.historyTruncated, active, visible: deps.isVisible(), inputReady, lastFrameAt,
+        // 真机上唯一能看出「到底有没有用上 GPU」的地方：off/loading/on/unavailable。
+        // 无头浏览器没有 WebGL，所以这件事只能由使用者在自己的浏览器里读。
+        accel: term?.accelState?.() ?? null,
         renderer: term?.inspect?.() ?? null, replay: resume?.inspect() ?? null, events: trace.read() }),
       snapshot: () => state,
       setActive(value: boolean) {
         active = value;
+        /*
+          前台才持有 WebGL 上下文，切走立刻还回去。放在最前面：后面那几步在 value 为 false
+          时会提前 return，挂在下面就等于「切到后台不还」——那正是要避免的事。
+        */
+        term?.setAccelerated?.(value);
         // 前后台切换靠 `visibility` 实现，不改布局，ResizeObserver 收不到——只能在这儿清。
         forgetPresented();
         // 交出前台身份就必须交出键盘：光靠上面盖一层不透明的东西挡不住按键，

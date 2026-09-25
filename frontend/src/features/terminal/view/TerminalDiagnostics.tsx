@@ -18,7 +18,7 @@ function diagnosticsText(data: ReturnType<Props['diagnostics']>) {
     r ? `grid=${r.cols}x${r.rows} fits=${r.fitsCols}x${r.fitsRows} cell=${r.cellWidth}x${r.cellHeight} painted=${r.paintedWidth} box=${r.width}x${r.height}` : '',
     r ? `viewport=${r.viewportY}/${r.baseY} frozen=${r.frozen} lines=${r.bufferLines}` : '',
     p ? `replay=${p.applied}/${p.received} queued=${p.queued} behind=${p.behind}` : '',
-    `active=${c.active} visible=${c.visible} input=${c.inputReady}`,
+    `active=${c.active} visible=${c.visible} input=${c.inputReady} accel=${c.accel ?? '-'}`,
   ].filter(Boolean).join(' · ') : 'no session';
   return `${JSON.stringify(data, null, 2)}\n\n# ${line}\n`;
 }

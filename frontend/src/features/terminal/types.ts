@@ -62,6 +62,14 @@ export type TermHandle = {
   typeInput?(data: string): void;
   /** 交出键盘焦点。不再是前台的终端必须调它，否则被盖住之后按键还会打进 PTY。 */
   blur?(): void;
+  /**
+   * 这个终端是不是前台。**只有前台那个持有 WebGL 上下文**——浏览器给的上下文数是个很小的
+   * 死数字，超了会悄悄弄坏最老的那个（理由见 `engine/accel.ts`）。所以这不是「要不要加速」
+   * 的开关，是「该不该占着那份预算」的答案。
+   */
+  setAccelerated?(on: boolean): void;
+  /** 诊断面板用：此刻走的是哪个渲染器。 */
+  accelState?(): string;
   isInputTarget(target: EventTarget | null): boolean;
   searchText(query: string, direction: 1 | -1): boolean;
   clearSearch(): void;

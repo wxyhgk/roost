@@ -44,6 +44,8 @@ export const settings = {
     dark: "Always dark",
     light: "Always light",
     contrast: "Increase text contrast",
+    accel: "GPU rendering for the terminal",
+    accelHint: "Only the terminal in front uses the GPU; it hands the context back when you switch away. Turn this off if anything looks wrong — it falls back to the previous renderer.",
     hint: "If a program does not follow the color change, you can fix the terminal theme. Some programs need to exit and resume the session before they adopt the new background color.",
     dialogHint: "Some CLIs use their own theme. If they do not follow the color change, you can fix the terminal theme, or adjust the CLI's built-in theme.",
   },

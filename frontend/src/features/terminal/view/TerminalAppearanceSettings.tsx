@@ -2,7 +2,7 @@ import { useTheme, type TerminalAppearance } from "../../../shared/theme";
 import { t } from "@roost/i18n";
 
 export function TerminalAppearanceSettings() {
-  const { terminalAppearance, setTerminalAppearance, terminalContrast, setTerminalContrast } = useTheme();
+  const { terminalAppearance, setTerminalAppearance, terminalContrast, setTerminalContrast, terminalAccel, setTerminalAccel } = useTheme();
   return (
     /* 挂在 PanelHeader 的 actions 里，和 13px 的标题同一排：这是控件，跟着走 text-body，
        别在标题和元信息之间再插一个 12px。font-normal 是为了不继承标题的 semibold。 */
@@ -22,6 +22,15 @@ export function TerminalAppearanceSettings() {
           <input type="checkbox" checked={terminalContrast} onChange={event => setTerminalContrast(event.target.checked)} />
           {t.settings.terminal.contrast}
         </label>
+        {/*
+          纯性能开关。默认开着；真机上觉得哪里不对就关掉，立刻回到 DOM 渲染器。
+          留这个开关是因为「顺不顺」只有眼睛判断得了——这台机器上的无头浏览器连 WebGL 都没有。
+        */}
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={terminalAccel} onChange={event => setTerminalAccel(event.target.checked)} />
+          {t.settings.terminal.accel}
+        </label>
+        <p className="leading-relaxed text-text-dim">{t.settings.terminal.accelHint}</p>
         <p className="leading-relaxed text-text-dim">{t.settings.terminal.hint}</p>
       </div>
     </details>
