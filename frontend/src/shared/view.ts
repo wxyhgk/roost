@@ -39,3 +39,25 @@ export type Lens = "tui" | "gui";
  * `RightView` 多一个成员，取值就索引不到。两个方向都是 tsc 当场报错。
  */
 export type RightView = "files" | "server" | "notes" | "snippets" | "processes" | "tasks";
+
+/**
+ * 选中的终端换了之后，范围该落在哪。
+ *
+ * 侧栏里「分组高亮」和「当前在哪个终端」原来是两条各走各的状态：高亮跟着 `Scope`，
+ * 而选终端只动 `selectedId`。于是点开 B 组里的终端，A 组还亮着。
+ *
+ * 这不只是高亮说谎。`Scope` 还管两件实事——画布只显示范围内的终端（`scopedSessions`），
+ * 新建终端放进当前范围（`TerminalPane` 里的 `addSession`）。两条状态一旦岔开，画布切过去
+ * 看不到你正在用的那个终端，而「新建终端」会把新终端放进你已经离开的分组。
+ *
+ * **`"all"` 是唯一不跟随的。** 它不是「某个分组」，是「不筛」这个视角，是使用者主动选的；
+ * 点一下终端就把画布收窄到一个分组，那是抢方向盘。而且「全部」亮着的时候你确实在看全部，
+ * 高亮没说谎，本来就没有要修的东西。
+ *
+ * @param projectId 选中终端所在的分组；`null` 是未分组，`undefined` 是这个终端不在列表里
+ *   （还没同步到、或者刚被关掉），此时不动——不知道该去哪就别动。
+ */
+export function scopeFollowingSession(scope: Scope, projectId: string | null | undefined): Scope {
+  if (scope === "all" || projectId === undefined) return scope;
+  return projectId;
+}

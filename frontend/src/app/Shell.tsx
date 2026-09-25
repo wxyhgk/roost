@@ -31,6 +31,8 @@ import { EXTERNAL_EDITORS } from '../plugins/external';
 const SettingsDialog = lazy(() => import('./SettingsDialog').then(m => ({ default: m.SettingsDialog })));
 const CommandPalette = lazy(() => import("../features/workspace/CommandPalette").then(m => ({ default: m.CommandPalette })));
 import type { Mode, RightView, Scope } from "../shared/view";
+import { scopeFollowingSession } from "../shared/view";
+import { useWorkspace } from "../shared/store";
 import { t } from "@roost/i18n";
 
 /**
@@ -91,6 +93,30 @@ export function Shell() {
   useEffect(() => {
     try { localStorage.setItem(MODE_KEY, mode); } catch { /* 存不了就下次从画布开始 */ }
   }, [mode]);
+
+  /*
+    范围跟着当前终端走。**这段必须在 Shell 里**，不能放侧栏——窄屏下侧栏只有抽屉打开
+    时才挂载（见下面那个 `narrow && !leftCollapsed`），放在那儿等于手机上静默失效，
+    而从命令面板选终端根本不经过侧栏。
+
+    订阅 `sessions` 不会把 Shell 拖进轮询：`patchLive` 在没有变化时原样返回 state，
+    数组的引用不变；换新数组的只有 `hydrate`，那只在首屏和乐观写回滚后的补读跑。
+
+    依赖是 `selectedId` 而**不是**派生出来的分组 ID。只盯分组会漏掉一整类情况：手动把
+    范围切到 B 组之后，再点回 A 组里的**另一个**终端——两个终端同属 A 组，派生值没变，
+    effect 不跑，高亮就一直停在 B。这条是实际点出来的，不是想出来的。
+
+    `selectedProjectId` 也在依赖里，是为了让「把当前终端拖进另一个分组」同样能对齐。
+
+    依赖里没有 `scope`：手动点某个分组之后这个 effect 不会重跑，所以手动选择会一直保持
+    到你下次换终端为止——它是来对齐的，不是来抢方向盘的。
+  */
+  const { sessions, selectedId } = useWorkspace("sessions", "selectedId");
+  const selectedProjectId = sessions.find(s => s.id === selectedId)?.projectId;
+  useEffect(() => {
+    setScope(now => scopeFollowingSession(now, selectedProjectId));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, selectedProjectId]);
 
   /*
     换工作区**不动**中间栏在看什么。
