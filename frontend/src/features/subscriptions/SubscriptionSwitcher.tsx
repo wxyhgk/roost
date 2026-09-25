@@ -3,6 +3,7 @@ import { ArrowPathIcon, ChevronUpDownIcon, ClockIcon, KeyIcon, XMarkIcon } from 
 import { primaryWindow, remainingPercent, type QuotaWindow, type SubscriptionSnapshot } from '@roost/subscriptions';
 import { t } from '@roost/i18n';
 import { connectClaudeSubscription, saveGoKey } from '../../shared/api/subscriptions';
+import { RING, arcPath } from './arc';
 import { providers, readProvider, saveProvider } from './providers';
 import { acceptSubscription, refreshSubscription, useSubscription } from './store';
 import './subscriptions.css';
@@ -23,6 +24,7 @@ export function SubscriptionSwitcher() {
   const [saving, setSaving] = useState(false), [saveError, setSaveError] = useState(false);
   const state = useSubscription(selected), snapshot = state.snapshot, primary = primaryWindow(snapshot), remaining = remainingPercent(primary);
   const provider = providers.find(p => p.id === selected)!, m = t.statusBar;
+  const arc = remaining == null ? null : arcPath(remaining);
   const stale = state.failed || snapshot?.state === 'stale' || !!snapshot?.observedAt && Date.now() - Date.parse(snapshot.observedAt) > 300000;
   const message = state.failed ? m.failed : snapshot?.issue ? m.issues[snapshot.issue] : !snapshot && state.loading ? m.reading : !snapshot ? m.unavailable : '';
   useEffect(() => () => { mutation.current?.abort(); }, []);
@@ -40,7 +42,21 @@ export function SubscriptionSwitcher() {
     <button type="button" popoverTarget={id} aria-haspopup="dialog" aria-expanded={open} aria-label={m.subscriptions + ' · ' + provider.name}
       title={provider.name + ' · ' + m.remaining + ' ' + number(remaining) + (primary ? ' · ' + windowLabel(primary) : '') + (stale ? ' · ' + m.stale : '')}
       className={'subscription-trigger status-button' + (stale ? ' subscription-stale' : '')}>
-      <img src={provider.logo} alt="" className="subscription-logo" /><span className="tabular-nums">{number(remaining)}</span><ChevronUpDownIcon className="size-3" aria-hidden="true" />
+      {/*
+        环画的是**剩余**，和它右边那个数字是同一个量——两者必须说同一句话，不然这颗按钮
+        自己跟自己打架。（弹层里那根量表填的是「已用」，配的标签也是 Used N%，各自成立；
+        同一份配额在两处按相反方向画，值得单独拉直，不在这次里做。）
+
+        aria-hidden：数字和 title 已经把这件事说完了，屏读器再念一遍环是噪音。
+      */}
+      <span className="subscription-ring">
+        <svg viewBox={`0 0 ${RING.size} ${RING.size}`} aria-hidden="true">
+          <circle cx={RING.center} cy={RING.center} r={RING.radius} fill="none" strokeWidth={RING.stroke}
+            className="subscription-ring-track" strokeDasharray={remaining == null ? '1.5 2' : undefined} />
+          {arc && <path d={arc} fill="none" strokeWidth={RING.stroke} strokeLinecap="butt" className="subscription-ring-arc" />}
+        </svg>
+        <img src={provider.logo} alt="" className="subscription-logo" />
+      </span><span className="tabular-nums">{number(remaining)}</span><ChevronUpDownIcon className="size-3" aria-hidden="true" />
     </button>
     <div id={id} ref={popover} popover="auto" role="dialog" aria-label={m.subscriptions}
       onToggle={event => { setOpen(event.newState === 'open'); if (event.newState !== 'open') { setKey(''); setKeyOpen(false); } }}

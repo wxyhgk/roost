@@ -1,5 +1,33 @@
 .subscription-trigger { width: 92px; justify-content: space-between; }
 .subscription-stale { opacity: .65; }
+
+/*
+  额度环：把 logo 套进一个进度环里，弧长 = 剩余。
+
+  原来这颗按钮只有「logo + 数字 + 箭头」，量表只存在于点开之后的弹层里——而这条栏一直在
+  眼前，弹层不是。一个百分比要扫一眼就知道「还剩不剩」，光靠数字做不到：`30%` 和 `80%`
+  在字形上没有差别，得读完才知道。环把它变成不用读的信息，而且**不占额外的横向空间**——
+  它长在 logo 原来的位置上。
+
+  形状照 Lunavect 菜单栏那条（`web/src/menubar.js` 的 rings 模式）。弧的数学在 `arc.ts`，
+  那里有两个坑的说明（满格会消失、过半圈会抄近路）。
+
+  **没有数据时槽画成虚线，不是空槽。** 空槽会被读成「0%」，而那是完全相反的意思——
+  「不知道还剩多少」和「一点都不剩」不该长得一样。
+
+  **陈旧不用在这儿管**：`.subscription-stale` 早就把整颗按钮压到 .65，环跟着一起淡。一度
+  想再补一条只压弧的 `opacity`，那是两套机制管同一件事，叠起来反而糊。
+
+  槽色从 `--color-bar-dim` 调，跟着状态栏自己那套颜色走，不借内容面板的 token：这条栏的底
+  是 `--color-bar`，借错了在浅色主题上会浮起来。弧用强调色，理由和弹层里那根量表一样
+  （见下面 `.subscription-meter`）——前景白会和旁边的白字糊成一片。
+*/
+.subscription-ring { position: relative; display: grid; place-items: center; width: 20px; height: 20px; flex: none; }
+.subscription-ring svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.subscription-ring .subscription-logo { width: 11px; height: 11px; }
+.subscription-ring-track { stroke: color-mix(in srgb, var(--color-bar-dim) 35%, transparent); }
+.subscription-ring-arc { stroke: var(--color-accent); }
+
 /*
   轨道**不再借用 `--color-border`**。
 
