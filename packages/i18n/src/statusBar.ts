@@ -6,7 +6,7 @@ export const statusBar = {
   refresh: '刷新额度', reading: '正在读取额度…', stale: '显示上次读数', failed: '连接失败，可稍后重试',
   connectClaude: '连接 Claude 状态栏', connectedClaude: '已连接；Claude 报告额度后会自动显示',
   configureKey: '设置 OpenCode Go API Key', key: 'API Key', saveKey: '保存并读取', useCliAccount: '使用 CLI 账户', cancel: '取消',
-  used: '已用', runtime: '服务器', unknownAccount: '接口未提供', sessionSource: '最近报告的 Claude 会话',
+  percentLeft: (value: string) => `剩余 ${value}`, runtime: '服务器', unknownAccount: '接口未提供', sessionSource: '最近报告的 Claude 会话',
   sources: { 'opencode-api': 'OpenCode Go API', 'codex-rpc': 'Codex App Server', 'claude-statusline': 'Claude Code 状态栏' },
   windows: { rolling: '5 小时', weekly: '每周', monthly: '每月', five_hour: '5 小时', seven_day: '每周', spend_limit: '消费限额', primary: '主要额度', secondary: '附加额度' },
   issues: {

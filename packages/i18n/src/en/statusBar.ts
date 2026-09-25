@@ -6,7 +6,7 @@ export const statusBar = {
   refresh: 'Refresh quota', reading: 'Reading quota…', stale: 'Showing last reading', failed: 'Connection failed; retry later',
   connectClaude: 'Connect Claude status line', connectedClaude: 'Connected; quotas will appear when Claude reports them',
   configureKey: 'Set OpenCode Go API key', key: 'API key', saveKey: 'Save and read', useCliAccount: 'Use CLI account', cancel: 'Cancel',
-  used: 'Used', runtime: 'Server', unknownAccount: 'Not provided by source', sessionSource: 'Latest reporting Claude session',
+  percentLeft: (value: string) => `${value} left`, runtime: 'Server', unknownAccount: 'Not provided by source', sessionSource: 'Latest reporting Claude session',
   sources: { 'opencode-api': 'OpenCode Go API', 'codex-rpc': 'Codex App Server', 'claude-statusline': 'Claude Code status line' },
   windows: { rolling: '5 hours', weekly: 'Weekly', monthly: 'Monthly', five_hour: '5 hours', seven_day: 'Weekly', spend_limit: 'Spend limit', primary: 'Primary quota', secondary: 'Additional quota' },
   issues: {

@@ -84,8 +84,15 @@ export function SubscriptionSwitcher() {
           {message && <p role="status" className="mt-2 text-caption text-text-dim">{message}</p>}
         </div>
         {!!snapshot?.windows.length && <div className="space-y-3">{snapshot.windows.map(window => <div key={window.id} className="subscription-window">
-          <div className="flex justify-between gap-2 text-caption"><span title={window.scope} className="min-w-0 truncate">{windowLabel(window)}{selected === 'chatgpt' && ' · ' + window.scope}</span><span className="shrink-0 tabular-nums">{m.used} {number(window.usedPercent)}</span></div>
-          <div role="progressbar" aria-label={window.scope + ' ' + windowLabel(window) + ' ' + m.used} aria-valuenow={window.usedPercent == null ? undefined : Math.min(100, window.usedPercent)} aria-valuemin={0} aria-valuemax={100} className="subscription-meter"><span style={{ width: Math.min(100, window.usedPercent ?? 0) + '%' }} /></div>
+          <div className="flex justify-between gap-2 text-caption"><span title={window.scope} className="min-w-0 truncate">{windowLabel(window)}{selected === 'chatgpt' && ' · ' + window.scope}</span><span className="shrink-0 tabular-nums">{m.percentLeft(number(remainingPercent(window)))}</span></div>
+          {/*
+            量表填的是**剩余**，和状态栏那个环、和上面那个大字读数同一个方向。
+
+            原来这里填的是「已用」、标签也写着 Used N%——单看自洽，但同一份配额在这个弹层
+            里就有两种画法：顶上的大字是剩余，下面这几根是已用。满格在一处表示「还很多」，
+            在另一处表示「快没了」，而它们上下紧挨着。统一到剩余。
+          */}
+          <div role="progressbar" aria-label={window.scope + ' ' + windowLabel(window) + ' ' + m.remaining} aria-valuenow={remainingPercent(window) ?? undefined} aria-valuemin={0} aria-valuemax={100} className="subscription-meter"><span style={{ width: (remainingPercent(window) ?? 0) + '%' }} /></div>
           <p className="mt-1 flex items-center gap-1 text-caption text-text-dim"><ClockIcon className="size-3" aria-hidden="true" />{m.reset} · {dateText(window.resetsAt)}</p>
         </div>)}</div>}
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2.5 text-caption">
