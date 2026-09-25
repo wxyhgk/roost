@@ -4,19 +4,11 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/client.mjs",
-    "./server": "./src/server.mjs"
-  },
-  "bin": {
-    "roost-agent-messaging": "./src/stdio.mjs"
+    ".": "./src/client.mjs"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/*.test.mjs"
-  },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "1.30.0",
-    "zod": "4.5.4"
   },
   "devDependencies": {
     "@types/node": "^26.4.1",
