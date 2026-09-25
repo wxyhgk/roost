@@ -12,12 +12,14 @@ const schemas = {
   agent_context: z.object({}).strict(),
   agent_send: z.object({ ...pin, recipientId: identity, requestId: identity.describe("Stable logical send ID; reuse only for the same body, recipient and reply relationship"),
     text: z.string().min(1).describe("Plain text, at most 15 KiB UTF-8"), inReplyTo: identity.nullable().optional() }).strict(),
+  agent_peers: z.object({ ...pin }).strict(),
   agent_inbox: z.object({ ...pin, cursor: z.string().min(1).max(2048).optional(), limit: z.number().int().min(1).max(100).optional() }).strict(),
   agent_outbox: z.object({ ...pin, cursor: z.string().min(1).max(2048).optional(), limit: z.number().int().min(1).max(100).optional() }).strict()
 };
 const descriptions = {
   agent_context: "Read this terminal's current conversation and run IDs. This does not send a message or choose another terminal.",
   agent_send: "Save one message for another conversation using both expected identity IDs. Queued means saved, not received or completed. No automatic retry occurs; a timeout or cancellation may leave the send outcome unknown. Reuse the same requestId and identity pins when checking or retrying the same operation.",
+  agent_peers: "List the other conversations that can receive a message right now, with the recipientId agent_send needs. Requires both expected identity IDs. A conversation missing from the list is not addressable at this moment; deliverable false means it is listed but busy or unsupported, and reason says which.",
   agent_inbox: "Read this conversation's inbox with both expected identity IDs; never refresh pins automatically after an identity mismatch.",
   agent_outbox: "Read this conversation's outbox with both expected identity IDs; never refresh pins automatically after an identity mismatch."
 };

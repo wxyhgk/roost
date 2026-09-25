@@ -230,6 +230,42 @@ export function createPeerDeliveryOwner(options: {
       const { expectedConversationId: _conversation, expectedRunId: _run, ...message } = input;
       return store.peerMessages.send({ kind: "agent", conversationId: run.conversationId, runId: run.id }, message);
     },
+    /*
+      **能收信的对话有哪些。** 没有这个，agent 之间是鸡生蛋：`sendFromTerminal` 要
+      `recipientId`，而 `contextFromTerminal` 只给得出自己的 ID（它的工具描述里就写着
+      "does not ... choose another terminal"）。于是谁都没法先开口，只能等人来信再回，
+      而第一封信必须由人在网页上点。这个方法就是把这一环补上。
+
+      **只列真能送到的。** 判断用的是 `pump()` 里那同一套条件——run 归本守护进程、
+      `control` 支持且没在忙——而不是另写一份。列出送不到的收件人等于教 agent 往墙上撞：
+      消息会排队、状态停在 `queued`，而调用方以为发出去了。同样的原因，`reason` 用的是
+      pump 写进 `setQueuedReason` 的那批字符串，界面和这里说的是同一件事。
+
+      **不列自己。** 给自己发消息没有意义，而它排在列表里只会诱使模型那么做。
+
+      要钉子，和 inbox/outbox 一致：这份列表是 `agent_send` 的输入，调用方的身份要是已经
+      悄悄换过，正确的做法是在这里就响，而不是让它拿着过期身份去拼一条发送。
+    */
+    peersFromTerminal(terminalId: string, instanceId: string, options: PeerSenderPin) {
+      const run = pinnedSenderRun(terminalId, instanceId, options);
+      const peers = [];
+      for (const candidate of store.conversationRuns.listActive(ownerId)) {
+        if (candidate.conversationId === run.conversationId) continue;
+        const control = commands.control(candidate.webSessionId);
+        const reason = !control.supported ? control.reason ?? "unsupported_cli"
+          : control.reason ?? (control.queue.length ? "command_pending" : null);
+        const session = store.getSessionRecord(candidate.webSessionId);
+        peers.push({
+          recipientId: candidate.conversationId,
+          title: session?.title ?? "",
+          cwd: session?.cwd ?? "",
+          cli: candidate.cliId,
+          deliverable: reason === null,
+          reason,
+        });
+      }
+      return { conversationId: run.conversationId, runId: run.id, peers };
+    },
     listFromTerminal(kind: "inbox" | "outbox", terminalId: string, instanceId: string, opts: TerminalPeerListOptions) {
       const run = pinnedSenderRun(terminalId, instanceId, opts);
       if (kind !== "inbox" && kind !== "outbox") throw new AiCommandError(400, "invalid_request");

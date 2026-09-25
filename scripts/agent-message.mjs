@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 import { requestPeer } from "../packages/agent-messaging/src/client.mjs";
-const usage = "Usage: agent-message.mjs context | send --from CID --run RUNID --to ID --request-id KEY --text TEXT [--reply-to ID] | inbox|outbox --from CID --run RUNID [--cursor CURSOR] [--limit N]";
+const usage = "Usage: agent-message.mjs context | peers --from CID --run RUNID | send --from CID --run RUNID --to ID --request-id KEY --text TEXT [--reply-to ID] | inbox|outbox --from CID --run RUNID [--cursor CURSOR] [--limit N]";
 
 async function main() {
   const [verb, ...args] = process.argv.slice(2);
-  if (!["context", "send", "inbox", "outbox"].includes(verb)) throw new Error(usage);
+  if (!["context", "peers", "send", "inbox", "outbox"].includes(verb)) throw new Error(usage);
   const flags = new Map();
-  const allowed = verb === "context" ? [] : ["--from", "--run", ...(verb === "send" ? ["--to", "--request-id", "--text", "--reply-to"] : ["--cursor", "--limit"])];
+  const allowed = verb === "context" ? []
+    : ["--from", "--run", ...(verb === "send" ? ["--to", "--request-id", "--text", "--reply-to"] : verb === "peers" ? [] : ["--cursor", "--limit"])];
   for (let index = 0; index < args.length; index += 2) {
     const flag = args[index], value = args[index + 1];
     if (!allowed.includes(flag) || flags.has(flag) || value === undefined) throw new Error(usage);

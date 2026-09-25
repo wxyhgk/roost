@@ -33,11 +33,19 @@ Claude 支持通过单次启动参数 `--mcp-config /absolute/path/to/config.jso
 | 名称 | 参数 | 用途 |
 | --- | --- | --- |
 | `agent_context` | `{}` | 读取当前可信 conversationId/runId |
+| `agent_peers` | expectedConversationId、expectedRunId | 列出此刻收得到信的其他对话，给出 `agent_send` 要的 recipientId |
 | `agent_send` | expectedConversationId、expectedRunId、recipientId、requestId、text；可选 inReplyTo | 保存一封发往明确对话的信 |
 | `agent_inbox` | expectedConversationId、expectedRunId；可选 cursor、limit | 分页查询自己的收件箱 |
 | `agent_outbox` | expectedConversationId、expectedRunId；可选 cursor、limit | 分页查询自己的发件箱与投递状态 |
 
 先读取 context，再将返回的两个 ID 显式传给其他工具。对话或运行已经切换时，旧请求应失败；不能为执行旧任务而自动读取新身份重发。目标使用永久 conversation ID，不用终端标题或文件夹名猜测。
+
+`agent_peers` 是发信链的第一环。在它之前，`agent_context` 只给得出自己的 ID，于是没有人能**先**开口——只能等别人来信再回，而第一封信必须由人在网页上点。它返回的每一项带
+`recipientId`、`title`、`cwd`、`cli`，以及 `deliverable` 与 `reason`。
+
+它用的是投递泵（`terminal-daemon/src/peer-delivery.ts` 的 `pump()`）判断收件人的**同一套条件**，所以：不在列表里的对话此刻根本不可寻址；在列表里但 `deliverable` 为 false 的，`reason` 就是泵会写进投递记录的那个字符串（`busy`、`command_pending`、`unsupported_cli` 等），界面上看到的是同一句话。列表里不含调用者自己。
+
+列表是选目标的依据，不是身份来源：仍然按 `recipientId` 发，不要用 `title` 或 `cwd` 去猜。
 
 同一次发信重试保持相同 requestId 与内容。取消 MCP 请求、超时或连接断开只能停止等待，不能保证已保存的信被撤销；通过信箱核对结果。工具不会自动重发。
 

@@ -10,7 +10,7 @@ const payload=reply=>reply.result.structuredContent??JSON.parse(reply.result.con
 test('real JSONL stdio initialize/list/call exposes only scoped peer tools and clean protocol stdout',async t=>{
   const f=await fakeOwner(t,({request,reply})=>reply(request.method==='peerContext'?{conversationId:'conversation-A',runId:'run-A'}:{message:{id:'m'},delivery:{state:'queued'}}));
   const io=await stdio(t,f.env),hello=await io.initialize();assert.ok(hello.result.capabilities.tools);
-  const listed=await io.request(2,'tools/list');assert.deepEqual(listed.result.tools.map(x=>x.name).sort(),['agent_context','agent_inbox','agent_outbox','agent_send']);
+  const listed=await io.request(2,'tools/list');assert.deepEqual(listed.result.tools.map(x=>x.name).sort(),['agent_context','agent_inbox','agent_outbox','agent_peers','agent_send']);
   for(const definition of listed.result.tools){assert.equal(definition.inputSchema.additionalProperties,false);const schema=JSON.stringify(definition.inputSchema);assert.ok(!/ROOST_AGENT_|token|socketPath|terminalId/.test(schema));}
   const context=await io.request(3,'tools/call',tool('agent_context'));assert.deepEqual(payload(context),{conversationId:'conversation-A',runId:'run-A'});
   const sent=await io.request(4,'tools/call',tool('agent_send',input));assert.equal(payload(sent).delivery.state,'queued');assert.equal(payload(sent).message.id,'m');
@@ -38,7 +38,7 @@ test('official v1 SDK client discovers and calls real stdio server with structur
   const f=await fakeOwner(t,({socket,request,reply})=>{if(request.method==='peerInbox')socket.write(JSON.stringify({type:'reply',requestId:request.requestId,error:'sender_changed',code:'sender_changed',status:409})+'\n');else reply({conversationId:'conversation-A',runId:'run-A'});});
   const transport=new StdioClientTransport({command:process.execPath,args:[entry],env:{...f.env},stderr:'pipe'}),client=new Client({name:'isolated-sdk-qa',version:'1'});let stderr='';transport.stderr.on('data',x=>stderr+=x);
   t.after(async()=>{await client.close();assert.ok(!stderr.includes(f.env.ROOST_AGENT_TOKEN));});await client.connect(transport);
-  assert.equal((await client.listTools()).tools.length,4);
+  assert.equal((await client.listTools()).tools.length,5);
   const context=await client.callTool(tool('agent_context'));assert.equal(context.structuredContent.conversationId,'conversation-A');
   const stale=await client.callTool(tool('agent_inbox',pins));assert.equal(stale.isError,true);assert.equal(stale.structuredContent.error.code,'sender_changed');assert.equal(stale.structuredContent.error.status,409);
 });
@@ -94,4 +94,33 @@ test('more than 16 simultaneous unanswered protocol requests close instead of gr
   const f=await fakeOwner(t,()=>{}),io=await stdio(t,f.env);await io.initialize();
   io.write(Array.from({length:17},(_,i)=>JSON.stringify({jsonrpc:'2.0',id:'burst-'+i,method:'tools/call',params:tool('agent_context')})).join('\n')+'\n');
   await until(()=>io.child.exitCode!==null||io.child.signalCode!==null,2000);await until(()=>f.sockets.size===0);assert.ok(f.requests.length<=8);
+});
+
+/*
+  `agent_peers` 是发送链的第一环：没有它，模型拿不到任何 recipientId，只能等人先来信。
+  所以这里盯两件事——它是只读的（不能被当成有副作用的动作而被模型回避或重试），
+  以及它和 inbox/outbox 一样必须带钉子，缺钉子时**不转发给守护进程**。
+*/
+test('agent_peers is read-only, pinned, and never reaches the owner without both identity IDs',async t=>{
+  const listed=[{recipientId:'conversation-B',title:'roost',cwd:'/w',cli:'claude',deliverable:true,reason:null},
+    {recipientId:'conversation-C',title:'notes',cwd:'/n',cli:'codex',deliverable:false,reason:'busy'}];
+  const f=await fakeOwner(t,({request,reply})=>reply(request.method==='peerPeers'?{conversationId:'conversation-A',runId:'run-A',peers:listed}:{}));
+  const io=await stdio(t,f.env);await io.initialize();
+
+  const tools=(await io.request(2,'tools/list')).result.tools;
+  const definition=tools.find(x=>x.name==='agent_peers');
+  assert.equal(definition.annotations.readOnlyHint,true,'列出同伴不该被标成有副作用');
+  assert.deepEqual(Object.keys(definition.inputSchema.properties).sort(),['expectedConversationId','expectedRunId']);
+
+  const ok=await io.request(3,'tools/call',tool('agent_peers',pins));
+  assert.deepEqual(payload(ok).peers,listed);
+  assert.equal(f.requests.at(-1).method,'peerPeers');
+  assert.equal(f.requests.length,1);
+
+  // 缺钉子、多带字段：都必须在本地就被拒，不产生一次 IPC。
+  for(const args of [{},{expectedConversationId:'conversation-A'},{...pins,cursor:'c'},{...pins,limit:5}]) {
+    const bad=await io.request(10+f.requests.length,'tools/call',tool('agent_peers',args));
+    assert.equal(bad.result.isError,true);assert.equal(payload(bad).error.code,'invalid_request');
+  }
+  assert.equal(f.requests.length,1,'被拒的调用一次都不该到守护进程');
 });

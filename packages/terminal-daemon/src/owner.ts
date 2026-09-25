@@ -136,7 +136,8 @@ export async function startTerminalOwner(options: {socketPath:string; dataDir:st
           case 'peerSend':
           case 'peerContext':
           case 'peerInbox':
-          case 'peerOutbox': {
+          case 'peerOutbox':
+          case 'peerPeers': {
             const input = args[0];
             const live = typeof input?.terminalId === 'string' ? runtime.getSession(input.terminalId) : undefined;
             if (!live || input.instanceId !== live.instanceId || typeof input.token !== 'string' || !/^[a-f0-9]{64}$/.test(input.token)
@@ -147,6 +148,8 @@ export async function startTerminalOwner(options: {socketPath:string; dataDir:st
               ? peers.contextFromTerminal(live.id,live.instanceId)
               : method === 'peerSend'
               ? peers.sendFromTerminal(live.id,live.instanceId,input.input)
+              : method === 'peerPeers'
+              ? peers.peersFromTerminal(live.id,live.instanceId,input.options)
               : peers.listFromTerminal(method==='peerInbox'?'inbox':'outbox',live.id,live.instanceId,input.options);
             break;
           }

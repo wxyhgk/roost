@@ -22,9 +22,11 @@ function identifier(value, name) {
 }
 /** @param {string} verb @param {unknown} input @returns {Record<string, unknown>} */
 function validate(verb, input) {
-  if (!["context", "send", "inbox", "outbox"].includes(verb) || !input || typeof input !== "object" || Array.isArray(input))
+  if (!["context", "send", "inbox", "outbox", "peers"].includes(verb) || !input || typeof input !== "object" || Array.isArray(input))
     throw new AgentMessagingError("invalid_request", "Invalid messaging request");
-  const fields = verb === "context" ? [] : ["expectedConversationId", "expectedRunId", ...(verb === "send" ? ["recipientId", "requestId", "text", "inReplyTo"] : ["cursor", "limit"])];
+  const fields = verb === "context" ? []
+    : ["expectedConversationId", "expectedRunId",
+       ...(verb === "send" ? ["recipientId", "requestId", "text", "inReplyTo"] : verb === "peers" ? [] : ["cursor", "limit"])];
   const value = /** @type {Record<string,unknown>} */ (input);
   if (Object.keys(value).some(key => !fields.includes(key))) throw new AgentMessagingError("invalid_request", "Unknown messaging request field");
   if (verb === "context") return {};
@@ -35,7 +37,7 @@ function validate(verb, input) {
       throw new AgentMessagingError("invalid_request", "Invalid message text");
     if (Buffer.byteLength(value.text) > MAX_PEER_TEXT_BYTES) throw new AgentMessagingError("too_large", "Message exceeds 15 KiB");
     if (value.inReplyTo !== undefined && value.inReplyTo !== null) identifier(value.inReplyTo, "inReplyTo");
-  } else {
+  } else if (verb !== "peers") {
     if (value.cursor !== undefined && (typeof value.cursor !== "string" || !value.cursor || value.cursor.length > 2048))
       throw new AgentMessagingError("invalid_request", "Invalid mailbox cursor");
     if (value.limit !== undefined && (!Number.isInteger(value.limit) || /** @type {number} */(value.limit) < 1 || /** @type {number} */(value.limit) > 100))
@@ -71,7 +73,7 @@ export async function requestPeer(verb, input, { env = process.env, signal, time
   if (!socketPath || !terminalId || !instanceId || !token) throw new AgentMessagingError("environment_unavailable", "Agent messaging environment is unavailable in this terminal");
   if (signal?.aborted) throw new AgentMessagingError("aborted", "Request aborted; this does not cancel a previously submitted message");
   const requestId = randomUUID();
-  const method = { context: "peerContext", send: "peerSend", inbox: "peerInbox", outbox: "peerOutbox" }[verb];
+  const method = { context: "peerContext", send: "peerSend", inbox: "peerInbox", outbox: "peerOutbox", peers: "peerPeers" }[verb];
   const envelope = { terminalId, instanceId, token, ...(verb === "context" ? {} : verb === "send" ? { input: value } : { options: value }) };
   const request = JSON.stringify({ requestId, method, args: [envelope] }) + "\n";
   if (Buffer.byteLength(request) > MAX_REQUEST_BYTES) throw new AgentMessagingError("too_large", "Agent messaging request exceeds 32 KiB");

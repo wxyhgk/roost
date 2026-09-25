@@ -49,3 +49,19 @@ test('peer client redacts credential strings in nested keys, values and daemon e
   const value=await requestPeer('context',{}, {env:f.env});assert.ok(!JSON.stringify(value).includes(token));assert.deepEqual(value,{'[redacted]':[{deep:'[redacted]'}],safe:'ordinary'});
   await assert.rejects(requestPeer('inbox',pins,{env:f.env}),error=>{assert.ok(!String(error).includes(token)&&!error.code.includes(token));assert.equal(error.status,403);return true;});
 });
+
+/*
+  `peers` 只收两个钉子，别的一律不收——「参数不接受未声明字段」是这个包写在 README 里的
+  安全属性，它是把凭据挡在参数外面的那道门。MCP 那一侧的 zod 会先拦一次，命令行的 flag
+  白名单也拦，所以这条门在 client 自己这一层反而没人走到；单独钉住它。
+*/
+test('peer client scopes the peers verb to the two pins and routes it to peerPeers',async t=>{
+  const f=await fakeOwner(t,({request,reply})=>reply({conversationId:'conversation-A',runId:'run-A',peers:[],method:request.method}));
+  const ok=await requestPeer('peers',pins,{env:f.env});
+  assert.equal(ok.method,'peerPeers');
+  assert.deepEqual(f.requests.at(-1).args[0].options,pins,'钉子原样送到，且只有钉子');
+  const before=f.requests.length;
+  for(const invalid of [{},{expectedConversationId:'conversation-A'},{...pins,cursor:'c'},{...pins,limit:5},{...pins,recipientId:'conversation-B'},{...pins,token:'x'}])
+    await assert.rejects(requestPeer('peers',invalid,{env:f.env}),error=>error.code==='invalid_request');
+  assert.equal(f.requests.length,before,'被拒的调用一次都不该产生 IPC');
+});

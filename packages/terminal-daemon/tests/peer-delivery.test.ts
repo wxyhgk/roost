@@ -320,3 +320,77 @@ test('认领失败时冒出没见过的错误码，不许原样显示给用户',
   assert.equal(delivery.state,'queued');
   assert.notEqual(delivery.reason,'a_code_nobody_wrote_a_sentence_for','名单外的码不许落到投递上');
 });
+
+/*
+  `peersFromTerminal` 补的是 agent 之间的「谁在那儿」。它唯一可能造成的伤害是**说谎**——
+  列一个送不到的收件人，让模型发出去、状态停在 queued、而它以为发到了。所以下面这两条
+  测试盯的都是「列表与 pump 的判断一致」，以及「列出来的 recipientId 真的能用」。
+*/
+test('peer list mirrors the pump gate exactly and never lists the caller itself',t=>{
+  const f=fixture(t),owner=f.owner();owner.start();
+  const context=owner.contextFromTerminal('A','instance-A');
+  const pins={expectedConversationId:context.conversationId,expectedRunId:context.runId};
+
+  // 默认 control 是 supported:false + reason 'sending_disabled'：列出来，但不可达，且说得出原因。
+  const initial=owner.peersFromTerminal('A','instance-A',pins);
+  assert.deepEqual(initial.peers.map(p=>p.recipientId).sort(),[f.ids.B!,f.ids.C!].sort(),'自己不在列表里');
+  assert.ok(initial.peers.every(p=>!p.deliverable&&p.reason==='sending_disabled'));
+
+  // supported:false 而 reason 为 null 时得有个说法，不能是 null——否则 deliverable=false 无从解释。
+  f.controls.set('B',{supported:false,reason:null});
+  assert.equal(owner.peersFromTerminal('A','instance-A',pins).peers.find(p=>p.recipientId===f.ids.B)!.reason,'unsupported_cli');
+
+  // 闸全开才算可达。
+  f.controls.set('B',{supported:true,reason:null});
+  const openB=owner.peersFromTerminal('A','instance-A',pins).peers.find(p=>p.recipientId===f.ids.B)!;
+  assert.equal(openB.deliverable,true);assert.equal(openB.reason,null);
+  assert.equal(openB.cli,'omp');assert.equal(openB.cwd,f.dir);
+
+  // pump 遇到 reason 会写进 setQueuedReason，列表必须说同一句话。
+  f.controls.set('C',{supported:true,reason:'busy'});
+  const busyC=owner.peersFromTerminal('A','instance-A',pins).peers.find(p=>p.recipientId===f.ids.C)!;
+  assert.equal(busyC.deliverable,false);assert.equal(busyC.reason,'busy');
+
+  // 队列非空也进不去——这一条 pump 里是单独判断的，容易在别处漏掉。
+  f.store.aiCommands.enqueue('B',{requestId:'occupying',type:'submit',terminalInstanceId:'instance-B',generation:f.bridge.get('B')!.generation,nativeSessionId:'native-B',text:'someone else first'});
+  const pendingB=owner.peersFromTerminal('A','instance-A',pins).peers.find(p=>p.recipientId===f.ids.B)!;
+  assert.equal(pendingB.deliverable,false);assert.equal(pendingB.reason,'command_pending');
+});
+
+test('a recipientId taken from the peer list is accepted by send, and the list is pinned like the mailboxes',t=>{
+  const f=fixture(t),owner=f.owner();owner.start();
+  const context=owner.contextFromTerminal('A','instance-A');
+  const pins={expectedConversationId:context.conversationId,expectedRunId:context.runId};
+  f.controls.set('B',{supported:true,reason:null});
+
+  // 列表→发送 这条链必须真的走得通，否则这个工具只是装饰。
+  const target=owner.peersFromTerminal('A','instance-A',pins).peers.find(p=>p.deliverable)!;
+  assert.equal(target.recipientId,f.ids.B);
+  const sent=owner.sendFromTerminal('A','instance-A',{recipientId:target.recipientId,requestId:'from-list',text:'found you',...pins});
+  assert.equal(f.store.peerMessages.inbox(f.ids.B!).items[0]!.message.id,sent.message.id);
+
+  // 钉子和 inbox/outbox 一视同仁：这份列表是 send 的输入，身份不对就该在这儿响。
+  assert.throws(()=>owner.peersFromTerminal('A','instance-A',{} as any),(e:any)=>e.code==='sender_pin_required');
+  assert.throws(()=>owner.peersFromTerminal('A','instance-A',{expectedConversationId:context.conversationId,expectedRunId:'not-this-run'}),(e:any)=>e.code==='sender_changed');
+  assert.throws(()=>owner.peersFromTerminal('A','instance-C',pins),(e:any)=>e.code==='terminal_changed');
+});
+
+test('peers owned by another daemon are left out: the pump can only ever answer them with recipient_offline',t=>{
+  const f=fixture(t),owner=f.owner();owner.start();
+  const context=owner.contextFromTerminal('A','instance-A');
+  const pins={expectedConversationId:context.conversationId,expectedRunId:context.runId};
+  f.controls.set('B',{supported:true,reason:null});f.controls.set('C',{supported:true,reason:null});
+  assert.equal(owner.peersFromTerminal('A','instance-A',pins).peers.length,2);
+
+  /*
+    把 C 交给另一个守护进程，并且让本进程看不见它的 PTY——`syncRuns` 只认领本进程里活着的
+    终端，所以它不会被抢回来。这正是 `pump()` 里 `run.daemonInstanceId !== ownerId` 那一支
+    对应的现实：消息发过去只会停在 `recipient_offline`。列表必须跟 pump 用同一个口径。
+  */
+  f.store.conversationRuns.endTerminal('C','terminal_exited');
+  f.store.conversationRuns.observe(f.bridge.get('C')!,'another-daemon');
+  f.live.delete('C');
+  const scoped=owner.peersFromTerminal('A','instance-A',pins);
+  assert.deepEqual(scoped.peers.map(p=>p.recipientId),[f.ids.B!],'别的守护进程拥有的对话不该出现在列表里');
+  assert.ok(f.store.conversationRuns.listActive().some(r=>r.conversationId===f.ids.C),'前提：那条 run 确实还活着，只是不归本进程');
+});

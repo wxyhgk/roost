@@ -97,3 +97,33 @@ test('daemon-provided agent-message script uses context pins and same request ID
   assert.equal(f.store.peerMessages.inbox(bc.conversationId).items.length,1);
   assert.equal(f.store.aiCommands.list('B').items.length,0);
 });
+
+/*
+  `peers` 走的是 owner socket 上新加的那条分发分支。上面几条测试证明的是逻辑对，这一条
+  证明的是**线真的接上了**——真 owner、真 socket、真 PTY、真跑 `scripts/agent-message.mjs`。
+  这个缝最容易「做完了、不工作、不报错」：动词白名单、方法映射、envelope 字段、分发 case
+  四处有一处对不上，表现都是一句 `unknown terminal operation`，而单元测试一个都碰不到。
+*/
+test('peers travels the real owner socket and its recipientId is what send accepts',{timeout:20000},async t=>{
+  const f=await fixture(t),a=f.credentials.A!,b=f.credentials.B!;
+  const ac=JSON.parse((await f.helper(a,['context'])).stdout) as Pin;
+  const bc=JSON.parse((await f.helper(b,['context'])).stdout) as Pin;
+
+  const listed=await f.helper(a,['peers','--from',ac.conversationId,'--run',ac.runId]);
+  assert.equal(listed.code,0,listed.stderr);
+  const {peers}=JSON.parse(listed.stdout) as {peers:{recipientId:string;deliverable:boolean;reason:string|null;cli:string}[]};
+  assert.ok(!peers.some(p=>p.recipientId===ac.conversationId),'列表里不该有自己');
+  const target=peers.find(p=>p.recipientId===bc.conversationId);
+  assert.ok(target,'B 应当出现在 A 的同伴列表里');
+  assert.equal(typeof target.reason==='string'||target.reason===null,true);
+  assert.equal(target.deliverable,target.reason===null,'deliverable 必须和 reason 是同一件事的两种说法');
+
+  // 列表 → 发送：这条链在真 IPC 上也必须通，否则这个动词只是能返回而已。
+  const sent=await f.helper(a,['send','--from',ac.conversationId,'--run',ac.runId,'--to',target.recipientId,'--request-id','from-peers','--text','found you over IPC']);
+  assert.equal(sent.code,0,sent.stderr);
+  assert.equal(f.store.peerMessages.inbox(bc.conversationId).items.length,1);
+
+  // 钉子在真 IPC 上同样要响，而不是被网络层吞掉。
+  const stale=await f.helper(a,['peers','--from',ac.conversationId,'--run','not-this-run']);
+  assert.equal(stale.code,1);assert.equal(stale.stderr.trim(),'sender_changed');
+});
