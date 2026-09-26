@@ -15,6 +15,7 @@ import { PanelHeader } from "../../../shared/ui/PanelHeader";
 import { useWorkspace } from "../../../shared/store";
 import { sessionTitle } from "../../../shared/sessionTitle";
 import { scopedSessions } from "../sessionOrder";
+import { SessionChanges } from "./SessionChanges";
 import { TerminalAppearanceSettings } from "./TerminalAppearanceSettings";
 import { t } from "@roost/i18n";
 
@@ -99,6 +100,8 @@ export function TerminalPane({
         actions={
           mode === "terminal" && session && (
             <>
+              {/* 排在最前：它是「这个终端现在怎么样」的读数，不是控件；控件排在它右边。 */}
+              <SessionChanges sessionId={session.id} />
               <TerminalAppearanceSettings />
               <IconButton title={t.terminal.pane.search} onClick={search.toggle}>
                 <IconSearch />

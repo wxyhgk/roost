@@ -1,5 +1,12 @@
 // terminal 域的界面文案。形状约定见 workspace.ts 顶部。
 export const terminal = {
+  changes: {
+    badge: (n: number) => `${n} 处改动`,
+    title: '未提交的改动',
+    hint: '这个终端的工作目录里未提交的改动（相对 HEAD，不只是这个会话改的）',
+    refresh: '刷新',
+    truncated: (n: number) => `共 ${n} 处，只列出前面一部分`,
+  },
   diagnostics: {
     frontendErrors: (n: number) => `前端最近的错误（${n} 条）`,
     toggle: "诊断 / 恢复",

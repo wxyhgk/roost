@@ -3,6 +3,7 @@ import { createServerMonitorHandler } from './server-monitor';
 import { createAppProxy, parseAppPath, refererPort } from './app-proxy';
 import { createAiCommandHandler, commandControl } from './ai-commands';
 import { createDirectInputHandler } from './direct-input';
+import { createGitStatusHandler } from './git-status';
 import { createClaudeObserver } from "./claude-observer";
 import { AiIdentityError, readIdentityCandidate } from "./ai-identity";
 import { createFileUploadHandler } from "./file-upload";
@@ -82,6 +83,7 @@ export function createBackendServer({ store, runtime, workspaceRoot, access, aut
   const handleFileUpload = createFileUploadHandler();
   const handleAiCommands = createAiCommandHandler(store,runtime);
   const handleDirectInput = createDirectInputHandler(store,runtime);
+  const handleGitStatus = createGitStatusHandler(store);
   const conversationMessaging = createConversationMessagingHandler(store);
   const sessionStatus = createSessionStatus(store, runtime);
   const fileWatcher = process.platform === 'darwin' ? createIsolatedFileWatcher() : createFileWatcher();
@@ -197,6 +199,7 @@ export function createBackendServer({ store, runtime, workspaceRoot, access, aut
     }
     if (await handleAiCommands(req,res,url)) return;
     if (await handleDirectInput(req,res,url)) return;
+    if (await handleGitStatus(req,res,url)) return;
     if (await conversationMessaging.handle(req, res, url)) return;
     if (await handleConversations(req, res, url, store.conversations)) return;
     if (await handleConversationRuntime(req, res, url, store, runtime)) return;

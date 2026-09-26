@@ -1,5 +1,12 @@
 // terminal 域的界面文案。形状约定见 workspace.ts 顶部。
 export const terminal = {
+  changes: {
+    badge: (n: number) => `${n} changed`,
+    title: 'Uncommitted changes',
+    hint: "Uncommitted changes in this terminal's working directory (against HEAD, not only this session)",
+    refresh: 'Refresh',
+    truncated: (n: number) => `${n} in total; only the first are listed`,
+  },
   diagnostics: {
     frontendErrors: (n: number) => `Recent frontend errors (${n})`,
     toggle: "Diagnostics / Recovery",
