@@ -222,3 +222,49 @@ test('PATH 为空或缺失时也能生成，只剩 node', macOnly, async () => {
   assert.equal(servicePath('/opt/node/bin', undefined), '/opt/node/bin');
   assert.equal(servicePath('/opt/node/bin', ''), '/opt/node/bin');
 });
+
+/*
+  SPA 兜底不许把 HTML 当脚本发出去。
+
+  `try_files {path} /index.html` 的本意是「前端路由交给 index.html」，但它不挑路径：一个没
+  命中的 /x.js 也会拿到一份 HTML，浏览器于是报 'text/html' is not a valid JavaScript MIME
+  type ——一句**不说明是哪个地址**的话。2026-09-25 在 iPad 上实际撞到过。
+
+  这里盯的不只是「有没有这条规则」，更是**它会不会静默失效**：Caddy 按自己的固定顺序执行
+  指令，rewrite（try_files 就是它）排在 handle 前面。第一版没包 route，路径先被改写成
+  /index.html，等匹配器再看时文件已经存在，规则一次都没命中，而配置照样 validate 通过。
+*/
+test('看起来像文件却不存在的请求回 404，而不是一份 index.html', () => {
+  const text = caddyfile({ port: 8080, backendPort: 8787, assetsDir: '/a', webDir: '/w' });
+  const spa = text.slice(text.lastIndexOf('handle {'));
+
+  assert.match(spa, /route \{/, 'SPA 兜底那段必须包在 route 里');
+  const route = spa.slice(spa.indexOf('route {'));
+  const missing = route.indexOf('respond @missingFile');
+  const tryFiles = route.indexOf('try_files');
+  assert.ok(missing >= 0, '缺少 @missingFile 的 404 分支');
+  assert.ok(tryFiles >= 0, 'route 里应当还有 try_files');
+  assert.ok(missing < tryFiles,
+    'respond 必须写在 try_files 前面：route 按书写顺序执行，写反了路径会先被改写成 /index.html，规则永远不命中');
+
+  assert.match(route, /@viteInternal path \/@\*/, '/@vite/client 这类没有扩展名，要单独挡一条');
+  assert.ok(route.indexOf('respond @viteInternal') < tryFiles, '同理要排在 try_files 前面');
+});
+
+test('那条正则不能带反斜杠转义或花括号量词——两者都会在生成时被吃掉', () => {
+  const text = caddyfile({ port: 8080, backendPort: 8787, assetsDir: '/a', webDir: '/w' });
+  const line = text.split('\n').find(l => l.includes('path_regexp') && l.includes('js|'));
+  assert.ok(line, '找不到那条扩展名正则');
+  assert.match(line, /\[\.\]/, '用 [.] 而不是反斜杠转义：这段要穿过 JS 模板字符串，反斜杠会被吃掉一层');
+  assert.doesNotMatch(line, /\{\d/, '别用 {n,m} 量词：花括号在 Caddy 里是占位符语法');
+  for (const ext of ['js', 'mjs', 'css', 'wasm', 'json', 'map'])
+    assert.ok(line.includes(ext), `扩展名清单里少了 ${ext}`);
+});
+
+test('前端路由和真实文件都不受影响', () => {
+  const text = caddyfile({ port: 8080, backendPort: 8787, assetsDir: '/a', webDir: '/w' });
+  const route = text.slice(text.lastIndexOf('route {'));
+  // 判据靠的是「不存在」这一条，所以存在的文件一律照常走 file_server。
+  assert.match(route, /not file/, '少了 not file，连存在的 .js 也会被 404 掉');
+  assert.match(route, /try_files \{path\} \/index\.html/, '前端路由仍然要落到 index.html');
+});

@@ -131,8 +131,36 @@ http://:${port} {
         # 404、页面纯白。两天内栽了三次。现在外壳也由 deploy/publish.mjs 发布，构建碰不到线上。
         root * ${JSON.stringify(webDir)}
         header Cache-Control no-store
-        try_files {path} /index.html
-        file_server
+        # **看起来像文件、而文件又不存在的请求，老实回 404。**
+        #
+        # try_files … /index.html 的本意是「前端路由交给 index.html」，但它不挑路径：
+        # 一个没命中的 /x.js 也会拿到一份 HTML，于是浏览器报的是
+        # 'text/html' is not a valid JavaScript MIME type ——一句**不说明是哪个地址**的话。
+        # 2026-09-25 在 iPad 上实际撞到过，查了半天才定位到是兜底规则。
+        #
+        # 前端路由不带文件扩展名，所以判据很干净。换来的是浏览器直接在控制台打出那个
+        # 404 的 URL，下一次同类问题自己就说清楚了。
+        #
+        # **必须包在 route 里。** Caddy 按自己的固定顺序执行指令，rewrite（try_files 就是
+        # 它）排在 handle 前面——不包起来的话路径先被改写成 /index.html，等匹配器再看时
+        # 文件已经存在，这条规则永远不命中。第一版就是这么静默失效的。
+        #
+        # 正则里用 [.] 而不是反斜杠转义：这段要穿过 JS 模板字符串才落到文件里，反斜杠会被
+        # 吃掉一层。也不用 {n,m} 量词——花括号在 Caddy 里是占位符语法。
+        route {
+            @missingFile {
+                path_regexp [.](js|mjs|cjs|css|map|json|wasm|woff2|woff|ttf|otf|svg|png|jpg|jpeg|gif|webp|ico|txt|xml|webmanifest)$
+                not file
+            }
+            respond @missingFile "Not found" 404
+            # Vite 的内部路径（/@vite/client、/@fs/…、/@id/…）没有扩展名，上面那条盖不住。
+            # roost 自己没有任何以 /@ 开头的路由，所以一律 404 比回一份 HTML 诚实——
+            # 它们只会出现在浮动窗口代理的应用里，而那条路该由上面的 Referer 规则接走。
+            @viteInternal path /@*
+            respond @viteInternal "Not found" 404
+            try_files {path} /index.html
+            file_server
+        }
     }
 }
 `;
