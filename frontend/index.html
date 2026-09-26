@@ -41,9 +41,51 @@
       这段注释留着，是为了别有人"顺手"把外链加回来——它看起来只是少下 37 KB，实际是把
       白屏和桌面版的字体一起放回去。理由细节见 src/index.css 顶部。
     -->
+    <!--
+      **首屏骨架：外壳在 JS 之前就画出来。**
+
+      `#root` 原来是空的，于是从 HTML 到达到 React 挂载之间，屏幕上一个像素都没有。
+      本机看不出来（首次绘制 266ms），跨公网就很明显：实测 1.5Mbps / 250ms 的链路上
+      **纯白 2.5 秒**——首屏那一波是 281 KB（主 chunk 186 + ErrorBoundary 52 +
+      bridge 31 + css 12），得等它下完、解析完、跑完。
+
+      这里画的是 `Shell` 的三块外壳：顶栏 40px、左侧图标栏 40px、底部状态栏 30px，
+      以及中间的底色。**不画面板分隔**——三栏宽度是从 localStorage 恢复的，猜错了
+      反而在接管的那一刻跳一下。
+
+      两个约束，改的时候都别丢：
+
+      - **颜色只能写字面值。** tokens.css 在那 281 KB 里，此刻还没到；写 var() 会拿到
+        空值，得到一块白。字面值和 tokens.css 会漂移，所以 `tests/boot-skeleton.test.ts`
+        盯着两边一致。
+      - **样式必须内联。** 挂成外部样式表就又变成一次往返，等于没做。
+
+      它不需要任何人来删：`createRoot().render()` 首次提交会清空容器，骨架和真外壳
+      在同一帧里换过去。
+    -->
+    <style>
+      body { margin: 0; }
+      .boot { display: flex; height: 100dvh; flex-direction: column; background: #111113; }
+      .boot-bar { height: 40px; flex-shrink: 0; background: #1c1c1e; }
+      .boot-mid { display: flex; min-height: 0; flex: 1; }
+      .boot-rail { width: 40px; flex-shrink: 0; background: #1c1c1e; }
+      .boot-status { height: 30px; flex-shrink: 0; background: #1c1c1e; }
+      /* 触屏上状态栏是 40px（见 app/statusBar.css 的 pointer: coarse 那条）。 */
+      @media (pointer: coarse) { .boot-status { height: 40px; } }
+      html[data-theme="light"] .boot { background: #f4f4f6; }
+      html[data-theme="light"] .boot-bar,
+      html[data-theme="light"] .boot-rail,
+      html[data-theme="light"] .boot-status { background: #e7e7eb; }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="boot" aria-hidden="true">
+        <div class="boot-bar"></div>
+        <div class="boot-mid"><div class="boot-rail"></div></div>
+        <div class="boot-status"></div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
