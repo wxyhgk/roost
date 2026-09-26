@@ -5,6 +5,7 @@ import { useWorkspace } from '../shared/store';
 import { getTerminalStatus, getTerminalLatency, subscribeTerminalStatus } from '../features/terminal/public';
 import { useServerMonitor } from '../features/server-monitor/store';
 import { bytes, compactBytes as compact } from '../shared/bytes';
+import { iconProps } from '../shared/icons';
 import type { MonitorTab } from '../features/server-monitor/navigation';
 import { SubscriptionSwitcher } from '../features/subscriptions/SubscriptionSwitcher';
 import { stableRuntime } from '../shared/runtime';
@@ -33,7 +34,7 @@ export function StatusBar({ onOpenMonitor, monitorVisible = false }: { onOpenMon
   const cpu = summary?.cpu.data, memory = summary?.memory.data, nic = summary?.network.data?.find(n => n.default);
   const stale = (metric?: Metric<unknown>) => failed || !metric || metric.status !== 'ok' || metric.sampledAt == null || Date.now() - metric.sampledAt > 30000;
   const sampled = (metric?: Metric<unknown>) => !metric?.sampledAt ? m.unavailable : `${stale(metric) ? m.stale : t.statusBar.updated} · ${new Date(metric.sampledAt).toLocaleTimeString()}`;
-  const warning = (metric?: Metric<unknown>) => stale(metric) ? <ExclamationTriangleIcon className="size-3 shrink-0" aria-label={sampled(metric)} /> : null;
+  const warning = (metric?: Metric<unknown>) => stale(metric) ? <ExclamationTriangleIcon {...iconProps(12)} className="shrink-0" aria-label={sampled(metric)} /> : null;
   /*
     主机名**不回落到 `location.hostname`**。
 
@@ -60,21 +61,21 @@ export function StatusBar({ onOpenMonitor, monitorVisible = false }: { onOpenMon
         <span className="truncate">{status && status !== 'open' ? label : host}</span>
       </button>
       <span className="status-latency" title={latency == null ? t.statusBar.measuring : t.statusBar.latencyHint} aria-label={`${t.statusBar.latency} · ${latency == null ? t.statusBar.measuring : latency + ' ms'}`}>
-        <SignalIcon className="size-3" aria-hidden="true" />{latency == null ? '—' : `${latency} ms`}
+        <SignalIcon {...iconProps(12)} />{latency == null ? '—' : `${latency} ms`}
       </span>
     </div>
     {!monitorVisible && <div className="status-resources">
       <button type="button" className="status-button status-cpu" aria-label={m.cpu} title={`${m.cpuUsage} · ${cpu?.usage == null ? '—' : cpu.usage.toFixed(1) + '%'}\n${cpu?.busyCores == null ? '' : m.busyCores(cpu.busyCores.toFixed(1), cpu.logicalCores) + '\n'}${sampled(summary?.cpu)}`} onClick={() => onOpenMonitor('cpu')}>
-        <CpuChipIcon className="size-3.5 shrink-0" aria-hidden="true" /><span>{cpu?.usage == null ? '—' : `${Math.round(cpu.usage)}%`}</span>{warning(summary?.cpu)}
+        <CpuChipIcon {...iconProps(14)} className="shrink-0" /><span>{cpu?.usage == null ? '—' : `${Math.round(cpu.usage)}%`}</span>{warning(summary?.cpu)}
       </button>
       <button type="button" className="status-button status-memory" aria-label={m.memory} title={`${m.memory} · ${bytes(memory?.used)} / ${bytes(memory?.total)}\n${m.available} · ${bytes(memory?.available)}\n${sampled(summary?.memory)}`} onClick={() => onOpenMonitor('memory')}>
-        <CircleStackIcon className="size-3.5 shrink-0" aria-hidden="true" /><span>{compact(memory?.used)}<span className="status-memory-total"> / {compact(memory?.total)}</span></span>{warning(summary?.memory)}
+        <CircleStackIcon {...iconProps(14)} className="shrink-0" /><span>{compact(memory?.used)}<span className="status-memory-total"> / {compact(memory?.total)}</span></span>{warning(summary?.memory)}
       </button>
       <button type="button" className="status-button status-rate" aria-label={m.download} title={`${m.download} · ${nic?.name ?? '—'} · ${bytes(nic?.rxPerSecond)}/s\n${m.networkHint}\n${sampled(summary?.network)}`} onClick={() => onOpenMonitor('network')}>
-        <ArrowDownIcon className="size-3.5 shrink-0" aria-hidden="true" /><span>{nic?.rxPerSecond == null ? '—' : `${compact(nic.rxPerSecond)}/s`}</span>{warning(summary?.network)}
+        <ArrowDownIcon {...iconProps(14)} className="shrink-0" /><span>{nic?.rxPerSecond == null ? '—' : `${compact(nic.rxPerSecond)}/s`}</span>{warning(summary?.network)}
       </button>
       <button type="button" className="status-button status-rate" aria-label={m.upload} title={`${m.upload} · ${nic?.name ?? '—'} · ${bytes(nic?.txPerSecond)}/s\n${m.networkHint}\n${sampled(summary?.network)}`} onClick={() => onOpenMonitor('network')}>
-        <ArrowUpIcon className="size-3.5 shrink-0" aria-hidden="true" /><span>{nic?.txPerSecond == null ? '—' : `${compact(nic.txPerSecond)}/s`}</span>{warning(summary?.network)}
+        <ArrowUpIcon {...iconProps(14)} className="shrink-0" /><span>{nic?.txPerSecond == null ? '—' : `${compact(nic.txPerSecond)}/s`}</span>{warning(summary?.network)}
       </button>
     </div>}
     <div className="status-subscription"><SubscriptionSwitcher /></div>

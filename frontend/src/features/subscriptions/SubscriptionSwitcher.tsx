@@ -4,6 +4,7 @@ import { primaryWindow, remainingPercent, type QuotaWindow, type SubscriptionSna
 import { t } from '@roost/i18n';
 import { connectClaudeSubscription, saveGoKey } from '../../shared/api/subscriptions';
 import { RING, arcPath } from './arc';
+import { iconProps } from '../../shared/icons';
 import { providers, readProvider, saveProvider } from './providers';
 import { acceptSubscription, refreshSubscription, useSubscription } from './store';
 import './subscriptions.css';
@@ -56,7 +57,7 @@ export function SubscriptionSwitcher() {
           {arc && <path d={arc} fill="none" strokeWidth={RING.stroke} strokeLinecap="butt" className="subscription-ring-arc" />}
         </svg>
         <img src={provider.logo} alt="" className="subscription-logo" />
-      </span><span className="tabular-nums">{number(remaining)}</span><ChevronUpDownIcon className="size-3" aria-hidden="true" />
+      </span><span className="tabular-nums">{number(remaining)}</span><ChevronUpDownIcon {...iconProps(12)} />
     </button>
     <div id={id} ref={popover} popover="auto" role="dialog" aria-label={m.subscriptions}
       onToggle={event => { setOpen(event.newState === 'open'); if (event.newState !== 'open') { setKey(''); setKeyOpen(false); } }}

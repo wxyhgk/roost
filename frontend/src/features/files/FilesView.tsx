@@ -1,4 +1,5 @@
 import { ArrowUpIcon, ListBulletIcon, QueueListIcon } from "@heroicons/react/24/outline";
+import { iconProps } from "../../shared/icons";
 import { basename } from "../../shared/path";
 import { bytes } from "../../shared/bytes";
 import type { Session } from "../../shared/types";
@@ -220,7 +221,7 @@ function SessionFiles({ session }: { session: Session }) {
         {([{ mode: "tree", label: t.files.browser.tree, Icon: QueueListIcon }, { mode: "list", label: t.files.browser.list, Icon: ListBulletIcon }] as const).map(({ mode, label, Icon }) => (
           <button key={mode} type="button" aria-pressed={location.mode === mode} onClick={() => changeMode(mode)}
             className={`flex items-center gap-1 rounded px-2 py-1 text-body focus-visible:outline-2 ${location.mode === mode ? "bg-bg-active text-text" : "text-text-dim hover:bg-bg-hover"}`}>
-            <Icon className="size-3.5" />{label}
+            <Icon {...iconProps(14)} />{label}
           </button>
         ))}
       </div>
