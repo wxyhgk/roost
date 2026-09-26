@@ -8,7 +8,10 @@ const owners = ['packages/subscriptions', 'packages/server-monitor', 'packages/a
 const allowed = {
   'packages/subscriptions': [],
   'packages/server-monitor': ['systeminformation', 'tsx/esm/api'],
-  'packages/agent-messaging': ['@modelcontextprotocol/sdk/server/index.js', '@modelcontextprotocol/sdk/server/stdio.js', '@modelcontextprotocol/sdk/types.js', 'zod'],
+  // 曾经放行过 @modelcontextprotocol/sdk 和 zod——那是 MCP stdio 服务器的依赖，整层已经删掉
+  // （见 packages/agent-messaging/README.md 里的交代）。放行条目留着不会报错，但它正好在
+  // 有人重新引入这两个依赖时不响警报，所以跟着一起删。
+  'packages/agent-messaging': [],
   'packages/ai-transcript': [],
   'packages/core-server': ['@roost/terminal-daemon/client', '@roost/terminal-protocol', 'ws'],
   backend: ['@roost/auth-challenge', '@roost/subscriptions', '@roost/server-monitor', '@roost/ai-transcript', '@roost/ai-session-bridge', '@roost/attachment-store', '@roost/terminal-daemon', '@roost/cli-adapters', '@roost/terminal-protocol', '@roost/terminal-runtime', '@roost/workspace-store', 'ws'],
