@@ -1,3 +1,4 @@
+import { readErrorLog } from "../../../shared/errorLog";
 import { useEffect, useRef, useState } from 'react';
 import type { TerminalState } from '../useTerminal';
 import { t } from "@roost/i18n";
@@ -12,6 +13,11 @@ type Props = Pick<TerminalState,'diagnostics'|'repaint'|'reloadView'|'viewIssue'
   再放一行摘要：无论从哪头截，只要还剩一行，剩的就是能定位问题的那一行。
 */
 function diagnosticsText(data: ReturnType<Props['diagnostics']>) {
+  /*
+    前端自己出的错跟着一起复制出去。它不属于某一个终端，但这份 JSON 已经是「出问题时
+    贴给别人看」的那份东西，放别处等于没人会找到。
+  */
+  const errors = readErrorLog();
   const c = data.current, r = c?.renderer, p = c?.replay;
   const line = c ? [
     `phase=${c.phase}/${c.status}`,
@@ -20,7 +26,11 @@ function diagnosticsText(data: ReturnType<Props['diagnostics']>) {
     p ? `replay=${p.applied}/${p.received} queued=${p.queued} behind=${p.behind}` : '',
     `active=${c.active} visible=${c.visible} input=${c.inputReady} accel=${c.accel ?? '-'}`,
   ].filter(Boolean).join(' · ') : 'no session';
-  return `${JSON.stringify(data, null, 2)}\n\n# ${line}\n`;
+  const failures = errors.length
+    ? '\n\n# 前端最近的错误（新→旧）\n' + errors.map(e =>
+        `# ${new Date(e.at).toLocaleTimeString()} [${e.kind}] ${e.text}${e.url ? ' ' + e.url : ''}${e.source ? ' @' + e.source : ''}`).join('\n')
+    : '';
+  return `${JSON.stringify(data, null, 2)}\n\n# ${line}${failures}\n`;
 }
 
 export function TerminalDiagnostics(props: Props) {
@@ -33,6 +43,7 @@ export function TerminalDiagnostics(props: Props) {
   const current=data.current,render=current?.renderer,replay=current?.replay;
   // 按钮、提示框、面板是同一组浮层，统一用 text-caption：这一整块都是状态读数，
   // 原来按钮 11 而它撑开的面板 12，差的那 1px 不表示任何东西。
+    const errors = readErrorLog();
   return <div className="absolute right-3 top-3 z-[12] max-w-[calc(100%-24px)]" onMouseUp={e=>e.stopPropagation()}>
     <button className="float-right rounded-md border border-border bg-bg-panel/90 px-2 py-1 text-caption text-text-dim hover:text-text" onClick={()=>setOpen(v=>!v)} aria-expanded={open}>{t.terminal.diagnostics.toggle}</button>
     {props.viewIssue&&!open&&<div role="status" className="clear-both mt-9 max-w-80 rounded-md border border-border bg-bg-raised p-3 text-caption text-warning">{props.viewIssue}</div>}
@@ -48,6 +59,19 @@ export function TerminalDiagnostics(props: Props) {
         <dt className="text-text-dim">{t.terminal.diagnostics.queueLabel}</dt><dd>{replay?.queued??0} / {render?.frozen?t.terminal.diagnostics.yes:t.terminal.diagnostics.no}</dd>
       </dl>
       {props.viewIssue&&<p role="status" className="mt-3 text-warning">{props.viewIssue}</p>}
+      {/*
+        **前端自己出的错要看得见，不能只躺在剪贴板里。** 这份东西最需要它的场合是 iPad——
+        而在 iPad 上「复制粘贴发给我」本来就别扭。能直接读出那个地址，才省掉一轮来回。
+        列在这儿而不是别处：出问题的人本来就会打开这个面板。
+      */}
+      {errors.length>0&&<div className="mt-4">
+        <p className="text-text-dim">{t.terminal.diagnostics.frontendErrors(errors.length)}</p>
+        <ul className="mt-1 space-y-1 font-mono text-caption">
+          {errors.slice(0,8).map((e,i)=><li key={i} className="break-all text-warning" data-frontend-error>
+            <span className="text-text-dim">{new Date(e.at).toLocaleTimeString()} [{e.kind}]</span> {e.text}{e.url?' '+e.url:''}{e.source?' @'+e.source:''}
+          </li>)}
+        </ul>
+      </div>}
       <div className="mt-4 flex flex-wrap gap-2">
         <button disabled={!render} className="rounded border border-border px-2 py-1 hover:bg-bg-hover disabled:opacity-40" onClick={()=>{props.repaint();setData(read.current());setFeedback(t.terminal.diagnostics.repainted)}}>{t.terminal.diagnostics.restore}</button>
         <button className="rounded border border-border px-2 py-1 hover:bg-bg-hover" onClick={()=>{props.reloadView();setFeedback(t.terminal.diagnostics.reconnecting)}}>{t.terminal.diagnostics.reload}</button>

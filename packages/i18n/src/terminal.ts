@@ -1,6 +1,7 @@
 // terminal 域的界面文案。形状约定见 workspace.ts 顶部。
 export const terminal = {
   diagnostics: {
+    frontendErrors: (n: number) => `前端最近的错误（${n} 条）`,
     toggle: "诊断 / 恢复",
     title: "终端诊断",
     closeLabel: "关闭终端诊断",
