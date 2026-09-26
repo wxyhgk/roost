@@ -1,4 +1,6 @@
 import { useTheme, type TerminalAppearance } from "../../../shared/theme";
+import { AdjustmentsHorizontalIcon } from "@heroicons/react/24/outline";
+import { iconProps } from "../../../shared/icons";
 import { t } from "@roost/i18n";
 
 export function TerminalAppearanceSettings() {
@@ -11,7 +13,18 @@ export function TerminalAppearanceSettings() {
        里面的东西了——一个性能开关藏在叫配色的菜单里，等于没有：实测使用者按我给的指路去找，
        没找到。名字要覆盖里面所有的项，而不是覆盖最早的那一项。 */
     <details className="relative text-body font-normal">
-      <summary className="cursor-pointer list-none rounded px-2 py-1 text-text-dim hover:bg-bg-hover hover:text-text" aria-label={t.settings.terminal.triggerLabel}>{t.settings.terminal.trigger}</summary>
+      {/*
+        **触发器用图标，不用文字。** 它和旁边的放大镜、下载是同一类东西（这条栏上的控件），
+        原来夹一个「显示」在两个图标中间，读起来像三种不同的东西。名字仍然在 title 和
+        aria-label 上，说得比按钮上那两个字还全。
+      */}
+      <summary
+        className="grid h-6 w-6 cursor-pointer list-none place-items-center rounded text-text-dim hover:bg-bg-hover hover:text-text"
+        aria-label={t.settings.terminal.triggerLabel}
+        title={t.settings.terminal.trigger}
+      >
+        <AdjustmentsHorizontalIcon {...iconProps(14)} />
+      </summary>
       {/* 小浮层，和终端上方那几条状态条同一个尺寸量级，所以跟着用 glass；理由见 index.css。 */}
       <div className="glass absolute right-0 top-8 z-30 w-64 space-y-3 rounded-lg p-3 text-text shadow-pop">
         <label className="flex items-center justify-between gap-2">

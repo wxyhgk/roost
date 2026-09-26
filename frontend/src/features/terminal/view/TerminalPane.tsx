@@ -15,6 +15,7 @@ import { PanelHeader } from "../../../shared/ui/PanelHeader";
 import { useWorkspace } from "../../../shared/store";
 import { sessionTitle } from "../../../shared/sessionTitle";
 import { scopedSessions } from "../sessionOrder";
+import { shortPath } from "../../../shared/shortPath";
 import { SessionChanges } from "./SessionChanges";
 import { TerminalAppearanceSettings } from "./TerminalAppearanceSettings";
 import { t } from "@roost/i18n";
@@ -96,7 +97,15 @@ export function TerminalPane({
         title={mode === "canvas" ? t.terminal.canvas.title : (
           <LensSwitch lens={lens} onChange={setLens} available={!!session} fallbackTitle={t.terminal.pane.title} />
         )}
-        sub={mode === "canvas" ? t.terminal.canvas.count(scoped.length) : session?.cwd}
+        /*
+          **路径显示两段就够，全路径挂在 title 上。**
+
+          原来这里放的是完整绝对路径，实测占 218px，而有辨识度的只有最后一段——
+          `/Users/…/Code/structura` 里真正回答「这是哪」的是 `structura`。侧栏的会话行早就
+          是这么做的（`shortPath` + `title` 挂全文），这里跟上，两处说法才一致。
+        */
+        sub={mode === "canvas" ? t.terminal.canvas.count(scoped.length) : session && shortPath(session.cwd)}
+        subTitle={mode === "canvas" ? undefined : session?.cwd}
         actions={
           mode === "terminal" && session && (
             <>
