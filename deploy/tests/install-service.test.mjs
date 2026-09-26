@@ -117,7 +117,17 @@ test('--gui-send 默认关，而且只给 terminal 服务', macOnly, async () =>
 */
 test('默认不开这个能力——真跑一遍脚本，不绕过参数解析', () => {
   const script = fileURLToPath(new URL('../../scripts/install-service.mjs', import.meta.url));
-  const run = (...args) => spawnSync(process.execPath, [script, '--dry-run', ...args], { encoding: 'utf8' });
+  /*
+    **显式指出 caddy 在哪，别让这条用例去环境里找。**
+
+    脚本启动时会先定位 caddy（`findCaddy`），找不到就退出 1——而 CI 的 ubuntu runner 上
+    没装。于是这条用例在 GitHub Actions 上**每一次都红**，报的是「找不到 caddy」，
+    和它要测的「那个开关默认关着」毫无关系。
+
+    路径不必真的存在：`--caddy` 给了值就直接采用，`--dry-run` 只把将要写的内容打印出来，
+    这个字符串最后只是 plist 里的一行文本。这条用例测的是参数解析，不是环境。
+  */
+  const run = (...args) => spawnSync(process.execPath, [script, '--dry-run', '--caddy', '/usr/bin/caddy', ...args], { encoding: 'utf8' });
 
   const off = run();
   assert.equal(off.status, 0, off.stderr);

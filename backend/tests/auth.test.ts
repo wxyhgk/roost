@@ -25,6 +25,27 @@ async function fixture(options?: false | AuthOptions) {
     if (!auth.require(req, res)) return;
     res.writeHead(200, { "content-type": "application/json" }); res.end('{"ok":true}');
   });
+  /*
+    **关掉空闲连接的超时，否则 Linux 上这些用例会随机以 ECONNRESET 失败。**
+
+    测试和被测的服务端在**同一个进程**里，而 `solveChallenge` 是同步的 20 万次 PBKDF2：
+    它一跑就把事件循环钉死好几秒。Node 默认 5 秒关掉空闲的 keep-alive 连接，于是那个
+    定时器常常正好落在两次请求之间的这段空档里。
+
+    连接关在客户端刚发出下一个请求的那一刻时，**Linux 回的是 RST**（macOS 回 FIN，
+    undici 能干净地重开一条，所以本机怎么加负载都复现不出来——实测把 CPU 占满、这条
+    用例跑到 21.8 秒，照样通过）。客户端看到的就是 `fetch failed / ECONNRESET`，
+    而且落在哪个请求上全看定时器落点，看起来像随机失败。
+
+    平时轮不到服务端关：实测 undici 自己在 3.0 秒（服务端广告 timeout=5 时）或 4.0 秒
+    （没广告时）就把空闲连接收了，客户端自己关的连接没有竞态。**只有事件循环被堵过
+    5 秒、两个定时器一起积压时，服务端那个才可能抢先**——正好是这条用例在慢机器上的样子。
+
+    这是 HTTP/1.1 keep-alive 的固有竞态，不是认证逻辑的毛病——真实浏览器对幂等请求
+    会自己重试。用例要的是确定性，所以这里干脆不给服务端这个定时器（设成 0 就不再广告
+    Keep-Alive，也不再按空闲关连接）；`close()` 里的 `closeAllConnections()` 负责收尾。
+  */
+  server.keepAliveTimeout = 0;
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const login = (password = PASSWORD, cookie?: string) => fetch(`${base}/api/auth/login`, { method: "POST", headers: { "content-type": "application/json", ...(cookie ? { cookie } : {}) }, body: JSON.stringify({ password }) });
