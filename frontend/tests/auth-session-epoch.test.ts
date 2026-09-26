@@ -1,9 +1,16 @@
-import { test } from 'node:test';
+import { beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { login, changePassword } from '../src/shared/api/auth.ts';
-import { request, onSessionExpired } from '../src/shared/api/request.ts';
+import { request, onSessionExpired, acceptAuthenticatedSession } from '../src/shared/api/request.ts';
 import { ApiError } from '../src/shared/api/errors.ts';
 import { MIN_ITERATIONS } from '@roost/auth-challenge';
+/*
+  `session-fetch` 的「已登出就不再发请求」是**模块级**状态（和 authGeneration 一样，一个页面
+  一个会话）。用例之间会继承它：前一个用例触发过 401，下一个用例的请求就会被短路，连 mock
+  都碰不到。所以每个用例显式声明自己从「已登录」开始。
+*/
+beforeEach(() => acceptAuthenticatedSession());
+
 const authenticated = () => Response.json({ configured: true, authenticated: true, secureCookie: false });
 /*
   登录先要领一次挑战（见 shared/api/auth.ts）。这里给的迭代次数是允许的最小值——

@@ -23,8 +23,20 @@ export type AuthSession = {
  * 唯一的**公开**接口。探测后端是否活着必须用它——
  * `/api/health` 现在也要登录，把它的 401 当成「后端离线」会得出完全错误的结论。
  */
-export function fetchAuthSession(signal?: AbortSignal) {
-  return request<AuthSession>("/api/auth/session", { signal, cache: "no-store" });
+export async function fetchAuthSession(signal?: AbortSignal) {
+  const session = await request<AuthSession>("/api/auth/session", { signal, cache: "no-store" });
+  /*
+    **查出来「本来就登录着」也要开闸。**
+
+    `fetchWithSession` 在收到普通请求的 401 之后会停发后续请求（见那里的注释）。开闸原本只
+    挂在 login/changePassword 上，于是有一条走不出去的路：闸因为一发 401 关上（后端重启、
+    网络抖一下都可能），而 cookie 其实一直有效——这一次 `/api/auth/session` 回 200 说你登录
+    着，界面也确实解锁了，**但闸还关着**，所有轮询继续被短路，页面从此不更新。
+
+    服务器刚说了这个 cookie 能用，这和登录成功是同一件事，判据也该是同一个。
+  */
+  if (session.authenticated) acceptAuthenticatedSession();
+  return session;
 }
 
 /*

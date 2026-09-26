@@ -22,8 +22,37 @@
  */
 const expiredListeners = new Set<() => void>();
 let authGeneration = 0;
+
+/*
+  **登出之后就别再发了。**
+
+  会话过期时登录关卡只在应用上盖一层模糊 + 登录浮层，**不卸载**（那是对的：未提交的内容
+  必须留在原地）。代价是里面所有轮询器照常跑，每一次都吃 401，直到有人登录或关掉标签页。
+
+  实测一个开着不动的过期标签页：**64 次/分钟，全是 401**（20× /api/conversations、
+  8× /api/workspace、3× /api/server/summary、1× /api/subscriptions/claude），一天约 9 万次。
+  在 iPad 上那是电量和射频，在服务端是白烧的 CPU，而且**它不报错**，所以一直没人发现。
+
+  闸下在这一层而不是各个轮询器上：调用点总有漏的，而这里本来就是 401 被看见的唯一地方。
+  短路时返回一个**合成的 401 Response**，形状和服务器给的一样——调用方已有的 401 处理不用
+  改一行，也不必引入新的错误类型。
+
+  `/api/auth/` 必须放行,否则登录检查和登录本身一起被锁死——那就成了永久死锁。
+*/
+let loggedOut = false;
+const AUTH_PREFIX = "/api/auth/";
+/** 用固定 base 解析相对路径：这个模块不许有 import，也不该依赖 `location`（测试里没有）。 */
+function isAuthRequest(input: RequestInfo | URL): boolean {
+  const raw = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+  try { return new URL(raw, "http://roost.invalid").pathname.startsWith(AUTH_PREFIX); }
+  catch { return false; }
+}
+
 /** A newly accepted cookie supersedes requests sent with the previous cookie. */
-export function acceptAuthenticatedSession() { authGeneration++; }
+export function acceptAuthenticatedSession() { authGeneration++; loggedOut = false; }
+
+/** 此刻是否处于「已登出、只放行认证请求」的状态。给诊断和测试读。 */
+export function isLoggedOut() { return loggedOut; }
 export function onSessionExpired(fn: () => void) {
   expiredListeners.add(fn);
   return () => { expiredListeners.delete(fn); };
@@ -63,12 +92,25 @@ export const fetchWithSession: typeof fetch = async (input, init) => {
     必须同时生效。用 any 合并而不是让谁覆盖谁：前者被覆盖的话，切走的请求会继续占着
     连接、在慢链路上排在新请求前面；后者被覆盖的话，挂死的请求又变回无限等待。
   */
+  if (loggedOut && !isAuthRequest(input)) {
+    return new Response('{"error":{"code":"authentication_required","message":"login required"}}',
+      { status: 401, headers: { "content-type": "application/json" } });
+  }
   const deadline = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
   const signal = init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline;
   const res = await fetch(input, { ...init, signal });
   // 旧 Cookie 的迟到 401 仍向调用者报错，但不能撤销一次已成功的登录。
   // 注意**不要**在这里自动跳登录或重试：未提交的输入必须留在原地，由界面决定怎么提示。
-  if (res.status === 401 && generation === authGeneration) for (const fn of [...expiredListeners]) fn();
+  if (res.status === 401 && generation === authGeneration) {
+    /*
+      **认证端点自己的 401 不关闸。** `/api/auth/password` 回 401 的意思是「当前密码输错了」，
+      而那个人仍然登录着；把闸关上会掐掉他全部的轮询。`/api/auth/login` 同理——登录失败时
+      本来就还没登录，关不关闸都一样，但判据要说的是同一件事：**只有普通请求上的 401 才
+      意味着「我的会话没了」**。广播照常，由登录关卡决定怎么提示。
+    */
+    if (!isAuthRequest(input)) loggedOut = true;
+    for (const fn of [...expiredListeners]) fn();
+  }
   return res;
 };
 
