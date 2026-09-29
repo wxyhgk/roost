@@ -34,8 +34,8 @@ import { handleConversationRuntime } from "./conversation-runtime";
 import { createConversationMessagingHandler } from "./peer-messages";
 import { AUTH_COOKIE_NAME, createAuthentication, type AuthOptions } from "./auth";
 import { createFileAccess, FileAccessError } from "./file-access";
-import { HttpInputError, readJson, sendError } from "./http";
-import { listDir, walkFiles, readPreview, statRawFile, writeFileAtomic, createPath, renamePath, deletePath, FileWriteError, MAX_FILE_REQUEST_BYTES, MAX_RAW_BYTES } from "./fs";
+import { HttpInputError, parseByteRange, readJson, sendError } from "./http";
+import { listDir, walkFiles, readPreview, statRawFile, writeFileAtomic, createPath, renamePath, deletePath, streamedMedia, FileWriteError, MAX_FILE_REQUEST_BYTES, MAX_RAW_BYTES } from "./fs";
 import { createFileWatcher } from "./watcher";
 import { createIsolatedFileWatcher } from './watcher-process';
 import { createAiSessionBridge, AiSessionBridgeError, type AiSessionBridge } from "@roost/ai-session-bridge";
@@ -835,19 +835,40 @@ export function createBackendServer({ store, runtime, workspaceRoot, access, aut
       const asAttachment = searchParams.get("download") === "1";
       try {
         const raw = await statRawFile(root, rel);
-        if (!asAttachment && raw.size > MAX_RAW_BYTES) {
+        // 媒体和下载一样是流式的，不受预览那道闸约束——理由见 fs.ts 的 streamedMedia。
+        if (!asAttachment && !streamedMedia(raw.contentType) && raw.size > MAX_RAW_BYTES) {
           text(res, 413, "file too large");
           return;
         }
-        res.writeHead(200, {
+        /*
+          **Range 是播放器的刚需**，不是优化：`<video>` 先要头部拿时长，拖进度条时按
+          字节区间要中间那一段；iPad 上的 Safari 拿不到 206 甚至不开始播。
+          `accept-ranges` 必须在**所有**响应上都有，播放器是靠它决定敢不敢发区间请求的。
+        */
+        const range = parseByteRange(req.headers.range, raw.size);
+        const common = {
           "content-type": raw.contentType,
-          "content-length": raw.size,
           "content-disposition": `${asAttachment ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(raw.name)}`,
           "cache-control": "no-store",
           "x-content-type-options": "nosniff",
-        });
+          "accept-ranges": "bytes",
+        };
+        if (range === "unsatisfiable") {
+          res.writeHead(416, { ...common, "content-range": `bytes */${raw.size}`, "content-length": 0 });
+          res.end();
+          return;
+        }
+        if (range) {
+          res.writeHead(206, {
+            ...common,
+            "content-length": range.end - range.start + 1,
+            "content-range": `bytes ${range.start}-${range.end}/${raw.size}`,
+          });
+        } else {
+          res.writeHead(200, { ...common, "content-length": raw.size });
+        }
         try {
-          await pipeline(createReadStream(raw.file), res);
+          await pipeline(createReadStream(raw.file, range ? { start: range.start, end: range.end } : {}), res);
         } catch {
           // Client aborted mid-stream; headers already sent, nothing to report.
         }

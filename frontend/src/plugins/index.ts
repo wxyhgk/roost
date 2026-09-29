@@ -8,7 +8,7 @@
  * 顺序就是匹配顺序：更专的排前面（.md 既是文本也是 markdown，markdown 要先匹配到）。
  */
 import type { EditorPlugin } from "../shared/editor";
-import { imagePlugin, pdfPlugin } from "./media";
+import { audioPlugin, imagePlugin, pdfPlugin, videoPlugin } from "./media";
 import { markdownPlugin } from "./markdown";
 import { xyzPlugin } from "./xyz";
 import { codePlugins } from "./code";
@@ -16,6 +16,8 @@ import { codePlugins } from "./code";
 export const EDITOR_PLUGINS: readonly EditorPlugin[] = [
   imagePlugin,
   pdfPlugin,
+  audioPlugin,
+  videoPlugin,
   xyzPlugin,
   markdownPlugin,
   ...codePlugins,

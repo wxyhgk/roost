@@ -174,7 +174,39 @@ const RAW_CONTENT_TYPES: Record<string, string> = {
   ico: "image/x-icon",
   avif: "image/avif",
   pdf: "application/pdf",
+  /*
+    音视频。**类型写对了才播得起来**：缺了这张表里的条目就回落到
+    `application/octet-stream`，浏览器当成「不认识的下载」，`<video>` 直接不理。
+
+    `.webm` 归 video：容器两用，但按惯例音频用 `.weba`。`.mov` 用 quicktime——
+    Safari 认，Chrome 视编码而定；我们只负责把类型说对，能不能解码是浏览器的事。
+  */
+  mp3: "audio/mpeg",
+  m4a: "audio/mp4",
+  aac: "audio/aac",
+  wav: "audio/wav",
+  ogg: "audio/ogg",
+  oga: "audio/ogg",
+  opus: "audio/ogg",
+  flac: "audio/flac",
+  weba: "audio/webm",
+  mp4: "video/mp4",
+  m4v: "video/mp4",
+  webm: "video/webm",
+  mov: "video/quicktime",
+  ogv: "video/ogg",
 };
+
+/*
+  这一类东西**边下边播**，不整份留在内存里。
+
+  `MAX_RAW_BYTES` 那道 64 MiB 的闸是给预览设的，理由是 `<img>`/`<iframe>` 会把整份
+  留在标签页内存里。`<audio>`/`<video>` 不是这样：它按区间取，内存是常数——和
+  `download=1` 走的是同一套道理（见 server.ts 里那段）。拿预览的理由去拦播放，
+  结果就是「超过 64 MiB 的视频一律打不开」，而那正是视频的常态。
+*/
+export const streamedMedia = (contentType: string) =>
+  contentType.startsWith("audio/") || contentType.startsWith("video/");
 
 export function contentTypeFor(name: string) {
   const ext = name.split(".").pop()?.toLowerCase() ?? "";

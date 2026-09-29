@@ -424,6 +424,8 @@ export const misc = {
   media: {
     imageFailed: "Failed to load image",
     binary: "Binary file",
+    mediaFailed: "This browser cannot play it (most likely an unsupported codec)",
+    mediaDownload: "Download the file",
   },
 
   xyz: {

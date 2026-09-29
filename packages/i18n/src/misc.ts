@@ -521,6 +521,9 @@ export const misc = {
   media: {
     imageFailed: "图片加载失败",
     binary: "二进制文件",
+    // 播放失败绝大多数是编码不被这个浏览器支持，而不是文件坏了——话要说成能指路的。
+    mediaFailed: "这个浏览器放不了它（多半是编码不支持）",
+    mediaDownload: "下载原文件",
   },
 
   xyz: {
