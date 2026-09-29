@@ -76,3 +76,39 @@ test("两个播放器插件都挂进了注册表——只写不挂等于没做",
   assert.equal(first("a.mp4"), videoPlugin);
   assert.equal(first("a.mp3"), audioPlugin);
 });
+
+/*
+  视频要跟着面板走。**这条挡的是「把百分比那套写回去」。**
+
+  实测(640×360 的视频，两块面板)：
+
+      写法                     900×487 面板      420×167 面板
+      max-h-full max-w-full    640×360 不填满    381×214 溢出、上下被切
+      h-full w-full            861×484 填满      381×214 仍然溢出
+      外层 absolute inset-3     876×463 填满      396×143 正好
+
+  前两种在矮面板里都不行：那个网格项的高度不确定，`height:100%` / `max-height:100%`
+  解析不出来。所以播放器必须待在一个**尺寸确定**的绝对定位盒子里。
+
+  扫源码而不是量渲染：要挡的正是「有人照着图片那条抄回去」，而那一改不会有任何用例变红。
+*/
+test("视频待在确定尺寸的盒子里，不靠百分比自适应", () => {
+  const source = readFileSync(new URL("../src/plugins/media/index.tsx", import.meta.url).pathname, "utf8")
+    .replace(/\{\/\*[\s\S]*?\*\/\}/g, " ")   // JSX 注释里会原样写着这些类名
+    .replace(/\/\*[\s\S]*?\*\//g, " ");
+  // 别用 [^>]*：属性里的箭头函数 `() => …` 自带一个 `>`，会把匹配截断。
+  const video = /<video[\s\S]*?\/>/.exec(source);
+  assert.ok(video, "找不到 <video>");
+  assert.match(video[0], /className="h-full w-full object-contain"/,
+    "播放器要填满它的盒子并保持比例");
+  assert.doesNotMatch(video[0], /max-h-full|max-w-full/,
+    "max-h-full/max-w-full 在矮面板里解析不出来——实测 420×167 的面板里视频会涨到 381×214 被切掉");
+  /*
+    参照物也要钉住。插件根节点本身就是 `absolute inset-0`，所以这个盒子的父级一旦没了
+    `relative`，`inset-3` 就改以根节点为准——视频会盖到上面那条标题栏上。
+    （变异测试里正是这一条先漏了网。）
+  */
+  assert.match(source, /<div className="relative min-h-0 flex-1">\s*<div className="absolute inset-3">\s*<video/,
+    "<video> 要待在 relative 容器内的绝对盒子里：少了 relative 会以插件根节点定位、盖住标题栏；" +
+    "少了绝对盒子则上面那个 h-full 落空");
+});

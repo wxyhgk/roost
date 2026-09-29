@@ -81,14 +81,28 @@ function MediaPreview({ file, kind }: { file: PreviewFile; kind: "audio" | "vide
   const src = rawFileUrl(file.root, file.path);
   useEffect(() => { setError(false); }, [src]);
 
-  const Tag = kind === "audio" ? "audio" : "video";
   return (
     <div className="absolute inset-0 flex flex-col">
       <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border px-3">
         <span className="truncate text-caption font-medium text-text">{file.name}</span>
       </div>
-      <div className="grid min-h-0 flex-1 place-items-center overflow-auto p-3">
-        {error ? (
+      {/*
+        **视频要跟着面板走，所以它的盒子得是绝对定位的。**
+
+        第一版用的是 `max-h-full max-w-full`（照抄图片那条）。实测（640×360 的视频）：
+        面板 900×487 时它还是 640×360，四周空一大圈；面板 420×167 时反而涨到 381×214、
+        居中溢出，上下被切掉——**两头都不对**。
+        换成 `h-full w-full` 也只修好了大的那头，矮面板里仍是 381×214：那个网格项的
+        高度是不确定的，`height:100%` / `max-height:100%` 根本解析不出来。
+
+        外层用 `absolute inset-3` 给出一个确定尺寸的盒子，里面的播放器再 100% 填它，
+        两头就都对了（实测 876×463 / 396×143，后者正好留出黑边）。object-contain 保比例。
+
+        音频不走这条：它的控件高度是固定的那么一条，拉满竖向只会得到一条被拉长的怪东西，
+        所以仍然居中，只在横向跟着面板收放。
+      */}
+      {error ? (
+        <div className="grid min-h-0 flex-1 place-items-center p-3">
           <div className="flex flex-col items-center gap-2 px-2.5 py-2 text-center">
             <span className="text-body leading-[1.45] text-danger">{t.misc.media.mediaFailed}</span>
             <a href={downloadFileUrl(file.root, file.path)} download={file.name}
@@ -96,15 +110,18 @@ function MediaPreview({ file, kind }: { file: PreviewFile; kind: "audio" | "vide
               {t.misc.media.mediaDownload}
             </a>
           </div>
-        ) : (
-          <Tag
-            src={src}
-            controls
-            className={kind === "audio" ? "w-full max-w-md" : "max-h-full max-w-full"}
-            onError={() => setError(true)}
-          />
-        )}
-      </div>
+        </div>
+      ) : kind === "audio" ? (
+        <div className="grid min-h-0 flex-1 place-items-center p-3">
+          <audio src={src} controls className="w-full max-w-md" onError={() => setError(true)} />
+        </div>
+      ) : (
+        <div className="relative min-h-0 flex-1">
+          <div className="absolute inset-3">
+            <video src={src} controls className="h-full w-full object-contain" onError={() => setError(true)} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
