@@ -151,3 +151,21 @@ test("选区工具条给得出「复制到系统剪贴板」", () => {
   assert.match(view, /onCopy=\{\(\) => void copySelection\(saveBar\.text\)\}/,
     "按钮要接到 copySelection 上，否则 bar 上多一个不做事的按钮");
 });
+
+/*
+  OSC 52 的 Pc 参数不能拿来当筛子。
+
+  第一版写成 `if (selection === "c")`，于是 **tmux 默认发的 `p`(primary)** 和
+  `\e]52;;<base64>\a` 这种空 Pc 全被静默丢掉——而丢掉的表现和这一整个 bug 一模一样：
+  「复制了、粘不出来、不报错」。上游也把这个判断删了（xtermjs/xterm.js#5868、#5874），
+  理由是浏览器只有一个剪贴板，分 primary/secondary 没有意义。
+*/
+test("OSC 52 不按 selection 过滤——tmux 发的是 p，空 Pc 也合法", () => {
+  const engine = code("../src/features/terminal/engine/xtermEngine.ts");
+  const addon = /new ClipboardAddon\([\s\S]*?\)\);/.exec(engine);
+  assert.ok(addon, "找不到 ClipboardAddon");
+  assert.doesNotMatch(addon[0], /selection\s*===\s*["']c["']/,
+    ' `selection === "c"` 会丢掉 tmux 的 p 和空 Pc，两种都是合法的 OSC 52');
+  assert.match(addon[0], /writeText:\s*\(_selection,\s*data\)\s*=>\s*\{\s*void writeClipboardOrHold\(data\)/,
+    "所有 selection 一律写进浏览器剪贴板");
+});

@@ -176,7 +176,18 @@ export function mountXterm(host: HTMLElement, theme: TermTheme, onFileLink?: (li
   */
   term.loadAddon(new ClipboardAddon(undefined, {
     readText: () => "",
-    writeText: (selection, data) => { if (selection === "c") void writeClipboardOrHold(data); },
+    /*
+      **不按 selection 过滤。** 第一版写的是 `if (selection === "c")`，把 OSC 52 里
+      那个 Pc 参数当成筛子——错的，而且错得很安静：
+
+      - tmux 开了 `set-clipboard on` 之后默认发的是 **`p`(primary)**，整条被丢掉；
+      - `\e]52;;<base64>\a` 这种**空 Pc** 也是合法写法，同样被丢掉。
+
+      addon 把 Pc 原样传进来（它只做 `params.split(";")[0]`），所以筛子直接命中这两种。
+      上游后来也把这个判断删掉了（xtermjs/xterm.js#5868、#5874），理由很简单：
+      **浏览器只有一个剪贴板**，没有 primary/secondary 之分，分它没有意义。
+    */
+    writeText: (_selection, data) => { void writeClipboardOrHold(data); },
   }));
   attachCopyPaste(term);
   term.loadAddon(new WebLinksAddon(openWebLink));
