@@ -62,7 +62,7 @@ export function TermView({ sessionId, active, onCwd, onCli }: Props) {
     dropImage,
     diagnostics, repaint, reloadView, viewIssue, viewers, inputNotice, dismissInputNotice, connectionError, interruptArmed,
   } = useTerminal(sessionId, active, onCwd, onCli);
-  const { saveBar, flash, readSelection, saveNote, saveToFile, pasteToCli } = useTerminalSelection(sessionId);
+  const { saveBar, flash, readSelection, saveNote, saveToFile, pasteToCli, copySelection } = useTerminalSelection(sessionId);
 
   const [dismissedHistoryFor, setDismissedHistoryFor] = useState<string | null>(() => seenHistoryNotices().includes(sessionId) ? sessionId : null);
   const [historyNoticeStartedAt, setHistoryNoticeStartedAt] = useState<number | null>(null);
@@ -305,6 +305,7 @@ export function TermView({ sessionId, active, onCwd, onCli }: Props) {
         <SelectionSaveBar
           x={saveBar.x}
           y={saveBar.y}
+          onCopy={() => void copySelection(saveBar.text)}
           onToCli={() => pasteToCli(saveBar.text)}
           onNote={() => saveNote(saveBar.text, false)}
           onSnippet={() => saveNote(saveBar.text, true)}

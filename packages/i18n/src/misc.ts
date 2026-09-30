@@ -425,6 +425,10 @@ export const misc = {
       hintFocus: "再点一下选择终点，可继续点调整",
       hintRange: "已选中，可继续点调整终点",
     },
+    /* 鼠标选区那条工具条上的复制。触屏那份文案单列，因为它的失败提示要指路到长按。 */
+    copy: "复制",
+    copied: "已复制",
+    copyFailed: "浏览器不让写剪贴板",
     defaultTitle: "终端片段",
     saveIncomplete: "保存未完成，草稿已保留，可重试或在资料面板处理",
     sessionMissing: "会话不存在，无法保存",

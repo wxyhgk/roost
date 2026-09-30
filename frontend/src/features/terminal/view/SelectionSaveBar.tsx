@@ -5,6 +5,7 @@ import { useWorkspace } from "../../../shared/store";
 import { getTerminalHandle, sendToSession, subscribeSelection } from "../public";
 import { planTextInsertion } from "@roost/cli-adapters";
 import { t } from "@roost/i18n";
+import { writeClipboard } from "../../../shared/clipboard";
 
 export type SaveBarState = { text: string; x: number; y: number };
 
@@ -64,6 +65,24 @@ export function useTerminalSelection(sessionId: string) {
     为什么这么保守见 cli-adapters 里 `multilinePaste` 的注释：猜错一次就是把人写了一半的
     话连发好几条。
   */
+  /*
+    复制到系统剪贴板。
+
+    **必须由这一下点击驱动，不能自动做。** 我们跑在 http 非安全源上，
+    `navigator.clipboard` 不存在，只剩 `document.execCommand('copy')` 那条退路，而它
+    **在非用户手势里返回 false**（实测：同一段代码放进点击回调里返回 true）。
+    按钮的 onClick 正好是手势，所以这里写得进去。
+
+    这条是「把终端里的字拿到别的程序去」的唯一通路：像 codex 这样的 CLI 复制时写的是
+    **宿主机**剪贴板（实测 roost 的 PTY 里 pbcopy 是通的，它连 OSC 52 都不会发），
+    从别的设备访问的人拿不到那份。原来这条工具条上四个按钮全是「送到 roost 里面去」
+    ——对话框、笔记、片段、文件，唯独没有「拿出去」。
+  */
+  async function copySelection(text: string) {
+    say(await writeClipboard(text) ? t.misc.selection.copied : t.misc.selection.copyFailed,
+      2200);
+  }
+
   function pasteToCli(text: string) {
     const cli = sessions.find(s => s.id === sessionId)?.cli ?? null;
     const plan = planTextInsertion({ cli, text });
@@ -121,12 +140,13 @@ export function useTerminalSelection(sessionId: string) {
     }
   }
 
-  return { saveBar, flash, readSelection, saveNote, saveToFile, pasteToCli };
+  return { saveBar, flash, readSelection, saveNote, saveToFile, pasteToCli, copySelection };
 }
 
 export function SelectionSaveBar({
   x,
   y,
+  onCopy,
   onToCli,
   onNote,
   onSnippet,
@@ -134,6 +154,8 @@ export function SelectionSaveBar({
 }: {
   x: number;
   y: number;
+  /** 复制到系统剪贴板。排第一：这是大多数人按右键时想找的那一个。 */
+  onCopy: () => void;
   /** 右键是同一个动作的快捷方式；这个按钮是它在触屏和「不知道有右键」时的入口。 */
   onToCli: () => void;
   onNote: () => void;
@@ -159,6 +181,13 @@ export function SelectionSaveBar({
       className="fixed z-30 flex items-center gap-1 rounded-lg border border-bar-text/10 bg-bar px-1.5 py-1 shadow-pop"
       style={at}
     >
+      <button
+        type="button"
+        className="whitespace-nowrap rounded-md px-2 py-1 text-body text-bar-text hover:bg-bar-text/10"
+        onClick={onCopy}
+      >
+        {t.misc.selection.copy}
+      </button>
       <button
         type="button"
         className="whitespace-nowrap rounded-md px-2 py-1 text-body text-bar-text hover:bg-bar-text/10"

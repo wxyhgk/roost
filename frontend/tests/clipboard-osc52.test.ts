@@ -129,3 +129,25 @@ test("Mac 上保留 ⌥ 拖动强制选区的后门", () => {
   assert.match(options[0], /macOptionClickForcesSelection:\s*true/,
     "这一项默认是 false；关掉它等于在 macOS/iPadOS 上取消掉 TUI 里唯一的选区办法");
 });
+
+/*
+  **选区工具条上必须有「拿出去」的那一个。**
+
+  原来那条 bar 上四个按钮全是「送到 roost 里面去」——对话框、笔记、片段、文件，
+  唯独没有复制。而这是唯一一条能把终端里的字送到别的程序去的通路：像 codex 这样的
+  CLI 复制时写的是**宿主机**剪贴板（roost 的 PTY 里 pbcopy 是通的，它连 OSC 52
+  都不会发），从别的设备访问的人拿不到那份。
+
+  复制必须挂在按钮的 onClick 上：非手势下 execCommand 返回 false（见本文件开头）。
+*/
+test("选区工具条给得出「复制到系统剪贴板」", () => {
+  const bar = code("../src/features/terminal/view/SelectionSaveBar.tsx");
+  assert.match(bar, /onClick=\{onCopy\}[\s\S]{0,120}t\.misc\.selection\.copy\b/,
+    "工具条上要有一个复制按钮，且文案用 selection.copy");
+  assert.match(bar, /async function copySelection[\s\S]{0,400}await writeClipboard\(text\)/,
+    "复制要走 shared/clipboard 的 writeClipboard——它在非安全源下有 execCommand 退路");
+
+  const view = code("../src/features/terminal/view/TermView.tsx");
+  assert.match(view, /onCopy=\{\(\) => void copySelection\(saveBar\.text\)\}/,
+    "按钮要接到 copySelection 上，否则 bar 上多一个不做事的按钮");
+});
