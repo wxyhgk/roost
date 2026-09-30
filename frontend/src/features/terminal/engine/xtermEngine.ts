@@ -128,6 +128,24 @@ export function mountXterm(host: HTMLElement, theme: TermTheme, onFileLink?: (li
       系统菜单照常弹出来。
     */
     rightClickSelectsWord: false,
+    /*
+      **全屏 TUI 里唯一还能划出选区的办法。**
+
+      TUI 一进备用屏就打开鼠标上报，之后拖拽全被当成鼠标事件发给程序，本地选区不成立。
+      xterm 留了一个「强制本地选区」的后门，但判据按平台分：
+
+          shouldForceSelection(e) { return isMac ? (e.altKey && 这个选项) : e.shiftKey }
+
+      也就是说 **Mac 上 Shift 没用，必须是 ⌥，而且这个选项不开就彻底没有后门**。
+      它默认是 false，于是在 macOS（以及 iPadOS 上的 Safari——xterm 把它也认成 Mac）
+      里，TUI 一开鼠标上报就再也划不出选区，复制无从谈起。
+
+      为什么这件事非做不可：像 codex 这样的 CLI 复制时写的是**宿主机**剪贴板
+      （实测在 roost 的 PTY 里 pbcopy 是通的，所以它连 OSC 52 都不会发），
+      文字进的是跑 roost 那台机器的剪贴板，从别的设备上访问的人永远拿不到。
+      能自己划选区，才有一条不依赖对方实现的退路。
+    */
+    macOptionClickForcesSelection: true,
     theme,
     minimumContrastRatio: theme.minimumContrastRatio ?? 4.5,
     linkHandler: { activate: openWebLink },

@@ -110,3 +110,22 @@ test("界面给得出补写那一下点击", () => {
   assert.match(view, /onClick=\{\(\) => \{ void flushPendingClipboard\(\)/,
     "补写必须挂在点击上：非手势下 execCommand 返回 false，这一下点击就是缺的手势");
 });
+
+/*
+  **⌥ 拖动是全屏 TUI 里唯一还能划出选区的办法**，而它靠一个默认关着的选项。
+
+  TUI 一进备用屏就打开鼠标上报，拖拽全被当成鼠标事件发给程序。xterm 的后门判据是：
+
+      shouldForceSelection(e) { return isMac ? (e.altKey && macOptionClickForcesSelection) : e.shiftKey }
+
+  Mac 上 Shift 不管用，必须 ⌥，而且这个选项不开就连 ⌥ 也没有——默认正是不开。
+  少了它，macOS 和 iPadOS 的 Safari（xterm 把它也认成 Mac）里 TUI 一开鼠标上报
+  就再也选不中任何东西，而这一条不会让任何别的用例变红。
+*/
+test("Mac 上保留 ⌥ 拖动强制选区的后门", () => {
+  const engine = code("../src/features/terminal/engine/xtermEngine.ts");
+  const options = /new Terminal\(\{[\s\S]*?\n  \}\);/.exec(engine);
+  assert.ok(options, "找不到 Terminal 的构造参数");
+  assert.match(options[0], /macOptionClickForcesSelection:\s*true/,
+    "这一项默认是 false；关掉它等于在 macOS/iPadOS 上取消掉 TUI 里唯一的选区办法");
+});
