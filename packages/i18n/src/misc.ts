@@ -526,6 +526,14 @@ export const misc = {
     mediaDownload: "下载原文件",
   },
 
+  clipboard: {
+    /* 说清「谁复制的」和「为什么要再点一下」：不点的话它到不了别的程序。 */
+    pending: "终端里的程序复制了一段文字",
+    pendingAction: "放进系统剪贴板",
+    pendingFailed: "这个浏览器不让写剪贴板",
+    dismiss: "不用了",
+  },
+
   xyz: {
     loading: "正在加载分子预览…",
     resetTitle: "重置视角(双击画布也可)",

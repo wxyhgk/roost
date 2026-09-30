@@ -1,4 +1,5 @@
 import { ClipboardAddon } from "@xterm/addon-clipboard";
+import { writeClipboardOrHold } from "../../../shared/clipboard";
 import { SearchAddon } from "@xterm/addon-search";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
@@ -141,7 +142,24 @@ export function mountXterm(host: HTMLElement, theme: TermTheme, onFileLink?: (li
   term.loadAddon(serialize);
   const search = new SearchAddon();
   term.loadAddon(search);
-  term.loadAddon(new ClipboardAddon());
+  /*
+    **OSC 52 必须走我们自己的写入。**
+
+    终端里的程序用 OSC 52 让终端替它写剪贴板，Claude 的新 TUI「选中即复制」走的就是这条。
+    addon 自带的 provider 直接调 `navigator.clipboard.writeText`，而那个 API 在
+    **http 非安全源下根本不存在**——我们正是这么被访问的。结果是当场抛 TypeError、
+    那次复制无声丢掉：TUI 显示已复制，粘到别的程序里是空的。
+
+    `writeClipboardOrHold` 会先试真写入，写不进去就把文字扣住、由界面要一次点击补上
+    （非手势下 execCommand 同样失败，实测见 shared/clipboard.ts 里那段）。
+
+    读不提供：`navigator.clipboard.readText()` 在非安全源下同样不可用，而把终端里的
+    程序能读的东西悄悄换成空串，比明确不支持更容易让人误判。
+  */
+  term.loadAddon(new ClipboardAddon(undefined, {
+    readText: () => "",
+    writeText: (selection, data) => { if (selection === "c") void writeClipboardOrHold(data); },
+  }));
   attachCopyPaste(term);
   term.loadAddon(new WebLinksAddon(openWebLink));
   term.open(host);

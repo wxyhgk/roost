@@ -428,6 +428,13 @@ export const misc = {
     mediaDownload: "Download the file",
   },
 
+  clipboard: {
+    pending: "A program in the terminal copied some text",
+    pendingAction: "Put it on the system clipboard",
+    pendingFailed: "This browser refused to write the clipboard",
+    dismiss: "Dismiss",
+  },
+
   xyz: {
     loading: "Loading molecule preview…",
     resetTitle: "Reset view (double-click canvas too)",

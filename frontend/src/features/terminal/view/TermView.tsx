@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { clearPendingClipboard, flushPendingClipboard, pendingClipboardText, subscribePendingClipboard } from "../../../shared/clipboard";
 import { IconChevron } from "../../../shared/icons";
 import { ROOST_PATH_MIME, getTerminalHandle, quoteShellPath, sendToSession } from "../public";
 import { useTerminal } from "../useTerminal";
@@ -37,6 +38,11 @@ const onGrid = (target: EventTarget | null) => target instanceof Element && targ
 
 export function TermView({ sessionId, active, onCwd, onCli }: Props) {
   const touch = useTouchSelection(sessionId);
+  /* 扣在剪贴板模块里的那段文字（OSC 52 写失败时）。全局一份，所以只有前台终端画它。 */
+  const pendingCopy = useSyncExternalStore(subscribePendingClipboard, pendingClipboardText);
+  const [copyFailed, setCopyFailed] = useState(false);
+  // 换了内容就把上一次的失败提示收掉，否则新的一段会顶着旧的红字。
+  useEffect(() => { setCopyFailed(false); }, [pendingCopy]);
   const keyBar = useKeyBar(sessionId);
   // 轻点判定：按下的位置和抬起的位置差得远就是滑动（滚动），不是点。
   const tapStart = useRef<{ x: number; y: number } | null>(null);
@@ -254,6 +260,29 @@ export function TermView({ sessionId, active, onCwd, onCli }: Props) {
             <IconChevron open={false} />
           </span>
         </button>
+      )}
+      {/*
+        **OSC 52 复制失败时的补救入口。**
+
+        终端里的程序（Claude 的新 TUI「选中即复制」就是）用 OSC 52 让终端替它写剪贴板，
+        而那次写入不在任何用户手势里：http 非安全源下 `navigator.clipboard` 不存在，
+        execCommand 在非手势下也返回 false。文字因此被扣在 shared/clipboard 里，
+        这一下点击补上的正是缺的那个手势。
+
+        **只在前台终端上显示一次**：扣住的文字是全局一份，每个终端各画一个的话，
+        同一段文字会冒出好几个入口。
+      */}
+      {active && pendingCopy && (
+        <div role="status" className="pointer-events-auto flex max-w-full items-center gap-2 rounded-lg border border-border bg-bg-raised px-3 py-2 text-caption text-text shadow-pop">
+          <span className="min-w-0 truncate">{copyFailed ? t.misc.clipboard.pendingFailed : t.misc.clipboard.pending}</span>
+          <button type="button" className="shrink-0 rounded border border-border px-2 py-1 hover:bg-bg-hover"
+            onClick={() => { void flushPendingClipboard().then(ok => setCopyFailed(!ok)); }}>
+            {t.misc.clipboard.pendingAction}
+          </button>
+          <button type="button" className="shrink-0 text-text-dim hover:text-text" onClick={clearPendingClipboard}>
+            {t.misc.clipboard.dismiss}
+          </button>
+        </div>
       )}
       {/* 入口只在粗指针设备上出现：桌面用鼠标划选就够了，多一个按钮是噪音。
           放在终端右下角而不是面板标题栏，是因为拇指够得到那里、够不到顶端。 */}
