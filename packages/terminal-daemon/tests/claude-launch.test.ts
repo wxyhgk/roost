@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, readdir, rm, stat } from 'node:fs/promises';
-import { existsSync, realpathSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+
+const read = (path: string) => readFileSync(new URL(path, import.meta.url).pathname, 'utf8');
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawn } from 'node-pty';
@@ -236,7 +238,19 @@ test('启动目录建在数据目录下，不在 $TMPDIR —— 那里的文件�
   const made = await readdir(root);
   assert.equal(made.length, 1, '应当正好有一个本次运行的目录');
   const dir = join(root, made[0]);
-  assert.ok(!dir.startsWith(realpathSync(tmpdir())), `不能落在 $TMPDIR 里：${dir}`);
+  /*
+    断言「落在给定的数据目录下」，**不是**断言「不在 $TMPDIR 下」。
+
+    后者是第一版写法，而它是条假用例：测试自己的数据目录就建在 $TMPDIR 里（这里也只能
+    这么建），所以在 Linux 上（tmpdir() = /tmp）必然失败；在 macOS 上又因为 realpath 把
+    /var/folders 解析成 /private/var/folders、前缀对不上而**恒真**——两边都没在测东西，
+    是 CI 把它戳穿的。
+
+    真正的契约是「跟着数据目录走」，再加下面那条源码检查挡住「悄悄搬回 tmpdir」。
+  */
+  assert.ok(dir.startsWith(data + '/'), `应当落在数据目录下：${dir}`);
+  assert.doesNotMatch(read('../src/claude-launch.ts'), /tmpdir\s*\(/,
+    '实现里不该再出现 tmpdir()——macOS 会清掉那里的文件');
   // 名字是人和别的用例认出它的线索（qwen-owner 按这个前缀在 PATH 里找 bin），搬家不等于改名。
   assert.match(made[0], /^roost-cli-launch-/, '目录名不该跟着父目录一起变');
 
