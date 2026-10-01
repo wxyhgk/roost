@@ -20,7 +20,7 @@ import { send, read, replayResultByteBudget } from './wire.ts';
 /** Only this process owns PTYs and replay timers. Gateway disconnects do not kill them. */
 export async function startTerminalOwner(options: {socketPath:string; dataDir:string; shell:string; defaultCwd:string}) {
   const store = createWorkspaceStore({dataDir: options.dataDir});
-  const launch = await createClaudeLaunch(options.shell, process.env).catch(() => {
+  const launch = await createClaudeLaunch(options.shell, process.env, options.dataDir).catch(() => {
     console.error('Claude launch integration unavailable; ordinary terminals remain available');
     return {env: process.env, qwenRuntimeRoot: undefined, dispose: async () => {}};
   });

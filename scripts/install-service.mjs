@@ -185,14 +185,24 @@ exec ${JSON.stringify(node)} --import tsx backend/src/index.ts
  *
  * **不能整个继承当前 shell 的。** 装这个服务的人多半正坐在某个终端里，而那个终端
  * 的 PATH 可能带着只在这次会话里存在的目录——Roost 自己给 CLI 准备的那个
- * `$TMPDIR/roost-cli-launch-XXXX/bin` 就是。烤进 plist 之后它指向一个会消失的地方，
+ * `<数据目录>/cli-launch/roost-cli-launch-XXXX/bin` 就是（2026-09-30 之前在 $TMPDIR 下，
+ * 搬家理由见 packages/terminal-daemon/src/claude-launch.ts）。烤进 plist 之后它指向一个会消失的地方，
  * 而 launchd 服务活得比任何 shell 都久。
  *
  * 但也不该换成一张硬编码的清单：用户的 claude / codex / opencode 到底装在哪，
  * 他自己的 PATH 才知道。所以照单收下，只滤掉会消失的和重复的。
  */
-export function servicePath(nodeBin, inherited) {
-  const ephemeral = [resolve(tmpdir()), '/var/folders/', '/private/var/folders/'];
+export function servicePath(nodeBin, inherited, launchRoot) {
+  /*
+    `launchRoot` 是守护进程给 CLI 准备垫片的地方（`<数据目录>/cli-launch`）。
+
+    它**本来在 `$TMPDIR` 下面**，被下面那三条前缀顺手滤掉了。2026-09-30 把它挪出 `$TMPDIR`
+    （理由见 packages/terminal-daemon/src/claude-launch.ts：macOS 会清掉那里的文件），
+    于是这条过滤就不再认它——而它仍然是**每次守护进程重启就换一个**的目录。
+    不显式加回来的话，装服务时会把一个重启后立刻失效的路径烤进 plist。
+  */
+  const ephemeral = [resolve(tmpdir()), '/var/folders/', '/private/var/folders/',
+    ...(launchRoot ? [resolve(launchRoot)] : [])];
   const seen = new Set();
   return [nodeBin, ...String(inherited ?? '').split(':')]
     .map(entry => entry.trim())
@@ -207,7 +217,7 @@ export function plan(options) {
   const { node, repo, dataDir, installDir, port, backendPort, insecureHttp, guiSend, shell, caddy, pathEntries } = options;
   const logs = join(dataDir, 'logs');
   const env = {
-    PATH: servicePath(dirname(node), pathEntries),
+    PATH: servicePath(dirname(node), pathEntries, join(dataDir, 'cli-launch')),
     HOST: '127.0.0.1',
     PORT: String(backendPort),
     SHELL: shell,

@@ -1,8 +1,8 @@
 import { installOpenCodeLaunch } from './opencode-launch.ts';
 import { installQwenLaunch } from './qwen-launch.ts';
 import { installCodexLaunch } from './codex-launch.ts';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
-import { tmpdir, homedir } from 'node:os';
+import { mkdtemp, mkdir, readdir, writeFile, rm } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { join, basename } from 'node:path';
 import { CLI_LAUNCH_TOOLS } from './cli-launch-tools.ts';
 import { protectWindowsDirectory } from './windows-security.ts';
@@ -10,10 +10,46 @@ import { protectWindowsDirectory } from './windows-security.ts';
 const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
 
 /** Local to this daemon's zsh children. Never modifies user dotfiles or Claude settings. */
-export async function createClaudeLaunch(shell: string, env: NodeJS.ProcessEnv) {
+export async function createClaudeLaunch(shell: string, env: NodeJS.ProcessEnv, dataDir: string) {
   const windows = process.platform === 'win32';
   if (!windows && basename(shell) !== 'zsh') return { env, qwenRuntimeRoot: undefined as string | undefined, dispose: async () => {} };
-  const dir = await mkdtemp(join(tmpdir(), 'roost-cli-launch-'));
+  /*
+    **这些东西不能放 `$TMPDIR`。**
+
+    macOS 会定期清理 `/var/folders/.../T/`，按**访问时间**删文件、**保留目录**。实测一个
+    跑了一天的启动目录：**7 个目录、2 个文件**——活下来的只有 `bin/claude`（每开一个终端
+    都执行它，访问时间一直在刷新）和 zsh 的 `.zcompdump`。被删掉的有：
+
+    - `plugin/observe.mjs`、`plugin/hooks/hooks.json`（Claude Code 启动时读过一次就再没碰过）
+    - `bin/` 里 codex / qwen / opencode 三个垫片
+    - `launch.mjs`
+
+    症状分两种。吵的那种：Claude Code 已经把 hook 注册住了，之后每次提交 prompt 都去跑
+    `node <目录>/observe.mjs`，于是每次都报一条 `Cannot find module`。安静的那种更要命：
+    那三个 CLI 的垫片没了，对应的集成**静默失效，不报任何错**。
+
+    所以搬到数据目录底下——那里没有人来清。顺带一提，这个仓库在别处已经踩过同一个坑并
+    写下了注释（`scripts/install-service.mjs` 里 `servicePath` 那段：「烤进 plist 之后它
+    指向一个会消失的地方」），只是启动垫片这条当时没跟上。
+
+    **路径变短也是好事**：隔壁 codex 的 app-server socket 受 SUN_LEN(104) 限制，
+    `/var/folders/<两段哈希>/T/` 光前缀就吃掉一半，数据目录比它短得多。
+  */
+  const root = join(dataDir, 'cli-launch');
+  await mkdir(root, { recursive: true, mode: 0o700 });
+  /*
+    清掉上一次留下的。一个数据目录只有一个守护进程（socket 是独占的），所以这里不会有
+    别人正在用的目录；不清的话每次重启都留一份，再也没人收。
+  */
+  for (const stale of await readdir(root).catch(() => [] as string[])) {
+    await rm(join(root, stale), { recursive: true, force: true }).catch(() => {});
+  }
+  /*
+    **名字保持 `roost-cli-launch-` 不变。** 它出现在 PATH 和 `ps` 的命令行里，是人和用例
+    认出「这是 roost 给 CLI 搭的垫片」的唯一线索（`tests/qwen-owner.test.ts` 就是按这个
+    前缀在 PATH 里找 bin 的）。这次搬的是**父目录**，不是改名。
+  */
+  const dir = await mkdtemp(join(root, 'roost-cli-launch-'));
   const bin = join(dir, 'bin'), plugin = join(dir, 'plugin'), zdot = join(dir, 'zsh');
   try {
     if (windows) await protectWindowsDirectory(dir);

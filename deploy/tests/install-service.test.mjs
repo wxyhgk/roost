@@ -278,3 +278,35 @@ test('前端路由和真实文件都不受影响', () => {
   assert.match(route, /not file/, '少了 not file，连存在的 .js 也会被 404 掉');
   assert.match(route, /try_files \{path\} \/index\.html/, '前端路由仍然要落到 index.html');
 });
+
+/*
+  **垫片目录从 `$TMPDIR` 搬走之后，这条过滤要跟着搬。**
+
+  它原来在 `$TMPDIR` 下面，被那三条前缀顺手滤掉了。2026-09-30 搬到 `<数据目录>/cli-launch`
+  （理由见 packages/terminal-daemon/src/claude-launch.ts：macOS 会清掉 $TMPDIR 里的文件），
+  而它**仍然是每次守护进程重启就换一个**的目录——不显式告诉 servicePath，就会把一个重启后
+  立刻失效的路径烤进 plist，而且烤进去之后不会有任何报错。
+*/
+test('服务的 PATH 也滤掉数据目录下的垫片目录', macOnly, async () => {
+  const { servicePath } = await import('../../scripts/install-service.mjs');
+  const launchRoot = '/Users/someone/.roost/cli-launch';
+  const got = servicePath('/opt/node/bin', [
+    '/usr/bin',
+    `${launchRoot}/launch-abc/bin`,
+    '/opt/homebrew/bin',
+  ].join(':'), launchRoot);
+  assert.deepEqual(got.split(':'), ['/opt/node/bin', '/usr/bin', '/opt/homebrew/bin']);
+  // 不传 launchRoot 时行为不变（旧调用方不该被这次改动影响）。
+  const without = servicePath('/opt/node/bin', `/usr/bin:${launchRoot}/launch-abc/bin`);
+  assert.ok(without.includes(`${launchRoot}/launch-abc/bin`), '没告诉它就滤不掉，这是预期的');
+});
+
+test('plan() 把垫片目录当成会消失的，不烤进 plist', macOnly, async () => {
+  const { plan } = await import('../../scripts/install-service.mjs');
+  const dataDir = '/Users/someone/.roost';
+  const { services } = plan({ ...options, dataDir,
+    pathEntries: `/usr/bin:${dataDir}/cli-launch/launch-abc/bin` });
+  for (const service of services)
+    assert.ok(!service.plist.includes('cli-launch'),
+      `${service.name} 的 plist 里出现了垫片目录——那是重启后就失效的路径`);
+});

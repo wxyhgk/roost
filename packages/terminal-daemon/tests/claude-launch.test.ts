@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, rm, stat } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, readdir, rm, stat } from 'node:fs/promises';
+import { existsSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawn } from 'node-pty';
@@ -50,7 +51,7 @@ console.log('FAKE_CLAUDE_FINISHED');
  const socketPath=join(dir,'hook.sock');
  const receiver=createServer(socket=>{let buf='';socket.on('data',chunk=>{buf+=chunk;const i=buf.indexOf('\n');if(i<0)return;const m=JSON.parse(buf.slice(0,i));events.push(m.args[0]);socket.end(JSON.stringify({type:'reply',requestId:m.requestId,result:true})+'\n');});});
  await new Promise<void>(r=>receiver.listen(socketPath,r));t.after(()=>new Promise<void>(r=>receiver.close(()=>r())));
- const launch=await createClaudeLaunch('/bin/zsh',{...process.env,HOME:dir,ZDOTDIR:dir,ROOST_CLAUDE_SOCKET:socketPath,ROOST_CLAUDE_TOKEN:'test',ROOST_CLAUDE_INSTANCE:'instance',ROOST_CLAUDE_TERMINAL:'terminal'});
+ const launch=await createClaudeLaunch('/bin/zsh',{...process.env,HOME:dir,ZDOTDIR:dir,ROOST_CLAUDE_SOCKET:socketPath,ROOST_CLAUDE_TOKEN:'test',ROOST_CLAUDE_INSTANCE:'instance',ROOST_CLAUDE_TERMINAL:'terminal'},dir);
  t.after(()=>launch.dispose());
  const terminal=spawn('/bin/zsh',['-l'],{cwd:dir,env:launch.env as Record<string,string>,name:'xterm-256color',cols:80,rows:24});
  t.after(()=>terminal.kill());
@@ -69,7 +70,7 @@ ${output}`);
 });
 
 test('non-zsh launch is unchanged',async()=>{
- const env={PATH:'/bin'};const launch=await createClaudeLaunch('/bin/bash',env);
+ const env={PATH:'/bin'};const launch=await createClaudeLaunch('/bin/bash',env,tmpdir());
  assert.equal(launch.env,env);await launch.dispose();
 });
 
@@ -120,7 +121,7 @@ if(process.argv.includes('--version'))console.log('2.1.266');
  ];
  for(const suggestion of ['true',undefined]){
   const env={...process.env,HOME:dir,ZDOTDIR:dir,ROOST_CLAUDE_GUI_SEND:controlled?'1':'0',CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION:suggestion};delete env.ROOST_CLAUDE_OBSERVING;
-  const launch=await createClaudeLaunch('/bin/zsh',env);t.after(()=>launch.dispose());
+  const launch=await createClaudeLaunch('/bin/zsh',env,dir);t.after(()=>launch.dispose());
   for(const example of cases){
    const prefix=example.nested?'ROOST_CLAUDE_OBSERVING=1 ':'';
    const command=prefix+'claude '+example.args.map(quote).join(' ')+`; print -r -- "PARENT=\${CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION-__unset__}"`;
@@ -149,7 +150,7 @@ test('TodoWrite 的钩子带 matcher，而且垫片自己也只放 TodoWrite 过
   const dir = await mkdtemp(join(tmpdir(), 'claude-tasks-test-'));
   t.after(() => rm(dir, {recursive: true, force: true}));
 
-  const launch = await createClaudeLaunch('/bin/zsh', {...process.env, HOME: dir, ZDOTDIR: dir});
+  const launch = await createClaudeLaunch('/bin/zsh', {...process.env, HOME: dir, ZDOTDIR: dir}, dir);
   t.after(() => launch.dispose());
   const root = join(launch.env.ZDOTDIR!, '..');
   const config = JSON.parse(await readFile(join(root, 'plugin/hooks/hooks.json'), 'utf8'));
@@ -209,4 +210,51 @@ test('TodoWrite 的钩子带 matcher，而且垫片自己也只放 TodoWrite 过
   received.length = 0;
   await run({hook_event_name: 'PostToolUse', tool_name: 'TodoWrite', tool_input: {todos: 'nope'}});
   assert.deepEqual(received, []);
+});
+
+/*
+  **垫片不能放在 `$TMPDIR`。**
+
+  macOS 会定期清理 `/var/folders/.../T/`，按访问时间删文件、保留目录。实测一个跑了一天的
+  启动目录：7 个目录、2 个文件——只剩 `bin/claude`（每开一个终端都执行，访问时间一直在刷）
+  和 zsh 的 `.zcompdump`；`plugin/observe.mjs`、`plugin/hooks/hooks.json`、以及 bin 里
+  codex/qwen/opencode 三个垫片全没了。
+
+  症状：Claude Code 启动时读过 hooks.json、把 hook 注册住了，之后每次提交 prompt 都去跑
+  `node <目录>/observe.mjs`，每次报一条 `Cannot find module`；而那三个 CLI 的集成则是
+  **静默失效，不报任何错**。
+
+  这条用例盯的是「别搬回去」。
+*/
+test('启动目录建在数据目录下，不在 $TMPDIR —— 那里的文件会被 macOS 清掉', async t => {
+  const data = await mkdtemp(join(tmpdir(), 'launch-home-'));
+  t.after(() => rm(data, { recursive: true, force: true }));
+  const launch = await createClaudeLaunch('/bin/zsh', { ...process.env, HOME: data, ZDOTDIR: data }, data);
+  t.after(() => launch.dispose());
+
+  const root = join(data, 'cli-launch');
+  const made = await readdir(root);
+  assert.equal(made.length, 1, '应当正好有一个本次运行的目录');
+  const dir = join(root, made[0]);
+  assert.ok(!dir.startsWith(realpathSync(tmpdir())), `不能落在 $TMPDIR 里：${dir}`);
+  // 名字是人和别的用例认出它的线索（qwen-owner 按这个前缀在 PATH 里找 bin），搬家不等于改名。
+  assert.match(made[0], /^roost-cli-launch-/, '目录名不该跟着父目录一起变');
+
+  // 那几个最容易被清掉、而且清掉之后症状最隐蔽的文件都要在。
+  for (const relative of ['plugin/observe.mjs', 'plugin/hooks/hooks.json', 'plugin/.claude-plugin/plugin.json', 'bin/claude'])
+    assert.ok(existsSync(join(dir, relative)), `缺 ${relative}`);
+});
+
+test('重启会清掉上一次留下的目录，不越堆越多', async t => {
+  const data = await mkdtemp(join(tmpdir(), 'launch-home-'));
+  t.after(() => rm(data, { recursive: true, force: true }));
+  // 假装上一次崩溃留下了一个
+  await mkdir(join(data, 'cli-launch', 'launch-stale'), { recursive: true });
+  await writeFile(join(data, 'cli-launch', 'launch-stale', 'marker'), 'x');
+
+  const launch = await createClaudeLaunch('/bin/zsh', { ...process.env, HOME: data, ZDOTDIR: data }, data);
+  t.after(() => launch.dispose());
+  const made = await readdir(join(data, 'cli-launch'));
+  assert.equal(made.length, 1, '上一次留下的应当被清掉');
+  assert.ok(!made.includes('launch-stale'));
 });
