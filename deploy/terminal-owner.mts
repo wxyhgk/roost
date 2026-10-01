@@ -2,11 +2,14 @@
 import { mkdir, realpath } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { daemonSocketPath, startTerminalOwner } from '@roost/terminal-daemon';
+import { fileURLToPath } from 'node:url';
+import { daemonSocketPath, startTerminalOwner, writeRunningRecord } from '@roost/terminal-daemon';
 
 const directory = process.env.ROOST_DATA_DIR ?? join(homedir(), '.roost');
 await mkdir(directory, { recursive: true, mode: 0o700 });
 const dataDir = await realpath(directory);
+// 谁在跑哪一版：写失败不影响启动，理由见 packages/terminal-daemon/src/running-record.ts。
+void writeRunningRecord({ dataDir, service: 'terminal', repoRoot: fileURLToPath(new URL('..', import.meta.url)) });
 const owner = await startTerminalOwner({
   socketPath: daemonSocketPath(dataDir), dataDir,
   shell: process.env.SHELL ?? '/bin/bash', defaultCwd: homedir(),

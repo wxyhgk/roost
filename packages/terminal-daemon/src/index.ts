@@ -10,6 +10,7 @@ export { connectTerminalDaemon } from './client.ts';
 export { startTerminalOwner } from './owner.ts';
 import { daemonSocketPath } from './socket.ts';
 export { daemonSocketPath } from './socket.ts';
+export { runningRecordPath, readHeadCommit, writeRunningRecord, type RunningRecord } from './running-record.ts';
 /** Start once, or attach to the existing owner. Disposal only disconnects the gateway. */
 export async function openTerminalDaemon(options:{dataDir:string;shell?:string;defaultCwd?:string}) {
   await mkdir(options.dataDir,{recursive:true});

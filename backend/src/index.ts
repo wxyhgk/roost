@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { resolve, join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { openTerminalDaemon } from "@roost/terminal-daemon";
+import { openTerminalDaemon , writeRunningRecord } from "@roost/terminal-daemon";
 import { createWorkspaceStore } from "@roost/workspace-store";
 import { createAttachmentStore } from "./attachments";
 import { createCliIconStore } from "./cli-configs";
@@ -11,6 +11,11 @@ import { loadAuthentication } from './auth-config';
 import type { AuthOptions } from './auth';
 
 export async function startBackend(options: { auth?: AuthOptions } = {}) {
+  /*
+    **先记下「我是谁、跑的哪一版」。** 放在最前面是因为后面任何一步失败时，这份记录
+    恰恰是排查的起点；写失败不影响启动（它自己吞异常）。理由见 running-record.ts。
+  */
+  void writeRunningRecord({ dataDir, service: 'backend', repoRoot: workspaceRoot });
   const auth = options.auth ?? await loadAuthentication(dataDir);
   const runtime = await openTerminalDaemon({ dataDir, defaultCwd: homedir() });
   let store;
