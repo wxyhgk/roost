@@ -13,10 +13,10 @@ import { t } from "@roost/i18n";
 import { ApiError } from '../../../shared/api/errors';
 import { resumeError } from '../resumeMessages';
 
-export type SessionViewState = { status: TermStatus; historyTruncated: boolean; atBottom: boolean; viewers: { label: string }[]; restarting: boolean; restartError: string | null; resumePlanRevision: number; imagePaste: ImagePasteState; viewIssue: string | null; inputNotice: boolean; connectionError: string | null;
+export type SessionViewState = { status: TermStatus; historyTruncated: boolean; revived: boolean; atBottom: boolean; viewers: { label: string }[]; restarting: boolean; restartError: string | null; resumePlanRevision: number; imagePaste: ImagePasteState; viewIssue: string | null; inputNotice: boolean; connectionError: string | null;
   /** 刚把一下 Ctrl+C 当成「清空输入」吃掉了，正等着看你要不要再按一次。 */
   interruptArmed: boolean };
-export const initialSessionState: SessionViewState = { status: "reconnecting", historyTruncated: false, atBottom: true, viewers: [], restarting: false, restartError: null, resumePlanRevision: 0, imagePaste: null, viewIssue: null, inputNotice: false, connectionError: null, interruptArmed: false };
+export const initialSessionState: SessionViewState = { status: "reconnecting", historyTruncated: false, revived: false, atBottom: true, viewers: [], restarting: false, restartError: null, resumePlanRevision: 0, imagePaste: null, viewIssue: null, inputNotice: false, connectionError: null, interruptArmed: false };
 export type SessionDependencies = {
   deliberateResize?: boolean;
   url: string;
@@ -142,6 +142,14 @@ export function createTerminalSessionController(options: {
   };
   const setStatus = (value: SessionViewState["status"]) => update({ status: value });
   const setHistoryTruncated = (value: SessionViewState["historyTruncated"]) => update({ historyTruncated: value });
+  /*
+    **复活 = 画面回来了、进程没回来。**
+
+    守护进程重启后 roost 建的是一条**新的** PTY，把存下来的画面重打印进去；复活出来的
+    会话报的是新 shell 的活 pid，所以它看起来和正常终端毫无区别。协议里一直有这个字段
+    （daemon 在发），只是前端从来没读过——不读它，界面就在替一件没发生的事作证。
+  */
+  const setRevived = (value: SessionViewState["revived"]) => update({ revived: value });
   const setAtBottom = (value: SessionViewState["atBottom"]) => update({ atBottom: value });
   const setRestarting = (value: SessionViewState["restarting"]) => update({ restarting: value });
   const setRestartError = (value: SessionViewState["restartError"]) => update({ restartError: value });
@@ -248,6 +256,7 @@ export function createTerminalSessionController(options: {
       if (result.kind === "invalid") { trace.record('invalid-frame', seq); return false; }
       if (msg.type !== "output") {
         setHistoryTruncated(!!(msg as { truncated?: boolean }).truncated);
+        setRevived(!!(msg as { revived?: boolean }).revived);
         void result.done.then(() => {
           if (!valid() || dead || !ready()) return;
           inputReady = true;
@@ -565,7 +574,7 @@ export function createTerminalSessionController(options: {
         CLI 毫不知情，那时才轮到抖尺寸这条最后手段。
       */
       repaint() { if(!valid()) return; trace.record('manual-repaint'); term?.setFrozen?.(false); term?.repaint?.(); gate.open(); if (!fit()) gate.nudge(); },
-      diagnostics: () => ({ phase, status: state.status, historyTruncated: state.historyTruncated, active, visible: deps.isVisible(), inputReady, lastFrameAt,
+      diagnostics: () => ({ phase, status: state.status, historyTruncated: state.historyTruncated, revived: state.revived, active, visible: deps.isVisible(), inputReady, lastFrameAt,
         // 真机上唯一能看出「到底有没有用上 GPU」的地方：off/loading/on/unavailable。
         // 无头浏览器没有 WebGL，所以这件事只能由使用者在自己的浏览器里读。
         accel: term?.accelState?.() ?? null,

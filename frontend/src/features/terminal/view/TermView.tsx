@@ -50,6 +50,7 @@ export function TermView({ sessionId, active, onCwd, onCli }: Props) {
     hostRef,
     status,
     historyTruncated,
+    revived,
     atBottom,
     jumpToBottom,
     restarting,
@@ -69,6 +70,15 @@ export function TermView({ sessionId, active, onCwd, onCli }: Props) {
   /** 有东西正拖在终端上方。只用来给一个「松手会发生什么」的提示。 */
   const [dropping, setDropping] = useState(false);
   const showHistoryNotice = active && status === 'open' && historyTruncated && dismissedHistoryFor !== sessionId;
+  /*
+    **只标降级态。** 真正接回原进程的会话不显示任何东西——没有标记就是可信。
+    （抄 iTerm2：只给拿不回进程的会话加横幅。）
+
+    和「较早历史超出保留范围」分开两条而不是合成一句：那条说的是「少了一截」，
+    这条说的是「这不是原来那个进程」，两件事可以同时成立，也可以各自成立。
+  */
+  const [dismissedRevivedFor, setDismissedRevivedFor] = useState<string | null>(null);
+  const showRevivedNotice = active && status === 'open' && revived && dismissedRevivedFor !== sessionId;
   useEffect(() => {
     if (!showHistoryNotice || historyNoticeStartedAt !== null) return;
     rememberHistoryNotice(sessionId);
@@ -183,6 +193,12 @@ export function TermView({ sessionId, active, onCwd, onCli }: Props) {
         <div role="status" onMouseUp={e => e.stopPropagation()} className="absolute bottom-3 left-3 z-[7] flex max-w-[calc(100%-24px)] items-center gap-2 rounded-lg border border-border bg-bg-raised px-3 py-2 text-caption text-text shadow-pop">
           <span>{t.misc.terminal.inputNotSent}</span>
           <button type="button" aria-label={t.misc.terminal.dismissInputNotice} className="shrink-0 rounded px-1 hover:bg-bg-hover" onClick={dismissInputNotice}>×</button>
+        </div>
+      )}
+      {showRevivedNotice && (
+        <div role="status" onMouseUp={e => e.stopPropagation()} className="absolute top-2 left-1/2 z-[6] flex max-w-[calc(100%-24px)] -translate-x-1/2 items-center gap-2 rounded-lg glass px-3 py-1 text-caption text-text-dim pointer-events-auto shadow-pop">
+          <span>{t.terminal.view.revivedNotice}</span>
+          <button type="button" aria-label={t.terminal.view.dismissRevived} className="shrink-0 rounded px-1 hover:bg-bg-hover" onClick={() => setDismissedRevivedFor(sessionId)}>×</button>
         </div>
       )}
       {showHistoryNotice && (

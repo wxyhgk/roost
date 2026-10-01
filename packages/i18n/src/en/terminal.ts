@@ -98,6 +98,8 @@ export const terminal = {
 
   view: {
     notConnected: "Session not connected, insertion failed",
+    revivedNotice: "Screen restored; the original process is gone",
+    dismissRevived: "Dismiss",
     historyNotice: "Earlier history is beyond the retention range; the current terminal can still be used",
     dismissHistory: "Dismiss history recovery notice",
     reconnecting: "Reconnecting…",

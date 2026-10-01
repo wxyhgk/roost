@@ -8,6 +8,7 @@ import { getTerminalStatus, getTerminalLatency } from '../src/features/terminal/
 import { emitFileLink, subscribeFileLink } from '../src/features/terminal/fileLinks.ts';
 import { ApiError } from '../src/shared/api/errors.ts';
 import { t } from '@roost/i18n';
+import { readFileSync } from 'node:fs';
 const tick = () => new Promise<void>(r => setImmediate(r));
 function deferred() { let resolve!: () => void; const promise = new Promise<void>(r => { resolve = r; }); return { promise, resolve }; }
 function fixture(id: string, wait = Promise.resolve(), reopening = Promise.resolve(), overrides: Partial<SessionDependencies> = {}) {
@@ -1047,4 +1048,67 @@ test('【特征化】replay 在途时换实例：旧的那一次仍然会把输�
     await tick();
     assert.equal(f.canResize(), true, '今天就是这样。改了它要有意为之，而不是重构时顺手');
   } finally { f.controller.dispose(); }
+});
+
+/*
+  **「画面回来了」和「接回原进程了」不是一回事,而界面此前分不出来。**
+
+  守护进程重启之后 roost 建的是一条**新的** PTY,把存下来的画面重打印进去。复活出来的
+  会话报的是新 shell 的活 pid,所以它看起来和正常终端毫无区别——而原来那个进程、它的内存、
+  打开的文件、后台任务全都不在了。
+
+  协议里一直有 `revived` 这个字段,daemon 一直在发,**而前端从来没读过**(全仓库零引用)。
+  这组用例把它钉在状态上:读得到、而且会跟着下一帧更新——接回同一个实例的 catchup 帧
+  不该继续举着"这是恢复的"。
+*/
+test('复活的会话要认出来', async () => {
+  const f = fixture('revived-on');
+  try {
+    await tick();
+    await f.callbacks().onHello('revived-instance', false);
+    f.callbacks().onFrame({ type: 'replay', instanceId: 'revived-instance', seq: 1, data: 'screen', revived: true }, () => true);
+    await tick();
+    f.writes.shift()!(); await tick();
+    assert.equal(f.controller.snapshot().revived, true, '复活了就得说');
+    assert.equal(f.controller.diagnostics().revived, true, '诊断里也要看得到');
+  } finally { f.controller.dispose(); }
+});
+
+test('没复活就什么都不说——没有标记才是可信', async () => {
+  const f = fixture('revived-off');
+  try {
+    await tick();
+    await f.callbacks().onHello('fresh-instance', false);
+    f.callbacks().onFrame({ type: 'replay', instanceId: 'fresh-instance', seq: 1, data: 'screen', revived: false }, () => true);
+    await tick();
+    f.writes.shift()!(); await tick();
+    assert.equal(f.controller.snapshot().revived, false);
+  } finally { f.controller.dispose(); }
+});
+
+test('接回同一个实例之后不再举着「这是恢复的」', async () => {
+  const f = fixture('revived-cleared');
+  try {
+    await tick();
+    await f.callbacks().onHello('same-instance', false);
+    f.callbacks().onFrame({ type: 'replay', instanceId: 'same-instance', seq: 1, data: 'screen', revived: true }, () => true);
+    await tick(); f.writes.shift()!(); await tick();
+    assert.equal(f.controller.snapshot().revived, true);
+    // catchup 的含义就是「接回了同一个实例」,daemon 在这种帧上发 revived:false。
+    f.callbacks().onFrame({ type: 'catchup', instanceId: 'same-instance', seq: 2, data: 'more', revived: false }, () => true);
+    await tick(); f.writes.shift()!(); await tick();
+    assert.equal(f.controller.snapshot().revived, false, '接回来了就别再说是恢复的');
+  } finally { f.controller.dispose(); }
+});
+
+/*
+  状态读到了,但界面没画,等于没做——而且这种失效特别安静:复活的终端看起来和正常的
+  一模一样,正是「做完了、不工作、不报错」。所以单独钉一下渲染那一侧。
+*/
+test('终端界面真的把「这是恢复的画面」画出来', () => {
+  const view = readFileSync(new URL('../src/features/terminal/view/TermView.tsx', import.meta.url).pathname, 'utf8')
+    .replace(/\{\/\*[\s\S]*?\*\/\}/g, ' ').replace(/\/\*[\s\S]*?\*\//g, ' ');
+  assert.match(view, /revived,/, '要从 useTerminal 取出这个状态');
+  assert.match(view, /showRevivedNotice\s*=\s*active[^;]*revived/, '只在前台且确实复活时显示');
+  assert.match(view, /t\.terminal\.view\.revivedNotice/, '要渲染那句文案');
 });
