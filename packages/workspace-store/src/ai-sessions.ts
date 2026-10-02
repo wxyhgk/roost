@@ -3,12 +3,35 @@ import type { BridgeRecord, BridgeStorage, EventEnvelope } from "@roost/ai-sessi
 import { registerConversationWriter, conversationSchema, backfillConversations, protectConversationWrites, refreshDerived } from "./conversation-schema.ts";
 import { transaction } from "./database.ts";
 import { atomic, createHistoryStore, historySchema, writeGeneration, writeMessages } from "./ai-history.ts";
+import { restorePointBefore } from './one-way-migration.ts';
 
-export function createAiSessionStorage(db: DatabaseSync): BridgeStorage {
+/** `dataDir` 为 null 表示这是一次性库(`:memory:`),迁移照跑但没有还原点。 */
+export function createAiSessionStorage(db: DatabaseSync, dataDir: string | null): BridgeStorage {
   registerConversationWriter(db);
   db.exec("CREATE TABLE IF NOT EXISTS ai_session_records (session_id TEXT PRIMARY KEY, record_json TEXT NOT NULL)");
   db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS ai_session_native_identity ON ai_session_records (
     json_extract(record_json,'$.binding.cliId'), json_extract(record_json,'$.binding.nativeSessionId'))`);
+  /*
+    **真正不可逆的那一步是把记录重写成 storageFormat 3**,不是下面那两个触发器。
+
+    触发器每次开库都 drop 再 create——那恰恰是为了让迁移自己能写(我第一次改这块时把
+    它误当成「只做一次的门」,结果第二次开库变成「先拆门、再跳过重建」,用例当场抓住)。
+    不可逆的是存量记录被改写:改完之后旧 gateway 写进来的 format 2 会被门拦死,而**此前
+    没有任何东西可以退回去**。
+
+    所以还原点拍在这里:主事务之外(VACUUM 不能在事务里跑),且只在真有存量要改时拍。
+  */
+  restorePointBefore(db, {
+    dataDir, name: 'schema.ai-history.v3',
+    needed: () => {
+      const has = (key: string) => !!db.prepare('SELECT 1 FROM ai_history_meta WHERE key=?').get(key);
+      const metaExists = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='ai_history_meta'").get();
+      const records = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='ai_session_records'").get()
+        && !!db.prepare('SELECT 1 FROM ai_session_records LIMIT 1').get();
+      // 没有存量记录就没有东西会被改写——新库不需要还原点。
+      return records && (!metaExists || !has('schema.v1') || !has('schema.conversations.v1'));
+    },
+  });
   transaction(db,()=>{
     historySchema(db);
     conversationSchema(db);

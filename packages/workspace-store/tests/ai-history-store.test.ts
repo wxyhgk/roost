@@ -9,7 +9,7 @@ import { createAiSessionStorage } from "../src/ai-sessions.ts";
 import { createAiSessionBridge, type BridgeRecord } from "@roost/ai-session-bridge";
 
 function fixture(maxEvents=2) {
-  const db=new DatabaseSync(":memory:"),storage=createAiSessionStorage(db),bridge=createAiSessionBridge({storage,maxEvents});
+  const db=new DatabaseSync(":memory:"),storage=createAiSessionStorage(db, null),bridge=createAiSessionBridge({storage,maxEvents});
   const binding=bridge.bind({webSessionId:"web",cliId:"omp",nativeSessionId:"a",terminalInstanceId:"i"});
   return {db,storage,bridge,binding};
 }
@@ -81,12 +81,12 @@ test("legacy migration is idempotent, marks lost window and rejects obsolete wri
     const event={eventId:"legacy",type:"message" as const,content:"preview",data:{detail:{path:"/does/not/exist"},truncated:true}};
     const record:BridgeRecord={binding,cursor:3,droppedThrough:2,events:[{generation:"g",seq:3,binding,event}]};
     db.prepare("INSERT INTO ai_session_records VALUES(?,?)").run("old",JSON.stringify(record));
-    let storage=createAiSessionStorage(db);
+    let storage=createAiSessionStorage(db, null);
     assert.deepEqual(JSON.parse((db.prepare("SELECT record_json FROM ai_history_legacy_records").get() as {record_json:string}).record_json),record);
     assert.equal(storage.list()[0]!.events.length,0);assert.equal(storage.list()[0]!.hasSeenMessages,true);
     assert.equal(storage.history!.pageMessages("old","g").coverage.hasGap,true);
     assert.equal(storage.history!.getMessage("old","g","legacy").bodyState,"source_backed");
-    storage=createAiSessionStorage(db);assert.equal(storage.history!.pageMessages("old","g").items.length,1);
+    storage=createAiSessionStorage(db, null);assert.equal(storage.history!.pageMessages("old","g").items.length,1);
     assert.throws(()=>db.prepare("UPDATE ai_session_records SET record_json=?").run(JSON.stringify(record)),/upgraded gateway/);
   }finally{db.close();}
 });
@@ -178,7 +178,7 @@ test("intermediate history schema upgrades before creating new indexes",()=>{
   try {
     db.exec("CREATE TABLE ai_history_messages(conversation_id TEXT NOT NULL,message_id TEXT NOT NULL,seq INTEGER NOT NULL,preview_json TEXT NOT NULL,body_state TEXT NOT NULL,revision INTEGER NOT NULL DEFAULT 1,PRIMARY KEY(conversation_id,message_id),UNIQUE(conversation_id,seq))");
     db.prepare("INSERT INTO ai_history_messages VALUES('c','m',1,?,'stored',1)").run(JSON.stringify({eventId:"native",type:"message",content:"retained"}));
-    createAiSessionStorage(db);createAiSessionStorage(db);
+    createAiSessionStorage(db, null);createAiSessionStorage(db, null);
     const row=db.prepare("SELECT event_id,content_hash FROM ai_history_messages").get() as {event_id:string;content_hash:string};
     assert.equal(row.event_id,"native");assert.equal(row.content_hash.length,64);
   }finally{db.close();}

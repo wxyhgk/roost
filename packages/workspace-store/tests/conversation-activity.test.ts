@@ -7,7 +7,7 @@ import { createConversations } from "../src/conversations.ts";
 
 function fixture(t: TestContext) {
   const db = new DatabaseSync(":memory:"); t.after(() => db.close());
-  const storage = createAiSessionStorage(db), bridge = createAiSessionBridge({ storage }), conversations = createConversations(db);
+  const storage = createAiSessionStorage(db, null), bridge = createAiSessionBridge({ storage }), conversations = createConversations(db);
   function add(name: string, created: number, activity: number | null = null) {
     bridge.bind({ webSessionId: name, terminalInstanceId: name + "-instance", cliId: "omp", nativeSessionId: name });
     const conversation = conversations.list({ state: "all" }).items.find(row => row.source.nativeSessionId === name)!;

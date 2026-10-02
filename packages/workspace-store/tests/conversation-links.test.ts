@@ -10,7 +10,7 @@ function fixture(t: TestContext, withRuns = true) {
   const db = new DatabaseSync(":memory:"); t.after(() => db.close());
   db.exec(`CREATE TABLE sessions(id TEXT PRIMARY KEY,title TEXT NOT NULL,project_id TEXT,cwd TEXT NOT NULL,closed INTEGER NOT NULL,seq INTEGER NOT NULL);
     CREATE TABLE projects(id TEXT PRIMARY KEY);`);
-  const storage = createAiSessionStorage(db), conversations = createConversations(db);
+  const storage = createAiSessionStorage(db, null), conversations = createConversations(db);
   const runs = withRuns ? createConversationRuns(db) : undefined;
   const bridge = createAiSessionBridge({ storage });
   function bind(terminal: string, cliId: string, nativeSessionId: string, instance = terminal + "-instance") {

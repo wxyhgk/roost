@@ -20,20 +20,22 @@ import type { WorkspaceSnapshot, WorkspaceStoreOptions } from "./types.ts";
 export function createWorkspaceStore({ dataDir }: WorkspaceStoreOptions) {
   const db = openDatabase(dataDir);
   try {
-    return initializeWorkspaceStore(db);
+    return initializeWorkspaceStore(db, dataDir);
   } catch (error) {
     db.close();
     throw error;
   }
 }
 
-function initializeWorkspaceStore(db: ReturnType<typeof openDatabase>) {
+/* `dataDir` 一路传到 ai-sessions：单向迁移要在动手前把还原点拍在数据目录里。
+   不走全局/模块级状态——那样测试里两个库会互相串台。 */
+function initializeWorkspaceStore(db: ReturnType<typeof openDatabase>, dataDir: string) {
   const preferences = createPreferences(db);
   const projects = createProjects(db, preferences);
   const sessions = createSessions(db, preferences);
   const replay = createReplayStorage(db);
   const library = createLibrary(db);
-  const aiSessions = createAiSessionStorage(db);
+  const aiSessions = createAiSessionStorage(db, dataDir);
   const conversations = createConversations(db);
   const agentJournal = createAgentJournal(db);
   const aiCommands = createAiCommands(db);

@@ -22,7 +22,7 @@ test("transcript history outlives replay eviction and source deletion, with stor
   t.after(async () => { db.close(); await rm(dir, { recursive: true, force: true }); });
   const output = "tool result\n".repeat(1200);
   await writeFile(file, header() + message("u", "user", "question") + message("t", "toolResult", output) + message("a", "assistant", "answer"));
-  let storage = createAiSessionStorage(db);
+  let storage = createAiSessionStorage(db, null);
   let bridge = createAiSessionBridge({ storage, maxEvents: 1 });
   const binding = bridge.bind(input);
   const batch = await readOmpTranscript(file, "native");
@@ -39,7 +39,7 @@ test("transcript history outlives replay eviction and source deletion, with stor
   assert.equal(detail.event.content, "Bash\n" + output);
   bridge.transcriptFailed("web", binding.generation, "source_unavailable");
   assert.equal(storage.history!.pageMessages("web", binding.generation).items.length, 3, "OSC fallback must not hide archived transcript");
-  db.close(); db = new DatabaseSync(dbPath); storage = createAiSessionStorage(db);
+  db.close(); db = new DatabaseSync(dbPath); storage = createAiSessionStorage(db, null);
   assert.deepEqual(storage.list()[0].events, [], "startup reads metadata without eagerly loading event bodies");
   bridge = createAiSessionBridge({ storage, maxEvents: 1 });
   assert.equal(bridge.transcript("web")!.offset, batch.checkpoint.offset);
@@ -53,7 +53,7 @@ test("A to B to A shares the conversation but keeps the first generation's histo
   const dir = await mkdtemp(join(tmpdir(), "ai-history-rebind-"));
   const db = new DatabaseSync(join(dir, "history.sqlite"));
   t.after(async () => { db.close(); await rm(dir, { recursive: true, force: true }); });
-  const storage = createAiSessionStorage(db), bridge = createAiSessionBridge({ storage, maxEvents: 1 });
+  const storage = createAiSessionStorage(db, null), bridge = createAiSessionBridge({ storage, maxEvents: 1 });
   const file = join(dir, "native.jsonl");
   await writeFile(file, header() + message("a1", "user", "first"));
   const first = bridge.bind(input);
@@ -84,7 +84,7 @@ test("a SQLite body write failure rolls back messages, replay, metadata and tran
   const dir = await mkdtemp(join(tmpdir(), "ai-history-atomic-"));
   const db = new DatabaseSync(join(dir, "history.sqlite"));
   t.after(async () => { db.close(); await rm(dir, { recursive: true, force: true }); });
-  const storage = createAiSessionStorage(db), bridge = createAiSessionBridge({ storage, maxEvents: 1 });
+  const storage = createAiSessionStorage(db, null), bridge = createAiSessionBridge({ storage, maxEvents: 1 });
   const file = join(dir, "native.jsonl");
   await writeFile(file, header() + message("u", "user", "question") + message("t", "toolResult", "stored output"));
   const binding = bridge.bind(input), before = storage.list();
